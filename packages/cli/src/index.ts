@@ -1,59 +1,12 @@
 #!/usr/bin/env bun
 
 import packageJson from "../package.json";
-import { Args, Command } from "@effect/cli";
+import { CliConfig, Command } from "@effect/cli";
 import { BunContext, BunRuntime } from "@effect/platform-bun";
-import { Console, Effect } from "effect";
-
-import { serial } from "./adapter";
-import { V5SerialDevice } from "@v5x/serial";
+import { Effect, Layer } from "effect";
+import { kv } from "./commands/kv";
 
 const brand = (str: string) => `\x1b[0;38;2;129;140;248;49m${str}\x1b[0m`;
-
-const keyArg = Args.text({ name: "key" });
-const valueArg = Args.text({ name: "value" });
-
-const kvGet = Command.make("get", { key: keyArg }, ({ key }) =>
-  Effect.gen(function* () {
-    const device = new V5SerialDevice(serial);
-    device.autoReconnect = false;
-    device.autoRefresh = false;
-
-    yield* Effect.promise(async () => {
-      await device.connect();
-      return await device.brain.getValue(key);
-    }).pipe(
-      Effect.tap((value) => Console.log(value)),
-      Effect.ensuring(Effect.promise(() => device.dispose())),
-    );
-  }),
-);
-
-const kvSet = Command.make(
-  "set",
-  {
-    key: keyArg,
-    value: valueArg,
-  },
-  ({ key, value }) =>
-    Effect.gen(function* () {
-      const device = new V5SerialDevice(serial);
-      device.autoReconnect = false;
-      device.autoRefresh = false;
-
-      yield* Effect.promise(async () => {
-        await device.connect();
-        const ok = await device.brain.setValue(key, value);
-        if (ok) return `set ${key} to ${value} on v5 device`;
-        else return `failed to set ${key} to ${value} on v5 device`;
-      }).pipe(
-        Effect.tap((value) => Console.log(value)),
-        Effect.ensuring(Effect.promise(() => device.dispose())),
-      );
-    }),
-);
-
-const kv = Command.make("kv").pipe(Command.withSubcommands([kvGet, kvSet]));
 
 const main = Command.make("v5x").pipe(Command.withSubcommands([kv]));
 
@@ -64,4 +17,9 @@ const cli = Command.run(main, {
 
 Effect.gen(function* () {
   return yield* cli(process.argv);
-}).pipe(Effect.provide(BunContext.layer), BunRuntime.runMain);
+}).pipe(
+  Effect.provide(
+    Layer.mergeAll(BunContext.layer, CliConfig.layer({ showBuiltIns: false })),
+  ),
+  BunRuntime.runMain,
+);
