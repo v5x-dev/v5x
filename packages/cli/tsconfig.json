@@ -5,5 +5,5 @@
     "outDir": "dist",
     "types": ["bun"]
   },
-  "include": ["src"]
+  "include": ["src", "../serial/src/web-serial.d.ts"]
 }
