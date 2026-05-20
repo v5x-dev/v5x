@@ -38,14 +38,13 @@ kv.command("set")
     device.autoRefresh = false;
 
     try {
-      console.log("connecting...");
       await device.connect();
+      const ok = await device.brain.setValue(key, value);
 
-      console.log("setting", key, "to", value + "...");
-      const ok = await device.brain.getValue(key);
       if (ok) console.log(`set ${key} to ${value}`);
       else console.log(`failed to set ${key} to ${value}`);
     } catch (e: any) {
+      console.log(e.message);
       if (e.message === "No valid port selected.")
         console.log(pc.redBright("no valid device found"));
     } finally {
