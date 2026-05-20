@@ -906,7 +906,7 @@ export class V5SerialDevice extends VexSerialDevice {
         }
 
         if (
-          this.pauseRefreshOnFileTransfer &&
+          !this.pauseRefreshOnFileTransfer ||
           !this.state._isFileTransferring
         ) {
           isLastRefreshComplete = false;

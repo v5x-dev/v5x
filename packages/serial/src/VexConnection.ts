@@ -145,7 +145,7 @@ export class VexSerialConnection extends VexEventTarget {
       try {
         port = await this.serial.requestPort({ filters: this.filters });
       } catch (e) {
-        throw new Error("No valid port selected.");
+        console.warn("No valid port selected.");
       }
     }
 

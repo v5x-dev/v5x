@@ -1,16 +1,12 @@
 #!/usr/bin/env bun
-
-import { Command } from "commander";
-import packageJson from "../package.json";
-import { kv } from "./commands/kv";
-
-const program = new Command();
+import pkg from "../package.json" with { type: "json" };
+import { program } from "commander";
+import { build } from "./commands/build";
 
 program
   .name("v5x")
   .description("modern v5 development")
-  .version(packageJson.version);
-
-program.addCommand(kv);
+  .version(pkg.version)
+  .addCommand(build);
 
 program.parse();
