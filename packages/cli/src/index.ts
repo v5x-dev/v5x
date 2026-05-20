@@ -11,6 +11,7 @@ import { V5SerialDevice } from "@v5x/serial";
 const brand = (str: string) => `\x1b[0;38;2;129;140;248;49m${str}\x1b[0m`;
 
 const keyArg = Args.text({ name: "key" });
+const valueArg = Args.text({ name: "value" });
 
 const kvGet = Command.make("get", { key: keyArg }, ({ key }) =>
   Effect.gen(function* () {
@@ -28,7 +29,31 @@ const kvGet = Command.make("get", { key: keyArg }, ({ key }) =>
   }),
 );
 
-const kv = Command.make("kv").pipe(Command.withSubcommands([kvGet]));
+const kvSet = Command.make(
+  "set",
+  {
+    key: keyArg,
+    value: valueArg,
+  },
+  ({ key, value }) =>
+    Effect.gen(function* () {
+      const device = new V5SerialDevice(serial);
+      device.autoReconnect = false;
+      device.autoRefresh = false;
+
+      yield* Effect.promise(async () => {
+        await device.connect();
+        const ok = await device.brain.setValue(key, value);
+        if (ok) return `set ${key} to ${value} on v5 device`;
+        else return `failed to set ${key} to ${value} on v5 device`;
+      }).pipe(
+        Effect.tap((value) => Console.log(value)),
+        Effect.ensuring(Effect.promise(() => device.dispose())),
+      );
+    }),
+);
+
+const kv = Command.make("kv").pipe(Command.withSubcommands([kvGet, kvSet]));
 
 const main = Command.make("v5x").pipe(Command.withSubcommands([kv]));
 
