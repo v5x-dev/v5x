@@ -12,12 +12,11 @@
     },
     "packages/cli": {
       "name": "@v5x/cli",
-      "version": "0.0.2",
+      "version": "0.0.4",
       "bin": {
         "v5x": "dist/index.js",
       },
       "dependencies": {
-        "@v5x/serial": "workspace:*",
         "bun-serialport": "^0.1.1",
         "picocolors": "^1.1.1",
       },
