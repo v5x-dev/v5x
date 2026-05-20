@@ -1089,7 +1089,7 @@ export class V5SerialDevice extends VexSerialDevice {
   private async doAfterConnect(): Promise<void> {
     if (this.connection == null) return;
 
-    console.log("doAfterConnect");
+    //console.log("doAfterConnect");
 
     this.connection.on("disconnected", (_data) => {
       if (this.autoReconnect) void this.reconnect();
