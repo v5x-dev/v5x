@@ -5,7 +5,9 @@ import pc from "picocolors";
 import { serial } from "./adapter";
 import { V5SerialDevice } from "@v5x/serial";
 
-console.log(pc.redBright(`v5x ${packageJson.version}`));
+const brand = (str: string) => `\x1b[0;38;2;129;140;248;49m${str}\x1b[0m`;
+
+console.log(brand(`v5x ${packageJson.version}`));
 console.log("modern cli for v5 development");
 
 async function main() {
