@@ -49,13 +49,11 @@ class WebSerialPortAdapter extends EventTarget implements SerialPort {
     this._info = info;
   }
 
-  get readable() {
-    if (!this._readable) throw new Error("Port not open");
-    return this._readable;
+  get readable(): ReadableStream<Uint8Array> {
+    return this._readable as unknown as ReadableStream<Uint8Array>;
   }
-  get writable() {
-    if (!this._writable) throw new Error("Port not open");
-    return this._writable;
+  get writable(): WritableStream<Uint8Array> {
+    return this._writable as unknown as WritableStream<Uint8Array>;
   }
 
   getInfo(): SerialPortInfo {

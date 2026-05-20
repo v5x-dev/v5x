@@ -317,7 +317,9 @@ export class VexSerialConnection extends VexEventTarget {
 
         this.callbacksQueue.splice(tryIdx - 1, 1);
       } catch (e) {
-        console.warn("Read error.", e, cache);
+        if (!(e instanceof Error && e.message === "No data")) {
+          console.warn("Read error.", e, cache);
+        }
 
         await this.close();
         break;
