@@ -1,4 +1,4 @@
-let CRC16TABLE = [
+const CRC16TABLE = [
   0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7, 0x8108,
   0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef, 0x1231, 0x0210,
   0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6, 0x9339, 0x8318, 0xb37b,
@@ -31,6 +31,7 @@ let CRC16TABLE = [
 ];
 
 export class CrcGenerator {
+  crc16Table: Uint32Array;
   crc32Table: Uint32Array;
   static POLYNOMIAL_CRC32 = 79764919;
   static POLYNOMIAL_CRC16 = 4129;
@@ -43,7 +44,7 @@ export class CrcGenerator {
   /**
    * Calculate CRC16 for buffer
    */
-  crc16(buf: Uint8Array, initValue: number) {
+  crc16(buf: Uint8Array, initValue: number): number {
     const numberOfBytes = buf.byteLength;
     let accumulator = initValue;
     let i;
@@ -60,36 +61,36 @@ export class CrcGenerator {
   /**
    * Generate CRC32 reverse table
    */
-  crc32GenTable() {
-    var i;
-    var j;
-    var crc_accumulator;
+  crc32GenTable(): void {
+    let i;
+    let j;
+    let crcAccumulator;
     for (i = 0; i < 256; i++) {
-      crc_accumulator = i << 24;
+      crcAccumulator = i << 24;
       for (j = 0; j < 8; j++) {
-        if (crc_accumulator & 0x80000000)
-          crc_accumulator =
-            (crc_accumulator << 1) ^ CrcGenerator.POLYNOMIAL_CRC32;
-        else crc_accumulator = crc_accumulator << 1;
+        if ((crcAccumulator & 0x80000000) !== 0)
+          crcAccumulator =
+            (crcAccumulator << 1) ^ CrcGenerator.POLYNOMIAL_CRC32;
+        else crcAccumulator = crcAccumulator << 1;
       }
-      this.crc32Table[i] = crc_accumulator;
+      this.crc32Table[i] = crcAccumulator;
     }
   }
 
   /**
    * Calculate CRC32 for buffer
    */
-  crc32(buf: Uint8Array, initValue: number) {
+  crc32(buf: Uint8Array, initValue: number): number {
     const numberOfBytes = buf.byteLength;
-    let crc_accumulator = initValue;
+    let crcAccumulator = initValue;
     let i;
     let j;
 
     // now calculate CRC32
     for (j = 0; j < numberOfBytes; j++) {
-      i = ((crc_accumulator >>> 24) ^ buf[j]) & 0xff;
-      crc_accumulator = ((crc_accumulator << 8) ^ this.crc32Table[i]) >>> 0;
+      i = ((crcAccumulator >>> 24) ^ buf[j]) & 0xff;
+      crcAccumulator = ((crcAccumulator << 8) ^ this.crc32Table[i]) >>> 0;
     }
-    return (crc_accumulator & 0xffffffff) >>> 0;
+    return (crcAccumulator & 0xffffffff) >>> 0;
   }
 }

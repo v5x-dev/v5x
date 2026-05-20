@@ -22,7 +22,7 @@ export class VexFirmwareVersion {
    * @param version the string to process
    * @returns a VexFirmwareVersion representing the provided string
    */
-  static fromString(version: string) {
+  static fromString(version: string): VexFirmwareVersion {
     const parts = version
       .toLowerCase()
       .replace(/b/g, "")
@@ -44,7 +44,7 @@ export class VexFirmwareVersion {
     data: Uint8Array,
     offset: number = 0,
     reverse: boolean = false,
-  ) {
+  ): VexFirmwareVersion {
     return new VexFirmwareVersion(
       data[offset + (reverse ? 3 : 0)],
       data[offset + (reverse ? 2 : 1)],
@@ -53,7 +53,7 @@ export class VexFirmwareVersion {
     );
   }
 
-  static allZero() {
+  static allZero(): VexFirmwareVersion {
     return new VexFirmwareVersion(0, 0, 0, 0);
   }
 
@@ -63,18 +63,18 @@ export class VexFirmwareVersion {
    * @param version the string to process
    * @returns a VexFirmwareVersion representing the provided string
    */
-  static fromCatalogString(version: string) {
+  static fromCatalogString(version: string): VexFirmwareVersion {
     return VexFirmwareVersion.fromString(version.replace(/_/g, "."));
   }
 
-  isBeta() {
+  isBeta(): boolean {
     return this.beta !== 0;
   }
 
   /**
    * returns version as Uint Array
    */
-  toUint8Array(reverse: boolean = false) {
+  toUint8Array(reverse: boolean = false): Uint8Array {
     const data = new Uint8Array(4);
     data[reverse ? 3 : 0] = this.major;
     data[reverse ? 2 : 1] = this.minor;
@@ -86,14 +86,14 @@ export class VexFirmwareVersion {
   /**
    * returns version as major.minor.build
    */
-  toUserString() {
+  toUserString(): string {
     return `${this.major}.${this.minor}.${this.build}`;
   }
 
   /**
-   * returns version as ${major}.${minor}.4{build}.b${beta}
+   * returns version as ${major}.${minor}.{build}.b${beta}
    */
-  toInternalString() {
+  toInternalString(): string {
     return `${this.toUserString()}.b${this.beta}`;
   }
 
@@ -104,7 +104,7 @@ export class VexFirmwareVersion {
    * * if this > b: positive
    * @param that the version to compare again
    */
-  compare(that: VexFirmwareVersion) {
+  compare(that: VexFirmwareVersion): number {
     const majorComp = this.major - that.major;
     const minorComp = this.minor - that.minor;
     const buildComp = this.build - that.build;

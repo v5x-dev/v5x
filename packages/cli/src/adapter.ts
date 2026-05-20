@@ -14,19 +14,27 @@ export interface SerialPortInfo {
 }
 
 export interface SerialPort extends EventTarget {
-  readonly readable: ReadableStream<Uint8Array> | null;
-  readonly writable: WritableStream<Uint8Array> | null;
+  onconnect: (event: Event) => void;
+  ondisconnect: (event: Event) => void;
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<Uint8Array>;
   getInfo(): SerialPortInfo;
   open(options: { baudRate: number }): Promise<void>;
   close(): Promise<void>;
+  forget(): Promise<void>;
 }
 
-export interface Serial {
+export interface Serial extends EventTarget {
+  onconnect: (event: Event) => void;
+  ondisconnect: (event: Event) => void;
   getPorts(): Promise<SerialPort[]>;
   requestPort(options?: { filters?: SerialPortFilter[] }): Promise<SerialPort>;
 }
 
 class WebSerialPortAdapter extends EventTarget implements SerialPort {
+  onconnect: (event: Event) => void = () => {};
+  ondisconnect: (event: Event) => void = () => {};
+
   private _port: BunSerialPortRaw | null = null;
   private _path: string;
   private _info: SerialPortInfo;
@@ -41,9 +49,11 @@ class WebSerialPortAdapter extends EventTarget implements SerialPort {
   }
 
   get readable() {
+    if (!this._readable) throw new Error("Port not open");
     return this._readable;
   }
   get writable() {
+    if (!this._writable) throw new Error("Port not open");
     return this._writable;
   }
 
@@ -112,9 +122,16 @@ class WebSerialPortAdapter extends EventTarget implements SerialPort {
 
     this.dispatchEvent(new Event("disconnect"));
   }
+
+  async forget(): Promise<void> {
+    await this.close();
+  }
 }
 
-class WebSerialAdapter implements Serial {
+class WebSerialAdapter extends EventTarget implements Serial {
+  onconnect: (event: Event) => void = () => {};
+  ondisconnect: (event: Event) => void = () => {};
+
   private async _listPortsLinux() {
     const ttys = await readdir("/sys/class/tty").catch(() => []);
     const ports = [];
