@@ -1,38 +1,42 @@
 #!/usr/bin/env bun
 
 import packageJson from "../package.json";
-import pc from "picocolors";
+import { Args, Command } from "@effect/cli";
+import { BunContext, BunRuntime } from "@effect/platform-bun";
+import { Console, Effect } from "effect";
+
 import { serial } from "./adapter";
 import { V5SerialDevice } from "@v5x/serial";
 
 const brand = (str: string) => `\x1b[0;38;2;129;140;248;49m${str}\x1b[0m`;
 
-console.log(brand(`v5x ${packageJson.version}`));
-console.log("modern cli for v5 development");
+const keyArg = Args.text({ name: "key" });
 
-async function main() {
-  const device = new V5SerialDevice(serial);
+const kvGet = Command.make("get", { key: keyArg }, ({ key }) =>
+  Effect.gen(function* () {
+    const device = new V5SerialDevice(serial);
+    device.autoReconnect = false;
+    device.autoRefresh = false;
 
-  try {
-    await device.connect();
-
-    if (device.isConnected) {
-      console.log("os:", device.brain.systemVersion.toUserString());
-      console.log("name:", await device.brain.getValue("robotname"));
-      console.log("team:", await device.brain.getValue("teamnumber"));
-      console.log("id:", device.brain.uniqueId.toString());
-    }
-  } catch {
-    console.warn(pc.yellow("v5 device not found"));
-  } finally {
-    await device.disconnect();
-  }
-}
-
-main().then(
-  () => process.exit(0),
-  (error) => {
-    console.error(error);
-    process.exit(1);
-  },
+    yield* Effect.promise(async () => {
+      await device.connect();
+      return await device.brain.getValue(key);
+    }).pipe(
+      Effect.tap((value) => Console.log(value)),
+      Effect.ensuring(Effect.promise(() => device.dispose())),
+    );
+  }),
 );
+
+const kv = Command.make("kv").pipe(Command.withSubcommands([kvGet]));
+
+const main = Command.make("v5x").pipe(Command.withSubcommands([kv]));
+
+const cli = Command.run(main, {
+  name: "v5x",
+  version: packageJson.version,
+});
+
+Effect.gen(function* () {
+  return yield* cli(process.argv);
+}).pipe(Effect.provide(BunContext.layer), BunRuntime.runMain);

@@ -891,13 +891,14 @@ export class V5SerialDevice extends VexSerialDevice {
   pauseRefreshOnFileTransfer = true;
 
   protected _isReconnecting = false;
+  private _refreshInterval: ReturnType<typeof setInterval>;
   state: V5SerialDeviceState = new V5SerialDeviceState(this);
 
   constructor(defaultSerial: Serial) {
     super(defaultSerial);
 
     let isLastRefreshComplete: boolean = true;
-    setInterval(() => {
+    this._refreshInterval = setInterval(() => {
       if (this.autoRefresh && isLastRefreshComplete) {
         if (!this.isConnected) {
           this.state.brain.isAvailable = false;
@@ -1000,6 +1001,13 @@ export class V5SerialDevice extends VexSerialDevice {
   async disconnect(): Promise<void> {
     await this.connection?.close();
     this.connection = undefined;
+  }
+
+  async dispose(): Promise<void> {
+    this.autoReconnect = false;
+    this.autoRefresh = false;
+    clearInterval(this._refreshInterval);
+    await this.disconnect();
   }
 
   /**
