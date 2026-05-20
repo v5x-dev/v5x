@@ -31,6 +31,7 @@ export async function detectProgramType(path: string) {
 }
 
 export const build = new Command("build")
+  .alias("b")
   .description("build a program for the vex v5 brain")
   .argument("[path]", "path to the program", process.cwd())
   .option("-t, --type <type>", "type of the program")
