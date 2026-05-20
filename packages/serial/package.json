@@ -1,0 +1,66 @@
+{
+  "name": "@v5x/serial",
+  "version": "0.0.1",
+  "description": "Adapter-backed VEX V5 serial connections.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./adapters/web-serial": {
+      "types": "./dist/adapters/web-serial.d.ts",
+      "import": "./dist/adapters/web-serial.js"
+    },
+    "./adapters/bun-serialport": {
+      "types": "./dist/adapters/bun-serialport.d.ts",
+      "import": "./dist/adapters/bun-serialport.js"
+    },
+    "./adapters/node-serialport": {
+      "types": "./dist/adapters/node-serialport.d.ts",
+      "import": "./dist/adapters/node-serialport.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beanarchystudios/v5x.git",
+    "directory": "packages/serial"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/adapters/web-serial.ts ./src/adapters/bun-serialport.ts ./src/adapters/node-serialport.ts --target bun --external bun-serialport --external serialport --outdir ./dist && bunx tsc --emitDeclarationOnly",
+    "lint": "bunx tsc --noEmit",
+    "prepublishOnly": "bun run typecheck && bun run build",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "dependencies": {
+    "@v5x/cdc": "0.0.1"
+  },
+  "peerDependencies": {
+    "bun-serialport": "*",
+    "serialport": "*"
+  },
+  "peerDependenciesMeta": {
+    "bun-serialport": {
+      "optional": true
+    },
+    "serialport": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.1"
+  }
+}
