@@ -1,58 +1,54 @@
-import { Command, Args } from "@effect/cli";
-import { Effect, Console } from "effect";
+import { Command } from "commander";
 import { V5SerialDevice } from "@v5x/serial";
 import { serial } from "../adapter";
+import pc from "picocolors";
 
-const keyArg = Args.text({ name: "key" }).pipe(
-  Args.withDescription("The KV key to read or write."),
+export const kv = new Command("kv").description(
+  "interact with the v5 brain key-value store",
 );
 
-const valueArg = Args.text({ name: "value" }).pipe(
-  Args.withDescription("The value to store for the key."),
-);
-
-const kvGet = Command.make("get", { key: keyArg }, ({ key }) =>
-  Effect.gen(function* () {
+kv.command("get")
+  .description("read a value from the KV store")
+  .argument("<key>", "kv key")
+  .action(async (key) => {
     const device = new V5SerialDevice(serial);
     device.autoReconnect = false;
     device.autoRefresh = false;
 
-    yield* Effect.promise(async () => {
+    try {
       await device.connect();
-      return await device.brain.getValue(key);
-    }).pipe(
-      Effect.tap((value) => Console.log(value)),
-      Effect.ensuring(Effect.promise(() => device.dispose())),
-    );
-  }),
-).pipe(
-  Command.withDescription("Read a value from the V5 brain key-value store."),
-);
+      const value = await device.brain.getValue(key);
 
-const kvSet = Command.make(
-  "set",
-  {
-    key: keyArg,
-    value: valueArg,
-  },
-  ({ key, value }) =>
-    Effect.gen(function* () {
-      const device = new V5SerialDevice(serial);
-      device.autoReconnect = false;
-      device.autoRefresh = false;
+      console.log(value);
+    } catch (e: any) {
+      if (e.message === "No valid port selected.")
+        console.log(pc.redBright("no valid device found"));
+    } finally {
+      await device.dispose();
+    }
+  });
 
-      yield* Effect.promise(async () => {
-        await device.connect();
-        const ok = await device.brain.setValue(key, value);
-        if (ok) return `set ${key} to ${value} on v5 device`;
-        else return `failed to set ${key} to ${value} on v5 device`;
-      }).pipe(
-        Effect.tap((value) => Console.log(value)),
-        Effect.ensuring(Effect.promise(() => device.dispose())),
-      );
-    }),
-);
+kv.command("set")
+  .description("write a value to the KV store")
+  .argument("<key>", "kv key")
+  .argument("<value>", "value")
+  .action(async (key, value) => {
+    const device = new V5SerialDevice(serial);
+    device.autoReconnect = false;
+    device.autoRefresh = false;
 
-export const kv = Command.make("kv").pipe(
-  Command.withSubcommands([kvGet, kvSet]),
-);
+    try {
+      console.log("connecting...");
+      await device.connect();
+
+      console.log("setting", key, "to", value + "...");
+      const ok = await device.brain.getValue(key);
+      if (ok) console.log(`set ${key} to ${value}`);
+      else console.log(`failed to set ${key} to ${value}`);
+    } catch (e: any) {
+      if (e.message === "No valid port selected.")
+        console.log(pc.redBright("no valid device found"));
+    } finally {
+      await device.dispose();
+    }
+  });
