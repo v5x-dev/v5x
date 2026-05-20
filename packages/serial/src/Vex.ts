@@ -78,7 +78,8 @@ export type DataArray = ArrayBuffer | Uint8Array;
 
 export type MatchMode = "driver" | "autonomous" | "disabled";
 
-export enum FileVendor { // a.k.a vid
+export enum FileVendor {
+  // a.k.a vid
   USER = 1,
   SYS = 15,
   DEV1 = 16,

@@ -13,18 +13,24 @@ async function main() {
 
   try {
     await device.connect();
+
+    if (device.isConnected) {
+      console.log("os:", device.brain.systemVersion.toUserString());
+      console.log("name:", await device.brain.getValue("robotname"));
+      console.log("team:", await device.brain.getValue("teamnumber"));
+      console.log("id:", device.brain.uniqueId.toString());
+    }
   } catch {
     console.warn(pc.yellow("v5 device not found"));
-  }
-
-  if (device.isConnected) {
-    console.log("os:", device.brain.systemVersion.toUserString());
-    console.log("name:", await device.brain.getValue("robotname"));
-    console.log("team:", await device.brain.getValue("teamnumber"));
-    console.log("id:", device.brain.uniqueId.toString());
-
+  } finally {
     await device.disconnect();
   }
 }
 
-main();
+main().then(
+  () => process.exit(0),
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

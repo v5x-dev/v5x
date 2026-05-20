@@ -40,7 +40,8 @@ class WebSerialPortAdapter extends EventTarget implements SerialPort {
   private _info: SerialPortInfo;
   private _readable: ReadableStream<Uint8Array> | null = null;
   private _writable: WritableStream<Uint8Array> | null = null;
-  private _readerController: ReadableStreamDefaultController<Uint8Array> | null = null;
+  private _readerController: ReadableStreamDefaultController<Uint8Array> | null =
+    null;
 
   constructor(path: string, info: SerialPortInfo) {
     super();
@@ -142,9 +143,9 @@ class WebSerialAdapter extends EventTarget implements Serial {
 
       try {
         const realDevicePath = await realpath(devicePath);
-        const subsystem = await readlink(join(realDevicePath, "subsystem")).catch(
-          () => "",
-        );
+        const subsystem = await readlink(
+          join(realDevicePath, "subsystem"),
+        ).catch(() => "");
 
         const info: any = { path: `/dev/${name}` };
 
