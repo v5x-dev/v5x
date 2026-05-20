@@ -1,6 +1,6 @@
 {
   "name": "@v5x/cli",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Command line interface for v5x.",
   "license": "MIT",
   "type": "module",
@@ -24,7 +24,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --target bun --outfile ./dist/index.js && chmod +x ./dist/index.js",
+    "build": "bun build ./src/index.ts --target bun --external unzipit --outfile ./dist/index.js && chmod +x ./dist/index.js",
     "dev": "bun run ./src/index.ts",
     "lint": "bunx tsc --noEmit",
     "prepublishOnly": "bun run typecheck && bun run build",
@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "bun-serialport": "^0.1.1",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "unzipit": "^1.4.0"
   }
 }

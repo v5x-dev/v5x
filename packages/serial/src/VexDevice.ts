@@ -1,4 +1,3 @@
-import { unzip } from "unzipit";
 import {
   type MatchMode,
   SerialDeviceType,
@@ -473,6 +472,7 @@ export class V5Brain {
       pcb("FETCH VEXOS", 1, 1);
       pcb("UNZIP VEXOS", 0, 1);
 
+      const { unzip } = await import("unzipit");
       const { entries } = await unzip(vexos);
 
       bootBin = await entries[usingVersion + "/BOOT.bin"].arrayBuffer();
