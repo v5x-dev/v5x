@@ -9,6 +9,7 @@ import buildCommand from "./commands/build";
 import sweepCommand from "./commands/sweep";
 import catCommand from "./commands/cat";
 import dirCommand from "./commands/dir";
+import uploadCommand from "./commands/upload";
 
 const cli = await createCLI({
   name: "v5x",
@@ -18,6 +19,7 @@ const cli = await createCLI({
 });
 
 cli.command(buildCommand);
+cli.command(uploadCommand);
 cli.command(sweepCommand);
 cli.command(catCommand);
 cli.command(dirCommand);

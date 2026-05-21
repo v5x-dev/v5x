@@ -57,16 +57,14 @@ export const v5DevicePlugin = createPlugin({
 
   store,
 
-  async setup() {
+  async beforeCommand(context: CommandContext<V5DeviceStore>) {
     try {
       store.device = await connectDevice();
     } catch (e) {
       console.error((e as any).message);
       return;
     }
-  },
 
-  beforeCommand(context: CommandContext<V5DeviceStore>) {
     if (!store.device) {
       throw new Error("v5 device is not connected");
     }
