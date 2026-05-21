@@ -4,6 +4,7 @@ import { detectProgramType, ProgramType } from "../utils/detect";
 import { join } from "path";
 import { ProgramIniConfig, V5SerialDevice } from "@v5x/serial";
 import { serial } from "../adapter";
+import pc from "picocolors";
 
 async function uploadProsProgram(path: string, options: any) {
   const hotFile = Bun.file(join(path, "bin", "hot.package.bin"));
@@ -25,13 +26,42 @@ async function uploadProsProgram(path: string, options: any) {
 
   const ini = new ProgramIniConfig();
 
+  let lastPct = "";
+  let lastState = "";
+
   const uploaded = await device.brain.uploadProgram(
     ini,
     Bun.gzipSync(await hotFile.bytes()),
     Bun.gzipSync(await coldFile.bytes()),
-    (state, current, total) =>
-      console.log(state, ((current / total) * 100).toFixed(1) + "%"),
+    (state, current, total) => {
+      const pct = ((current / total) * 100).toFixed(1) + "%";
+
+      // new file/phase -> move to next line
+      if (state !== lastState) {
+        if (lastState !== "") {
+          process.stdout.write("\n");
+        }
+
+        lastState = state;
+        lastPct = "";
+      }
+
+      const text =
+        state === "BIN"
+          ? pc.red(`${state} ${pct}`)
+          : state === "COLD"
+            ? pc.blue(`${state} ${pct}`)
+            : pc.dim(`${state} ${pct}`);
+
+      // redraw same line for progress updates
+      if (pct !== lastPct) {
+        process.stdout.write(`\r${text}   `);
+        lastPct = pct;
+      }
+    },
   );
+
+  process.stdout.write("\n");
 
   await device.dispose();
 

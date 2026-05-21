@@ -244,7 +244,7 @@ export class VexSerialConnection extends VexEventTarget {
   }
 
   protected async startReader(): Promise<void> {
-    let cache = new Uint8Array([]);
+    let cache: Uint8Array = new Uint8Array([]);
     let sliceIdx = 0;
     for (;;)
       try {
@@ -302,7 +302,12 @@ export class VexSerialConnection extends VexEventTarget {
           (wantedCmdId === undefined && wantedCmdExId === undefined) ||
           PackageType === undefined
         ) {
-          callbackInfo.callback(data);
+          callbackInfo.callback(
+            data.buffer.slice(
+              data.byteOffset,
+              data.byteOffset + data.byteLength,
+            ),
+          );
         } else {
           if (!hasExtId || PackageType.isValidPacket(data, n)) {
             callbackInfo.callback(new PackageType(data));
@@ -549,7 +554,7 @@ export class V5SerialConnection extends VexSerialConnection {
 
     // TODO if downloadTarget is FILE_TARGET_A1, FactoryEnable
 
-    console.log("init file transfer", filename);
+    //console.log("init file transfer", filename);
 
     const p1 = await this.writeDataAsync(
       new InitFileTransferH2DPacket(
@@ -566,7 +571,7 @@ export class V5SerialConnection extends VexSerialConnection {
 
     if (!(p1 instanceof InitFileTransferReplyD2HPacket))
       throw new Error("InitFileTransferH2DPacket failed");
-    console.log(p1);
+    //console.log(p1);
 
     if (linkedFile !== undefined) {
       const p3 = await this.writeDataAsync(
@@ -623,6 +628,7 @@ export class V5SerialConnection extends VexSerialConnection {
         nextAddress += bufferChunkSize;
       }
 
+      progressCallback?.(buf.byteLength, buf.byteLength);
       transferFailed = false;
     } finally {
       exitReply = await this.writeDataAsync(

@@ -39,6 +39,7 @@
   "dependencies": {
     "bun-serialport": "^0.1.1",
     "commander": "^14.0.3",
+    "picocolors": "^1.1.1",
     "unzipit": "^1.4.0"
   }
 }
