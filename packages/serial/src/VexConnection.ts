@@ -259,7 +259,7 @@ export class VexSerialConnection extends VexEventTarget {
         const totalSize = n + payloadExpectedSize;
 
         cache = await this.readData(cache, totalSize);
-        sliceIdx = totalSize + 1;
+        sliceIdx = totalSize;
 
         const cmdId = cache[2];
         const hasExtId = cmdId === 88 || cmdId === 86;
@@ -392,7 +392,7 @@ export class V5SerialConnection extends VexSerialConnection {
       filename: basename + ".ini",
       buf: iniFileBuffer,
       downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-      vid: FileVendor.USER,
+      vendor: FileVendor.USER,
       autoRun: false,
     };
     const r1 = await this.uploadFileToDevice(iniRequest, (current, total) => {
@@ -409,7 +409,7 @@ export class V5SerialConnection extends VexSerialConnection {
             filename: basename + "_lib.bin",
             buf: coldFileBuf,
             downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-            vid: 24, // PROS vendor id
+            vendor: FileVendor.DEV2, // PROS vendor id
             autoRun: false,
           }
         : undefined;
@@ -427,7 +427,7 @@ export class V5SerialConnection extends VexSerialConnection {
       filename: basename + ".bin",
       buf: binFileBuf,
       downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-      vid: FileVendor.USER,
+      vendor: FileVendor.USER,
       loadAddress: coldFileBuf != null ? 0x07800000 : undefined,
       autoRun: iniConfig.autorun,
       linkedFile: coldRequest,
@@ -549,8 +549,6 @@ export class V5SerialConnection extends VexSerialConnection {
 
     // TODO if downloadTarget is FILE_TARGET_A1, FactoryEnable
 
-    // TODO if buf.length > USER_FLASH_MAX_FILE_SIZE and downloadTarget is FILE_TARGET_QSPI, change to FILE_TARGET_DDR
-
     console.log("init file transfer", filename);
 
     const p1 = await this.writeDataAsync(
@@ -592,43 +590,54 @@ export class V5SerialConnection extends VexSerialConnection {
 
     let lastBlock = false;
 
-    while (!lastBlock) {
-      let tmpbuf;
-      if (buf.byteLength - bufferOffset > bufferChunkSize) {
-        tmpbuf = buf.subarray(bufferOffset, bufferOffset + bufferChunkSize);
-      } else {
-        // last chunk
-        // word align length
-        const length = ((buf.byteLength - bufferOffset + 3) / 4) >>> 0;
-        tmpbuf = new Uint8Array(length * 4);
-        tmpbuf.set(buf.subarray(bufferOffset, buf.byteLength));
-        lastBlock = true;
+    let transferFailed = true;
+    let exitReply: HostBoundPacket | ArrayBuffer | AckType;
+
+    try {
+      while (!lastBlock) {
+        let tmpbuf;
+        if (buf.byteLength - bufferOffset > bufferChunkSize) {
+          tmpbuf = buf.subarray(bufferOffset, bufferOffset + bufferChunkSize);
+        } else {
+          // last chunk
+          // word align length
+          const length = ((buf.byteLength - bufferOffset + 3) / 4) >>> 0;
+          tmpbuf = new Uint8Array(length * 4);
+          tmpbuf.set(buf.subarray(bufferOffset, buf.byteLength));
+          lastBlock = true;
+        }
+
+        const p2 = await this.writeDataAsync(
+          new WriteFileH2DPacket(nextAddress, tmpbuf),
+          3000,
+        );
+
+        if (!(p2 instanceof WriteFileReplyD2HPacket))
+          throw new Error("WriteFileReplyD2HPacket failed");
+
+        if (progressCallback != null)
+          progressCallback(bufferOffset, buf.byteLength);
+
+        // next chunk
+        bufferOffset += bufferChunkSize;
+        nextAddress += bufferChunkSize;
       }
 
-      const p2 = await this.writeDataAsync(
-        new WriteFileH2DPacket(nextAddress, tmpbuf),
-        3000,
+      transferFailed = false;
+    } finally {
+      exitReply = await this.writeDataAsync(
+        new ExitFileTransferH2DPacket(
+          transferFailed
+            ? FileExitAction.EXIT_HALT
+            : autoRun
+              ? FileExitAction.EXIT_RUN
+              : FileExitAction.EXIT_HALT,
+        ),
+        30000,
       );
-
-      if (!(p2 instanceof WriteFileReplyD2HPacket))
-        throw new Error("WriteFileReplyD2HPacket failed");
-
-      if (progressCallback != null)
-        progressCallback(bufferOffset, buf.byteLength);
-
-      // next chunk
-      bufferOffset += bufferChunkSize;
-      nextAddress += bufferChunkSize;
     }
 
-    const p4 = await this.writeDataAsync(
-      new ExitFileTransferH2DPacket(
-        autoRun ? FileExitAction.EXIT_RUN : FileExitAction.EXIT_HALT,
-      ),
-      30000,
-    );
-
-    return p4 instanceof ExitFileTransferReplyD2HPacket;
+    return exitReply instanceof ExitFileTransferReplyD2HPacket;
   }
 
   async setMatchMode(mode: MatchMode): Promise<MatchModeReplyD2HPacket | null> {

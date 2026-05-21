@@ -69,7 +69,7 @@ export interface IProgramInfo {
 
 export interface IPacketCallback {
   callback: (data: HostBoundPacket | ArrayBuffer | AckType) => void;
-  timeout: NodeJS.Timeout;
+  timeout: ReturnType<typeof setTimeout>;
   wantedCommandId: number | undefined;
   wantedCommandExId: number | undefined;
 }
