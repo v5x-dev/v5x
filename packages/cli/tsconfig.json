@@ -1,9 +1,14 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist",
-    "types": ["bun"]
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declarationMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["bun"],
   },
-  "include": ["src", "../serial/src/web-serial.d.ts"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test/**/*"],
 }
