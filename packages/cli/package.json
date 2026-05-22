@@ -1,41 +1,31 @@
 {
   "name": "@v5x/cli",
-  "version": "0.0.19",
   "description": "modern v5 development",
-  "author": "beanarchystudios",
-  "bin": {
-    "cli": "./dist/index.js"
-  },
-  "files": ["dist", "README.md"],
+  "version": "0.0.20",
+  "module": "dist/index.js",
   "type": "module",
-  "scripts": {
-    "postinstall": "bunli generate",
-    "dev": "bun run src/index.ts",
-    "build": "bunli build --outfile dist/index.js",
-    "prepublishOnly": "bun run build",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
+  "bin": {
+    "v5x": "./dist/index.js"
   },
-  "dependencies": {
-    "@bunli/core": "latest",
-    "@bunli/runtime": "^0.3.2",
-    "@v5x/serial": "workspace:*",
-    "bun-serialport": "^0.1.1",
-    "cli-table": "^0.3.11",
-    "pngjs": "^7.0.0",
-    "zod": "^4.4.3"
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun build ./src/index.ts --target bun --outfile ./dist/index.js",
+    "prepack": "bun run build"
   },
   "devDependencies": {
-    "@bunli/test": "latest",
-    "@tsconfig/bun": "1.0.10",
-    "@types/bun": "latest",
-    "@types/cli-table": "^0.3.4",
-    "@types/pngjs": "^6.0.5",
-    "bunli": "latest",
-    "typescript": "^5.0.0"
+    "@v5x/serial": "workspace:*",
+    "@types/bun": "latest"
   },
-  "bunli": {
-    "entry": "./src/index.ts",
-    "outDir": "./dist"
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "bun-serialport": "^0.1.1",
+    "chalk": "^5.6.2",
+    "cmd-table": "^1.6.0",
+    "commander": "^14.0.3"
   }
 }

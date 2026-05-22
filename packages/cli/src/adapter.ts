@@ -203,10 +203,12 @@ class WebSerialAdapter extends EventTarget implements Serial {
               f.usbProductId === info.usbProductId),
         );
       });
-      if (filtered.length > 0) return filtered[0];
+      const port = filtered[0];
+      if (port) return port;
       throw new Error("No port found matching filters");
     }
-    if (ports.length > 0) return ports[0];
+    const port = ports[0];
+    if (port) return port;
     throw new Error("No port found");
   }
 }

@@ -1,11 +1,9 @@
-import { defineCommand } from "@bunli/core";
-import { getV5Device } from "../plugins/device";
-import { FileVendor, IFileHandle } from "@v5x/serial";
-import Table from "cli-table";
+import { createCommand } from "commander";
+import { connectV5Device } from "../device";
+import { Table } from "cmd-table";
+import { FileVendor } from "@v5x/serial";
 
-const J2000_EPOCH = 946684800;
-
-const USEFUL_VENDORS = [
+const VENDORS = [
   FileVendor.USER,
   FileVendor.SYS,
   FileVendor.DEV1,
@@ -17,25 +15,49 @@ const USEFUL_VENDORS = [
   FileVendor.VEXVM,
   FileVendor.VEX,
   FileVendor.UNDEFINED,
-] as const satisfies readonly FileVendor[];
+] as const;
 
-export const VENDOR_PREFIXES = {
-  [FileVendor.USER]: "user",
-  [FileVendor.SYS]: "sys_",
-  [FileVendor.DEV1]: "rmsh",
-  [FileVendor.DEV2]: "pros",
-  [FileVendor.DEV3]: "mwrk",
-  [FileVendor.DEV4]: "deva",
-  [FileVendor.DEV5]: "devb",
-  [FileVendor.DEV6]: "devc",
-  [FileVendor.VEXVM]: "vxvm",
-  [FileVendor.VEX]: "vex_",
-  [FileVendor.UNDEFINED]: "test",
-} as const;
+function vendorPrefix(vid: FileVendor): string {
+  switch (vid) {
+    case FileVendor.USER:
+      return "user/";
+    case FileVendor.SYS:
+      return "sys_/";
+    case FileVendor.DEV1:
+      return "rmsh/";
+    case FileVendor.DEV2:
+      return "pros/";
+    case FileVendor.DEV3:
+      return "mwrk/";
+    case FileVendor.DEV4:
+      return "deva/";
+    case FileVendor.DEV5:
+      return "devb/";
+    case FileVendor.DEV6:
+      return "devc/";
+    case FileVendor.VEXVM:
+      return "vxvm/";
+    case FileVendor.VEX:
+      return "vex_/";
+    case FileVendor.UNDEFINED:
+      return "test/";
+  }
+}
 
-function formatSize(bytes: number): string {
+function formatDate(date: Date) {
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const year = date.getFullYear();
+
+  const hour = date.getUTCHours();
+  const minute = date.getUTCMinutes();
+  const second = date.getUTCSeconds();
+
+  return `${month}/${day}/${year} ${hour}:${minute}:${second}`;
+}
+
+function formatSize(bytes: number) {
   const units = ["B", "KB", "MB", "GB"];
-
   let size = bytes;
   let unit = 0;
 
@@ -44,71 +66,55 @@ function formatSize(bytes: number): string {
     unit++;
   }
 
-  return `${size.toFixed(size < 10 && unit > 0 ? 2 : 0)} ${units[unit]}`;
+  return `${size.toFixed(size < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`;
 }
 
-const dirCommand = defineCommand({
-  name: "dir",
-  description: "list files on flash",
-  alias: "ls",
-  handler: async ({ context, colors }) => {
-    if (!context) return;
-    const device = getV5Device(context);
-    if (!device) return;
+const dirCommand = createCommand("dir")
+  .description("list files on flash")
+  .alias("ls")
+  .action(async () => {
+    const device = await connectV5Device();
 
-    const table = new Table({
-      head: ["name", "size", "load address", "vendor", "timestamp", "crc32"],
-      style: {
-        head: ["bold"],
-        "padding-left": 0,
-        "padding-right": 0,
-      },
-      chars: {
-        top: "",
-        "top-mid": "",
-        "top-left": "",
-        "top-right": "",
-        bottom: "",
-        "bottom-mid": "",
-        "bottom-left": "",
-        "bottom-right": "",
-        left: "",
-        "left-mid": "",
-        mid: "",
-        "mid-mid": "",
-        right: "",
-        "right-mid": "",
-        middle: "  ",
-      },
-    });
+    const files = [];
 
-    for (const vendor of USEFUL_VENDORS) {
-      const vendorFiles = await device.brain.listFiles(vendor);
-      if (!vendorFiles) continue;
+    for (const vendor of VENDORS) {
+      const vendorFiles = (await device.brain.listFiles(vendor)) ?? [];
 
-      table.push(
-        ...vendorFiles.map((f) => {
-          const timestamp = new Date(f.timestamp * 1000);
-
-          return [
-            `${VENDOR_PREFIXES[f.vendor]}/${f.filename}`,
-            formatSize(f.size),
-            `0x${f.loadAddress.toString(16)}`,
-            VENDOR_PREFIXES[vendor].replace("_", ""),
-            f.vendor === FileVendor.VEX || f.vendor === FileVendor.SYS
-              ? "-"
-              : timestamp
-                  .toISOString()
-                  .replace("T", " ")
-                  .replace(/\.\d+Z$/, ""),
-            `0x${f.crc32.toString(16)}`,
-          ];
-        }),
+      files.push(
+        ...vendorFiles.map((file) => ({
+          ...file,
+          vendor,
+        })),
       );
     }
 
-    console.log(table.toString());
-  },
-});
+    const table = new Table({
+      compact: true,
+    });
+
+    table.addColumn("name");
+    table.addColumn("size");
+    table.addColumn("load address");
+    table.addColumn("timestamp");
+    table.addColumn("crc32");
+
+    files.forEach(
+      ({ vendor, filename, size, loadAddress, timestamp, crc32 }) => {
+        const date = new Date(timestamp * 1000);
+
+        table.addRow([
+          vendorPrefix(vendor) + filename,
+          formatSize(size),
+          `0x${loadAddress.toString(16)}`,
+          formatDate(date),
+          `0x${crc32.toString(16)}`,
+        ]);
+      },
+    );
+
+    console.log(table.render());
+
+    await device.dispose();
+  });
 
 export default dirCommand;

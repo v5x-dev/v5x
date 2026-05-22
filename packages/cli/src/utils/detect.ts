@@ -1,27 +1,39 @@
+import { readdir } from "fs/promises";
 import { join } from "path";
 
-export async function detectProgramType(path: string) {
+export type ProgramType =
+  | "pros"
+  | "vexide"
+  | "vexcode-cpp"
+  | "vexcode-py"
+  | "unknown";
+
+export async function detectProgramType(path: string): Promise<ProgramType> {
   const prosFile = Bun.file(join(path, "project.pros"));
+  const cargoFile = Bun.file(join(path, "Cargo.toml"));
+  const vexPyFile = Bun.file(join(path, "src", "main.py"));
+  const vexMkFiles = [
+    Bun.file(join(path, "vex", "mkenv.mk")),
+    Bun.file(join(path, "vex", "mkrules.mk")),
+  ];
+
   if (await prosFile.exists()) {
     return "pros";
   }
 
-  const cargoFile = Bun.file(join(path, "Cargo.toml"));
   if (await cargoFile.exists()) {
-    const data = Bun.TOML.parse(await cargoFile.text()) as any;
-    if ("dependencies" in data && "vexide" in data.dependencies) {
-      return "vexide";
-    }
+    const config = Bun.TOML.parse(await cargoFile.text()) as {
+      dependencies: Record<string, any>;
+    };
+
+    if (Object.keys(config.dependencies).includes("vexide")) return "vexide";
   }
 
-  const vexMkEnvFile = Bun.file(join(path, "vex", "mkenv.mk"));
-  const vexMkRulesFile = Bun.file(join(path, "vex", "mkrules.mk"));
-  if ((await vexMkEnvFile.exists()) && (await vexMkRulesFile.exists())) {
+  if (await Promise.any(vexMkFiles.map((f) => f.exists()))) {
     return "vexcode-cpp";
   }
 
-  const mainPyFile = Bun.file(join(path, "src", "main.py"));
-  if (await mainPyFile.exists()) {
+  if (await vexPyFile.exists()) {
     return "vexcode-py";
   }
 

@@ -623,13 +623,12 @@ export class GetUserDataH2DPacket extends DeviceBoundPacket {
   static COMMAND_EXTENDED_ID = 39;
 
   constructor(e?: Uint8Array) {
-    let len = e?.length ?? 0;
-    if (len > 244) len = 244;
+    const input = e?.slice(0, 224) ?? new Uint8Array(0);
+    const payload = new Uint8Array(2 + input.length);
 
-    const payload = new Uint8Array(2 + len);
-    payload[0] = 1;
-    payload[1] = len;
-    payload.set(e ?? new Uint8Array(0), 2);
+    payload[0] = 1; // stdio channel
+    payload[1] = input.length;
+    payload.set(input, 2);
 
     super(payload);
   }
