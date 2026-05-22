@@ -1,6 +1,6 @@
 {
   "name": "@v5x/serial",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "implementation of the v5 serial protocol",
   "main": "dist/v5-serial-protocol.cjs.js",
   "typings": "index.d.ts",
