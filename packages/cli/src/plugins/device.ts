@@ -11,6 +11,22 @@ const store: V5DeviceStore = {
   device: null,
 };
 
+const DEVICE_COMMANDS = new Set([
+  "capture",
+  "c",
+  "cat",
+  "dir",
+  "ls",
+  "kv get",
+  "kv set",
+  "upload",
+  "u",
+]);
+
+function commandNeedsDevice(command: string): boolean {
+  return DEVICE_COMMANDS.has(command);
+}
+
 async function connectDevice(): Promise<V5SerialDevice | null> {
   const device = new V5SerialDevice(serial);
   device.autoRefresh = false;
@@ -58,15 +74,20 @@ export const v5DevicePlugin = createPlugin({
   store,
 
   async beforeCommand(context: CommandContext<V5DeviceStore>) {
-    try {
-      store.device = await connectDevice();
-    } catch (e) {
-      console.error((e as any).message);
+    if (!commandNeedsDevice(context.command)) {
       return;
     }
 
+    try {
+      store.device = await connectDevice();
+    } catch {
+      store.device = null;
+    }
+
     if (!store.device) {
-      throw new Error("v5 device is not connected");
+      console.error("v5 device is not connected");
+      context.setStoreValue("device", null);
+      return;
     }
 
     context.setStoreValue("device", store.device);

@@ -38,7 +38,7 @@ const uploadCommand = defineCommand({
       description: "action to perform on the brain after upload",
       short: "af",
     }),
-    slot: option(z.number().min(1).max(8).default(1), {
+    slot: option(z.coerce.number().min(1).max(8).default(1), {
       description: "program slot",
       short: "s",
     }),
@@ -60,7 +60,7 @@ const uploadCommand = defineCommand({
     file: option(z.string().optional(), {
       description: "a build artifact to upload",
     }),
-    strategy: option(z.enum(["monolith", "dual", "diff"]), {
+    strategy: option(z.enum(["monolith", "dual", "diff"]).optional(), {
       description: "method to use when uploading binaries",
     }),
   },
