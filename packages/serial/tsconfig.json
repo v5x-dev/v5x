@@ -23,6 +23,7 @@
     "sourceMap": true,
     "target": "es6",
     "strictNullChecks": true,
+    "types": ["dom-serial"],
     "lib": ["es5", "es2015", "es2016", "es2017", "es2020", "dom"]
   },
   "include": ["src/**/*"],

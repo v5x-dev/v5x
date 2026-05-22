@@ -1,15 +1,15 @@
 {
   "name": "@v5x/serial",
-  "version": "0.5.1",
-  "description": "TODO",
+  "version": "0.5.2",
+  "description": "implementation of the v5 serial protocol",
   "main": "dist/v5-serial-protocol.cjs.js",
   "typings": "index.d.ts",
   "module": "dist/v5-serial-protocol.es.js",
   "exports": {
     ".": {
       "types": "./dts/index.d.ts",
-      "import": "./src/index.ts",
-      "require": "./src/index.ts"
+      "import": "./dist/v5-serial-protocol.es.js",
+      "require": "./dist/v5-serial-protocol.cjs.js"
     }
   },
   "scripts": {
@@ -32,6 +32,7 @@
   },
   "files": [
     "dts/*",
+    "dist/*",
     "index.d.ts",
     "/*.min.js*",
     "LICENSE",

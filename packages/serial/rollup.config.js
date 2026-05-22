@@ -15,6 +15,7 @@ const name = "V5 Serial Protocol";
 
 const settings = {
   globals: {},
+  inlineDynamicImports: true,
   sourcemap: true,
 };
 
