@@ -15,3 +15,5 @@ This package is the low-level foundation that powers the CLI.
 It implements the V5 serial communication protocol in TypeScript.
 
 Instead of shelling out to external binaries, this package talks directly to the V5 brain over USB/serial.
+
+This is a fork of [v5-serial-protocol](https://github.com/LemLib/v5-serial-protocol) with extra features and fixes, major props to [jerrylum](https://github.com/Jerrylum) and the [LemLib](https://github.com/LemLib) team for making this whole project possible.
