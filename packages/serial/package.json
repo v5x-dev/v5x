@@ -1,6 +1,6 @@
 {
   "name": "@v5x/serial",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "implementation of the v5 serial protocol",
   "main": "dist/v5-serial-protocol.cjs.js",
   "typings": "index.d.ts",
@@ -28,7 +28,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/LemLib/v5-serial-protocol.git"
+    "url": "https://github.com/beanarchystudios/v5x.git"
   },
   "files": [
     "dts/*",
@@ -39,12 +39,12 @@
     "README.md"
   ],
   "keywords": [],
-  "author": "jerrylum <me@jerryio.com>",
+  "author": "qainguin <slimaster14@gmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/jerrylum/v5-serial-protocol/issues"
+    "url": "https://github.com/beanarchystudios/v5x/issues"
   },
-  "homepage": "https://github.com/jerrylum/v5-serial-protocol#readme",
+  "homepage": "https://github.com/beanarchystudios/v5x#readme",
   "devDependencies": {
     "@babel/core": "^7.18.2",
     "@babel/preset-env": "^7.18.2",
