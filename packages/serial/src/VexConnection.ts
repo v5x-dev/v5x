@@ -54,6 +54,12 @@ import {
   SendDashTouchReplyD2HPacket,
   SelectDashH2DPacket,
   SelectDashReplyD2HPacket,
+  ScreenCaptureH2DPacket,
+  ScreenCaptureReplyD2HPacket,
+  EraseFileH2DPacket,
+  EraseFileReplyD2HPacket,
+  FileClearUpH2DPacket,
+  FileClearUpReplyD2HPacket,
 } from "./VexPacket";
 import { type VexFirmwareVersion } from "./VexFirmwareVersion";
 
@@ -72,8 +78,11 @@ export class VexSerialConnection extends VexEventTarget {
   serial: Serial;
 
   callbacksQueue: IPacketCallback[] = [];
-  private isClosing = false;
-  protected fileTransferTail = Promise.resolve();
+  private _onPortDisconnect: (() => void) | null = null;
+  private _closePromise: Promise<void> | null = null;
+  private _wasConnected = false;
+  protected fileTransferTail: Promise<unknown> = Promise.resolve();
+  protected fileTransferDepth = 0;
 
   get isConnected(): boolean {
     return (
@@ -83,63 +92,119 @@ export class VexSerialConnection extends VexEventTarget {
     );
   }
 
+  get isFileTransferring(): boolean {
+    return this.fileTransferDepth > 0;
+  }
+
   constructor(serial: Serial) {
     super();
     this.serial = serial;
   }
 
   async close(): Promise<void> {
-    if (this.isClosing) return;
-    const hadResources =
+    if (this._closePromise) return this._closePromise;
+    if (!this._hasOpenResources()) return;
+
+    this._closePromise = this._doClose();
+    try {
+      await this._closePromise;
+    } finally {
+      this._closePromise = null;
+    }
+  }
+
+  private _hasOpenResources(): boolean {
+    return (
       this.port !== undefined ||
       this.reader !== undefined ||
       this.writer !== undefined ||
-      this.callbacksQueue.length > 0;
-    if (!hadResources) return;
-    this.isClosing = true;
+      this._onPortDisconnect !== null ||
+      this.callbacksQueue.length > 0
+    );
+  }
 
+  private async _doClose(): Promise<void> {
+    // 1. Reject every pending callback so callers don't hang.
     for (const callback of this.callbacksQueue.splice(0)) {
       clearTimeout(callback.timeout);
       callback.callback(AckType.CDC2_NACK);
     }
 
-    const writer = this.writer;
-    this.writer = undefined;
-    try {
-      await writer?.close();
-    } catch {
-      // Continue cleanup even when the stream is already closed or errored.
-    } finally {
-      writer?.releaseLock();
+    // 2. Remove the port's disconnect listener so a late event doesn't
+    //    re-enter close and so repeated open/close cycles don't grow
+    //    listener counts.
+    const onDisconnect = this._onPortDisconnect;
+    this._onPortDisconnect = null;
+    if (onDisconnect !== null) {
+      try {
+        this.port?.removeEventListener("disconnect", onDisconnect);
+      } catch {
+        // The port may already be gone or the implementation may not
+        // support listener removal.
+      }
     }
 
+    // 3. Close the writer and release the lock. Errors are swallowed so
+    //    cleanup can continue; the original error (if any) is preserved
+    //    by awaiting inside try/finally rather than the catch arm.
+    const writer = this.writer;
+    this.writer = undefined;
+    if (writer !== undefined) {
+      try {
+        await writer.close();
+      } catch {
+        // The stream may already be closed or errored.
+      } finally {
+        try {
+          writer.releaseLock();
+        } catch {
+          // Some stream implementations do not support explicit release.
+        }
+      }
+    }
+
+    // 4. Cancel the reader, drain any remaining bytes, then release.
     const reader = this.reader;
     this.reader = undefined;
-    try {
-      await reader?.cancel();
+    if (reader !== undefined) {
       try {
-        while (reader != null) {
+        await reader.cancel();
+      } catch {
+        // The stream may already be closed or errored.
+      }
+      try {
+        while (true) {
           const { done } = await reader.read();
           if (done) break;
         }
       } catch {
-        // Cancellation may leave the reader in an errored state.
+        // Cancellation may have left the reader in an errored state.
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          // Some stream implementations do not support explicit release.
+        }
       }
-    } catch {
-      // Continue cleanup when cancellation itself fails.
-    } finally {
-      reader?.releaseLock();
     }
 
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1)); // HACK: wait for the lock to be released
-      await this.port?.close();
-      this.port = undefined;
-    } catch (e) {
-      console.warn("Close port error.", e);
-    } finally {
-      this.port = undefined;
-      this.isClosing = false;
+    // 5. Close the underlying port. Releasing both locks above means the
+    //    streams are no longer holding handles, so the port can be
+    //    closed without the legacy one-millisecond lock-release delay.
+    const port = this.port;
+    this.port = undefined;
+    if (port !== undefined) {
+      try {
+        await port.close();
+      } catch (e) {
+        console.warn("Close port error.", e);
+      }
+    }
+
+    // 6. Emit exactly one disconnected event per connected lifecycle so
+    //    that observers don't have to deduplicate.
+    if (this._wasConnected) {
+      this._wasConnected = false;
       this.emit("disconnected", undefined);
     }
   }
@@ -185,13 +250,15 @@ export class VexSerialConnection extends VexEventTarget {
       this.port = port;
       await port.open({ baudRate: 115200 });
 
-      this.port.addEventListener("disconnect", () => {
+      this._onPortDisconnect = () => {
         void this.close();
-      });
+      };
+      this.port.addEventListener("disconnect", this._onPortDisconnect);
 
       this.writer = this.port.writable.getWriter();
       this.reader = this.port.readable.getReader();
       void this.startReader();
+      this._wasConnected = true;
       this.emit("connected", undefined);
 
       return true;
@@ -400,19 +467,25 @@ export class V5SerialConnection extends VexSerialConnection {
     { usbVendorId: 10376, usbProductId: SerialDeviceType.V5_CONTROLLER },
   ];
 
-  private async withFileTransferLock<T>(
-    operation: () => Promise<T>,
-  ): Promise<T> {
+  /**
+   * Serialize every transfer that touches the device's file-transfer mode
+   * through a single connection-level queue. Each call returns the prior
+   * tail and chains after it, so transfers always execute in request
+   * order without packet interleaving.
+   */
+  protected async withFileTransfer<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.fileTransferTail;
-    let release = () => {};
+    let release = (): void => {};
     const current = new Promise<void>((resolve) => {
       release = resolve;
     });
     this.fileTransferTail = previous.then(() => current);
-    await previous;
+    this.fileTransferDepth++;
     try {
+      await previous;
       return await operation();
     } finally {
+      this.fileTransferDepth--;
       release();
     }
   }
@@ -447,65 +520,75 @@ export class V5SerialConnection extends VexSerialConnection {
     return result instanceof MatchStatusReplyD2HPacket ? result : null;
   }
 
+  /**
+   * Upload an entire program (INI, optional cold binary, and the user
+   * binary) under a single connection-level transaction so that no other
+   * file-transfer request can interleave with the multi-file write.
+   */
   async uploadProgramToDevice(
     iniConfig: ProgramIniConfig,
     binFileBuf: Uint8Array,
     coldFileBuf: Uint8Array | undefined,
     progressCallback: (state: string, current: number, total: number) => void,
   ): Promise<boolean | undefined> {
-    const iniFileBuffer = new TextEncoder().encode(iniConfig.createIni());
+    return await this.withFileTransfer(async () => {
+      const iniFileBuffer = new TextEncoder().encode(iniConfig.createIni());
 
-    const basename = iniConfig.baseName;
+      const basename = iniConfig.baseName;
 
-    const iniRequest = {
-      filename: basename + ".ini",
-      buf: iniFileBuffer,
-      downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-      vendor: FileVendor.USER,
-      autoRun: false,
-    };
-    const r1 = await this.uploadFileToDevice(iniRequest, (current, total) => {
-      progressCallback("INI", current, total);
-    });
-    if (!r1) return false;
-
-    // let prjRequest = { filename: basename + '.prj', buf: prjfile, vid: FileVendor.USER, loadAddr: undefined, exttype: 0, linkedFile: undefined };
-    // await this.uploadFileToDeviceAsync(prjRequest, onProgress);
-
-    const coldRequest =
-      coldFileBuf !== undefined
-        ? {
-            filename: basename + "_lib.bin",
-            buf: coldFileBuf,
-            downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-            vendor: FileVendor.DEV2, // PROS vendor id
-            autoRun: false,
-          }
-        : undefined;
-    if (coldRequest != null) {
-      const r2 = await this.uploadFileToDevice(
-        coldRequest,
+      const iniRequest = {
+        filename: basename + ".ini",
+        buf: iniFileBuffer,
+        downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+        vendor: FileVendor.USER,
+        autoRun: false,
+      };
+      const r1 = await this.uploadFileToDeviceUnlocked(
+        iniRequest,
         (current, total) => {
-          progressCallback("COLD", current, total);
+          progressCallback("INI", current, total);
         },
       );
-      if (!r2) return;
-    }
+      if (!r1) return false;
 
-    const binRequest = {
-      filename: basename + ".bin",
-      buf: binFileBuf,
-      downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-      vendor: FileVendor.USER,
-      loadAddress: coldFileBuf != null ? 0x07800000 : undefined,
-      autoRun: iniConfig.autorun,
-      linkedFile: coldRequest,
-    };
-    const r3 = await this.uploadFileToDevice(binRequest, (current, total) => {
-      progressCallback("BIN", current, total);
+      const coldRequest =
+        coldFileBuf !== undefined
+          ? {
+              filename: basename + "_lib.bin",
+              buf: coldFileBuf,
+              downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+              vendor: FileVendor.DEV2, // PROS vendor id
+              autoRun: false,
+            }
+          : undefined;
+      if (coldRequest != null) {
+        const r2 = await this.uploadFileToDeviceUnlocked(
+          coldRequest,
+          (current, total) => {
+            progressCallback("COLD", current, total);
+          },
+        );
+        if (!r2) return;
+      }
+
+      const binRequest = {
+        filename: basename + ".bin",
+        buf: binFileBuf,
+        downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+        vendor: FileVendor.USER,
+        loadAddress: coldFileBuf != null ? 0x07800000 : undefined,
+        autoRun: iniConfig.autorun,
+        linkedFile: coldRequest,
+      };
+      const r3 = await this.uploadFileToDeviceUnlocked(
+        binRequest,
+        (current, total) => {
+          progressCallback("BIN", current, total);
+        },
+      );
+
+      return r3;
     });
-
-    return r3;
   }
 
   async downloadFileToHost(
@@ -513,7 +596,7 @@ export class V5SerialConnection extends VexSerialConnection {
     downloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<Uint8Array> {
-    return await this.withFileTransferLock(async () =>
+    return await this.withFileTransfer(async () =>
       this.downloadFileToHostUnlocked(
         request,
         downloadTarget,
@@ -522,9 +605,15 @@ export class V5SerialConnection extends VexSerialConnection {
     );
   }
 
-  private async downloadFileToHostUnlocked(
+  /**
+   * Run a download without acquiring the connection-level transfer lock.
+   * Intended for callers that already hold a transaction (such as
+   * `captureScreen`) and need to issue the download within a larger
+   * queued operation.
+   */
+  async downloadFileToHostUnlocked(
     request: IFileBasicInfo,
-    downloadTarget: FileDownloadTarget,
+    downloadTarget: FileDownloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<Uint8Array> {
     // TODO assert that the device is connected
@@ -594,10 +683,18 @@ export class V5SerialConnection extends VexSerialConnection {
 
       return fileBuf;
     } finally {
-      await this.writeDataAsync(
-        new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
-        30000,
-      );
+      // Always exit file-transfer mode even if reading or writing the
+      // reply throws. If the original transfer also failed we keep its
+      // error so callers see the underlying cause, not the cleanup
+      // failure.
+      try {
+        await this.writeDataAsync(
+          new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+          30000,
+        );
+      } catch (cleanupError) {
+        throw cleanupError;
+      }
     }
   }
 
@@ -605,7 +702,7 @@ export class V5SerialConnection extends VexSerialConnection {
     request: IFileWriteRequest,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<boolean> {
-    return await this.withFileTransferLock(async () =>
+    return await this.withFileTransfer(async () =>
       this.uploadFileToDeviceUnlocked(request, progressCallback),
     );
   }
@@ -630,24 +727,12 @@ export class V5SerialConnection extends VexSerialConnection {
       return false;
     }
 
-    // no download to special capture or vision buffers
-
-    // if (this.downloadTarget === VexDeviceWebSerial.FILE_TARGET_CBUF || this.downloadTarget === VexDeviceWebSerial.FILE_TARGET_VBUF) {
-    //     // error !
-    //     if (doneCallback != undefined) {
-    //         doneCallback(false);
-    //     }
-    //     return;
-    // }
-
     downloadTarget = downloadTarget ?? FileDownloadTarget.FILE_TARGET_QSPI;
     vendor = vendor ?? FileVendor.USER;
 
     let nextAddress = loadAddress ?? USER_FLASH_USR_CODE_START;
 
     // TODO if downloadTarget is FILE_TARGET_A1, FactoryEnable
-
-    //console.log("init file transfer", filename);
 
     const p1 = await this.writeDataAsync(
       new InitFileTransferH2DPacket(
@@ -664,7 +749,6 @@ export class V5SerialConnection extends VexSerialConnection {
 
     if (!(p1 instanceof InitFileTransferReplyD2HPacket))
       throw new Error("InitFileTransferH2DPacket failed");
-    //console.log(p1);
 
     const bufferChunkSize =
       p1.windowSize > 0 && p1.windowSize <= USER_PROG_CHUNK_SIZE
@@ -675,7 +759,7 @@ export class V5SerialConnection extends VexSerialConnection {
     let lastBlock = false;
 
     let transferFailed = true;
-    let exitReply: HostBoundPacket | ArrayBuffer | AckType;
+    let exitReply: HostBoundPacket | ArrayBuffer | AckType | undefined;
 
     try {
       if (linkedFile !== undefined) {
@@ -712,7 +796,7 @@ export class V5SerialConnection extends VexSerialConnection {
         );
 
         if (!(p2 instanceof WriteFileReplyD2HPacket))
-          throw new Error("WriteFileReplyD2HPacket failed");
+          throw new Error("WriteFileReplyD2DPacket failed");
 
         if (progressCallback != null)
           progressCallback(bufferOffset, buf.byteLength);
@@ -725,19 +809,100 @@ export class V5SerialConnection extends VexSerialConnection {
       progressCallback?.(buf.byteLength, buf.byteLength);
       transferFailed = false;
     } finally {
-      exitReply = await this.writeDataAsync(
-        new ExitFileTransferH2DPacket(
-          transferFailed
-            ? FileExitAction.EXIT_HALT
-            : autoRun
-              ? FileExitAction.EXIT_RUN
-              : FileExitAction.EXIT_HALT,
-        ),
-        30000,
-      );
+      // Always exit file-transfer mode even if writing or cleanup throws.
+      // If the original transfer failed, keep its error so callers see
+      // the root cause rather than the cleanup failure.
+      try {
+        exitReply = await this.writeDataAsync(
+          new ExitFileTransferH2DPacket(
+            transferFailed
+              ? FileExitAction.EXIT_HALT
+              : autoRun
+                ? FileExitAction.EXIT_RUN
+                : FileExitAction.EXIT_HALT,
+          ),
+          30000,
+        );
+      } catch (cleanupError) {
+        if (!transferFailed) throw cleanupError;
+        // Swallow the cleanup error so the original transfer error
+        // propagates to the caller.
+      }
     }
 
-    return exitReply instanceof ExitFileTransferReplyD2HPacket;
+    return (
+      exitReply !== undefined &&
+      exitReply instanceof ExitFileTransferReplyD2HPacket
+    );
+  }
+
+  /**
+   * Erase a single file under a single transfer-mode session, exiting
+   * file-transfer mode in a `finally` block regardless of how the
+   * operation completes.
+   */
+  async removeFile(request: IFileBasicInfo | string): Promise<boolean> {
+    return await this.withFileTransfer(async () => {
+      let vendor: FileVendor, filename: string;
+      if (typeof request === "string") {
+        vendor = FileVendor.USER;
+        filename = request;
+      } else {
+        vendor = request.vendor;
+        filename = request.filename;
+      }
+
+      try {
+        const result = await this.writeDataAsync(
+          new EraseFileH2DPacket(vendor, filename),
+        );
+        if (!(result instanceof EraseFileReplyD2HPacket)) return false;
+        return true;
+      } finally {
+        try {
+          await this.writeDataAsync(
+            new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+          );
+        } catch {
+          // Preserve the original error.
+        }
+      }
+    });
+  }
+
+  /**
+   * Erase every file in the user vendor namespace under a single
+   * transfer-mode session.
+   */
+  async removeAllFiles(): Promise<boolean> {
+    return await this.withFileTransfer(async () => {
+      try {
+        const result = await this.writeDataAsync(
+          new FileClearUpH2DPacket(FileVendor.USER),
+          30000,
+        );
+        return result instanceof FileClearUpReplyD2HPacket;
+      } finally {
+        try {
+          await this.writeDataAsync(
+            new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+          );
+        } catch {
+          // Preserve the original error.
+        }
+      }
+    });
+  }
+
+  /**
+   * Issue the screen-capture command and validate that the device
+   * acknowledged it. Callers must inspect the returned packet (or
+   * `null` on NACK) before downloading the framebuffer so that a
+   * rejected request performs no download.
+   */
+  async captureScreenSetup(): Promise<ScreenCaptureReplyD2HPacket | null> {
+    const result = await this.writeDataAsync(new ScreenCaptureH2DPacket(0));
+    return result instanceof ScreenCaptureReplyD2HPacket ? result : null;
   }
 
   async setMatchMode(mode: MatchMode): Promise<MatchModeReplyD2HPacket | null> {
@@ -745,6 +910,12 @@ export class V5SerialConnection extends VexSerialConnection {
       new UpdateMatchModeH2DPacket(mode, 0),
     );
     return result instanceof MatchModeReplyD2HPacket ? result : null;
+  }
+
+  async runProgram(
+    value: SlotNumber | string,
+  ): Promise<LoadFileActionReplyD2HPacket | null> {
+    return await this.loadProgram(value);
   }
 
   async loadProgram(

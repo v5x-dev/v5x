@@ -5,19 +5,12 @@ import {
   type IProgramInfo,
   type IFileWriteRequest,
   FileDownloadTarget,
-  FileExitAction,
   RadioChannelType,
 } from "./Vex";
 import { type ProgramIniConfig } from "./VexIniConfig";
 import type { V5SerialDeviceState } from "./VexDeviceState";
 import { sleep, sleepUntilAsync } from "./VexFirmware";
 import {
-  EraseFileH2DPacket,
-  EraseFileReplyD2HPacket,
-  ExitFileTransferH2DPacket,
-  ExitFileTransferReplyD2HPacket,
-  FileClearUpH2DPacket,
-  FileClearUpReplyD2HPacket,
   GetDirectoryEntryH2DPacket,
   GetDirectoryEntryReplyD2HPacket,
   GetDirectoryFileCountH2DPacket,
@@ -26,7 +19,6 @@ import {
   GetProgramSlotInfoReplyD2HPacket,
   ReadKeyValueH2DPacket,
   ReadKeyValueReplyD2HPacket,
-  ScreenCaptureH2DPacket,
   WriteKeyValueH2DPacket,
   WriteKeyValueReplyD2HPacket,
 } from "./VexPacketModels";
@@ -175,29 +167,8 @@ export async function removeFile(
   const conn = state._instance.connection;
   if (conn == null || !conn.isConnected) return;
 
-  let vendor: FileVendor, filename: string;
-
-  // If request is a string, then it is a filename
-  if (typeof request === "string") {
-    vendor = FileVendor.USER;
-    filename = request;
-  } else {
-    vendor = request.vendor;
-    filename = request.filename;
-  }
-
   return await state.withFileTransfer(async () => {
-    const result = await conn.writeDataAsync(
-      new EraseFileH2DPacket(vendor, filename),
-    );
-    const result2 = await conn.writeDataAsync(
-      new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
-    );
-
-    if (!(result instanceof EraseFileReplyD2HPacket)) return false;
-    if (!(result2 instanceof ExitFileTransferReplyD2HPacket)) return false;
-
-    return true;
+    return await conn.removeFile(request);
   });
 }
 
@@ -208,11 +179,7 @@ export async function removeAllFiles(
   if (conn == null || !conn.isConnected) return undefined;
 
   return await state.withFileTransfer(async () => {
-    const result = await conn.writeDataAsync(
-      new FileClearUpH2DPacket(FileVendor.USER),
-      30000,
-    );
-    return result instanceof FileClearUpReplyD2HPacket;
+    return await conn.removeAllFiles();
   });
 }
 
@@ -237,7 +204,7 @@ export async function uploadProgram(
         // V5 Controller doesn\'t appear to be connected to a V5 Brain
         if (!(await device.refresh())) return;
 
-        console.log("Transferring to download channel");
+        progressCallback("CHANNEL", 0, 1);
 
         const p1 = await device.radio.changeChannel(RadioChannelType.DOWNLOAD);
         if (!p1) return false;
@@ -251,7 +218,7 @@ export async function uploadProgram(
         );
         if (!transferred) return false;
 
-        console.log("Transferred to download channel");
+        progressCallback("CHANNEL", 1, 1);
       }
 
       const p2 = await conn.uploadProgramToDevice(
@@ -266,7 +233,7 @@ export async function uploadProgram(
         // Disconnected
         if (!device.brain.isAvailable) return false;
 
-        console.log("Transferring back to pit channel");
+        progressCallback("CHANNEL", 0, 1);
 
         const p3 = await device.radio.changeChannel(RadioChannelType.PIT);
         if (!p3) return false;
@@ -280,7 +247,7 @@ export async function uploadProgram(
         );
         if (!transferred) return false;
 
-        console.log("All done");
+        progressCallback("CHANNEL", 1, 1);
       }
 
       return true;
@@ -317,12 +284,13 @@ export async function captureScreen(
   // pros implementation: https://github.com/purduesigbots/pros-cli/blob/5ee18656faeb48f51d680bab4b53d5b59cc5a7d5/pros/serial/devices/vex/v5_device.py#L578
 
   const conn = state._instance.connection;
-
   if (conn == null || !conn.isConnected) return undefined;
+
   return await state.withFileTransfer(async () => {
-    await new Promise((resolve) => {
-      conn.writeData(new ScreenCaptureH2DPacket(0), resolve);
-    });
+    // Validate the device acknowledged the screen-capture command before
+    // pulling the framebuffer so a NACK or timeout performs no download.
+    const captureReply = await conn.captureScreenSetup();
+    if (captureReply == null) return undefined;
 
     const height = 272;
     const width = 480;
@@ -330,7 +298,7 @@ export async function captureScreen(
     const messageWidth = 512; // brain goofiness
     const messageChannels = 4; // brain goofiness
 
-    let buf = await conn?.downloadFileToHost(
+    let buf = await conn.downloadFileToHostUnlocked(
       {
         filename: "screen",
         vendor: FileVendor.SYS,
@@ -340,7 +308,6 @@ export async function captureScreen(
       FileDownloadTarget.FILE_TARGET_CBUF,
       progressCallback,
     );
-    if (buf == null) return;
 
     buf = buf
       // remove the extra columns

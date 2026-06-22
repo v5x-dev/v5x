@@ -7,7 +7,7 @@ description: "Read competition state and change controller radio channels."
 import { RadioChannelType } from "@v5x/serial";
 
 console.log(device.matchMode);
-device.matchMode = "disabled";
+await device.setMatchMode("disabled");
 
 if (device.radio.isAvailable) {
   console.log(device.radio.channel, device.radio.latency);
@@ -16,6 +16,11 @@ if (device.radio.isAvailable) {
 ```
 
 `matchMode` is `"driver"`, `"autonomous"`, or `"disabled"`. Radio channels include `PIT` and `DOWNLOAD`.
+
+`device.setMatchMode(mode)` returns a promise that resolves after the device
+acknowledges the command. It rejects when the device NACKs, the request times
+out, or the connection is not currently open. The `device.matchMode` setter
+is deprecated and will be removed in a future breaking release.
 
 <Warning>
   Do not change competition or radio state during an active match. Channel

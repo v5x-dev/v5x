@@ -39,4 +39,17 @@ if (!uploaded) throw new Error("Upload failed");
 
 `ProgramIniConfig.program.slot` is zero-based. The first brain slot is `0` in this metadata object.
 
-Set `device.brain.activeProgram` to a one-based slot from 1 through 8 to request that it run. Set it to `0` to request a stop.
+## Start and stop a program
+
+Use the explicit promise-returning methods to start and stop programs.
+Both return a promise that resolves after the device acknowledges the
+command and rejects when the device NACKs, the request times out, or the
+connection is not currently open.
+
+```ts
+await device.brain.runProgram(1); // run the program in slot 1
+await device.brain.stopProgram(); // stop the currently running program
+```
+
+The `device.brain.activeProgram` setter is deprecated and will be removed
+in a future breaking release. Use `runProgram` and `stopProgram` instead.

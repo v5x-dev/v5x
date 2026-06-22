@@ -1,4 +1,4 @@
-import { type MatchMode, SerialDeviceType } from "./Vex";
+import { type ISmartDeviceInfo, type MatchMode, SerialDeviceType } from "./Vex";
 import { V5SerialConnection } from "./VexConnection";
 import {
   V5Brain,
@@ -9,6 +9,12 @@ import {
   VexSerialDevice,
 } from "./VexDeviceState";
 import { sleepUntil, sleepUntilAsync } from "./VexFirmware";
+import {
+  GetDeviceStatusReplyD2HPacket,
+  GetRadioStatusReplyD2HPacket,
+  GetSystemFlagsReplyD2HPacket,
+  GetSystemStatusReplyD2HPacket,
+} from "./VexPacket";
 
 // Re-exports for backward compatibility with the previous VexDevice module.
 export {
@@ -37,14 +43,17 @@ export class V5SerialDevice extends VexSerialDevice {
 
   protected _isReconnecting = false;
   private _isDisconnecting = false;
-  private _refreshInterval: ReturnType<typeof setInterval>;
+  private _refreshInterval: ReturnType<typeof setInterval> | undefined;
   state: V5SerialDeviceState = new V5SerialDeviceState(this);
+  private _disposed = false;
+  private _refreshGeneration = 0;
 
   constructor(defaultSerial: Serial) {
     super(defaultSerial);
 
     let isLastRefreshComplete: boolean = true;
     this._refreshInterval = setInterval(() => {
+      if (this._disposed) return;
       if (this.autoRefresh && isLastRefreshComplete) {
         if (!this.isConnected) {
           this.state.brain.isAvailable = false;
@@ -53,7 +62,7 @@ export class V5SerialDevice extends VexSerialDevice {
 
         if (
           !this.pauseRefreshOnFileTransfer ||
-          !this.state._isFileTransferring
+          !this.state.isFileTransferring
         ) {
           isLastRefreshComplete = false;
           void this.refresh()
@@ -93,11 +102,37 @@ export class V5SerialDevice extends VexSerialDevice {
     return this.state.matchMode;
   }
 
+  /**
+   * @deprecated Setting this property dispatches a fire-and-forget
+   * request whose result cannot be observed. Use {@link setMatchMode}
+   * instead, which returns a promise that rejects when the device
+   * refuses or is disconnected.
+   */
   set matchMode(value) {
-    void (async () => {
-      if ((await this.connection?.setMatchMode(value)) != null)
-        this.state.matchMode = value;
-    })();
+    void this.setMatchMode(value).catch(() => {
+      // Preserve the legacy fire-and-forget contract: callers who
+      // need rejection handling should migrate to setMatchMode().
+    });
+  }
+
+  /**
+   * Update the match mode and resolve only after the device
+   * acknowledges the command. The new value is committed to the
+   * observed state only when the reply is a valid acknowledgement.
+   * Rejects when the device NACKs, the request times out, or no
+   * connection is currently open.
+   */
+  async setMatchMode(mode: MatchMode): Promise<boolean> {
+    const reply = await this.connection?.setMatchMode(mode);
+    if (reply == null) {
+      throw new Error(
+        this.isConnected
+          ? "setMatchMode command was rejected"
+          : "device is not connected",
+      );
+    }
+    this.state.matchMode = mode;
+    return true;
   }
 
   get radio(): V5Radio {
@@ -163,7 +198,11 @@ export class V5SerialDevice extends VexSerialDevice {
   async dispose(): Promise<void> {
     this.autoReconnect = false;
     this.autoRefresh = false;
-    clearInterval(this._refreshInterval);
+    this._disposed = true;
+    if (this._refreshInterval !== undefined) {
+      clearInterval(this._refreshInterval);
+      this._refreshInterval = undefined;
+    }
     await this.disconnect();
   }
 
@@ -264,85 +303,174 @@ export class V5SerialDevice extends VexSerialDevice {
     await this.refresh();
   }
 
+  /**
+   * Refresh the high-level device snapshot. All required replies are
+   * collected before any public state is mutated, so callers never see
+   * a half-updated view. If any required reply fails the previous
+   * snapshot is preserved and only the `isAvailable` flag is updated to
+   * reflect the loss of communication.
+   */
   async refresh(): Promise<boolean> {
-    const ssPacket = await this.connection?.getSystemStatus();
-    if (ssPacket == null) {
-      this.state.brain.isAvailable = false;
+    if (this._disposed) return false;
+
+    const generation = ++this._refreshGeneration;
+    const conn = this.connection;
+    if (conn == null || !conn.isConnected) {
+      this._applySnapshotIfCurrent(generation, { isAvailable: false });
       return false;
     }
 
-    this.state.brain.cpu0Version = ssPacket.cpu0Version;
-    this.state.brain.cpu1Version = ssPacket.cpu1Version;
-    this.state.brain.systemVersion = ssPacket.systemVersion;
+    const ssPacket = await conn.getSystemStatus();
+    if (generation !== this._refreshGeneration || this._disposed) return false;
+    if (ssPacket == null) {
+      this._applySnapshotIfCurrent(generation, { isAvailable: false });
+      return false;
+    }
 
+    const sfPacket = await conn.getSystemFlags();
+    if (generation !== this._refreshGeneration || this._disposed) return false;
+    if (sfPacket == null) {
+      this._applySnapshotIfCurrent(generation, { isAvailable: false });
+      return false;
+    }
+
+    const rdPacket = await conn.getRadioStatus();
+    if (generation !== this._refreshGeneration || this._disposed) return false;
+    if (rdPacket == null) {
+      this._applySnapshotIfCurrent(generation, { isAvailable: false });
+      return false;
+    }
+
+    const dsPacket = await conn.getDeviceStatus();
+    if (generation !== this._refreshGeneration || this._disposed) return false;
+    if (dsPacket == null) {
+      this._applySnapshotIfCurrent(generation, { isAvailable: false });
+      return false;
+    }
+
+    const snapshot = this._buildSnapshot(
+      ssPacket,
+      sfPacket,
+      rdPacket,
+      dsPacket,
+    );
+    return this._applySnapshotIfCurrent(generation, snapshot);
+  }
+
+  private _buildSnapshot(
+    ssPacket: GetSystemStatusReplyD2HPacket,
+    sfPacket: GetSystemFlagsReplyD2HPacket,
+    rdPacket: GetRadioStatusReplyD2HPacket,
+    dsPacket: GetDeviceStatusReplyD2HPacket,
+  ): V5SerialDeviceSnapshot {
     const flags2 = ssPacket.sysflags[2]!;
-    this.state.controllers[0]!.isCharging = (flags2 & 0b10000000) !== 0;
-    this.state.matchMode =
+    const matchMode: MatchMode =
       (flags2 & 0b00100000) !== 0
         ? "disabled"
         : (flags2 & 0b01000000) !== 0
           ? "autonomous"
           : "driver";
-    this.state.isFieldControllerConnected = (flags2 & 0b00010000) !== 0;
+    const isFieldControllerConnected = (flags2 & 0b00010000) !== 0;
 
     const flags4 = ssPacket.sysflags[4]!;
-    this.state.brain.settings.usingLanguage = (flags4 & 0b11110000) >> 4;
-    this.state.brain.settings.isWhiteTheme = (flags4 & 0b00000100) !== 0;
-    this.state.brain.settings.isScreenReversed = (flags4 & 0b00000001) === 0;
+    const usingLanguage = (flags4 & 0b11110000) >> 4;
+    const isWhiteTheme = (flags4 & 0b00000100) !== 0;
+    const isScreenReversed = (flags4 & 0b00000001) === 0;
 
-    this.state.brain.uniqueId = ssPacket.uniqueId;
+    const flags5 = sfPacket.flags;
+    const isRadioData = (flags5 & Math.pow(2, 32 - 12)) !== 0;
+    const isDoublePressed = (flags5 & Math.pow(2, 32 - 14)) !== 0;
+    const isCharging = (flags5 & Math.pow(2, 32 - 15)) !== 0;
+    const isPressed = (flags5 & Math.pow(2, 32 - 17)) !== 0;
+    const isVexNet = (flags5 & Math.pow(2, 32 - 18)) !== 0;
+    const controller1Available = (flags5 & Math.pow(2, 32 - 19)) !== 0;
+    const radioConnected = (flags5 & Math.pow(2, 32 - 22)) !== 0;
+    const radioAvailable = (flags5 & Math.pow(2, 32 - 23)) !== 0;
+    const batteryPercent = sfPacket.battery ?? 0;
+    const controller0Available =
+      radioConnected || sfPacket.controllerBatteryPercent !== undefined;
+    const controller0Battery = sfPacket.controllerBatteryPercent ?? 0;
+    const controller1Battery = sfPacket.partnerControllerBatteryPercent ?? 0;
+    const activeProgram = sfPacket.currentProgram;
+    const isAvailable = !this.isV5Controller || radioConnected;
 
-    const sfPacket = await this.connection?.getSystemFlags();
-    if (sfPacket == null) return false;
+    const devices = dsPacket.devices.map((d) => ({ ...d }));
 
-    const flags5 = sfPacket.flags; // Math.pow(2, 32 - i);
-    this.state.radio.isRadioData = (flags5 & Math.pow(2, 32 - 12)) !== 0;
-    this.state.brain.button.isDoublePressed =
-      (flags5 & Math.pow(2, 32 - 14)) !== 0;
-    this.state.brain.battery.isCharging = (flags5 & Math.pow(2, 32 - 15)) !== 0;
-    this.state.brain.button.isPressed = (flags5 & Math.pow(2, 32 - 17)) !== 0;
-    this.state.radio.isVexNet = (flags5 & Math.pow(2, 32 - 18)) !== 0;
-    this.state.controllers[1]!.isAvailable =
-      (flags5 & Math.pow(2, 32 - 19)) !== 0;
-    this.state.radio.isConnected = (flags5 & Math.pow(2, 32 - 22)) !== 0;
-    this.state.radio.isAvailable = (flags5 & Math.pow(2, 32 - 23)) !== 0;
-    this.state.brain.battery.batteryPercent = sfPacket.battery ?? 0;
-    this.state.controllers[0]!.isAvailable =
-      this.state.radio.isConnected || this.state.controllers[0]!.isCharging;
-    this.state.controllers[0]!.battery = sfPacket.controllerBatteryPercent ?? 0;
-    this.state.controllers[1]!.battery =
-      sfPacket.partnerControllerBatteryPercent ?? 0;
-    this.state.brain.activeProgram = sfPacket.currentProgram;
-    this.state.brain.isAvailable =
-      !this.isV5Controller || this.state.radio.isConnected;
+    return {
+      isAvailable: true,
+      matchMode,
+      isFieldControllerConnected,
+      brain: {
+        ...this.state.brain,
+        activeProgram,
+        battery: { batteryPercent, isCharging },
+        button: { isPressed, isDoublePressed },
+        cpu0Version: ssPacket.cpu0Version,
+        cpu1Version: ssPacket.cpu1Version,
+        isAvailable,
+        settings: { isScreenReversed, isWhiteTheme, usingLanguage },
+        systemVersion: ssPacket.systemVersion,
+        uniqueId: ssPacket.uniqueId,
+      },
+      controllers: [
+        {
+          battery: controller0Battery,
+          isAvailable: controller0Available,
+          isCharging: (flags2 & 0b10000000) !== 0,
+        },
+        {
+          battery: controller1Battery,
+          isAvailable: controller1Available,
+        },
+      ],
+      radio: {
+        channel: rdPacket.channel,
+        latency: rdPacket.timeslot,
+        signalQuality: rdPacket.quality,
+        signalStrength: rdPacket.strength,
+        isRadioData,
+        isVexNet,
+        isConnected: radioConnected,
+        isAvailable: radioAvailable,
+      },
+      devices,
+    };
+  }
 
-    const rdPacket = await this.connection?.getRadioStatus();
-    if (rdPacket == null) return false;
+  private _applySnapshotIfCurrent(
+    generation: number,
+    snapshot: V5SerialDeviceSnapshot | { isAvailable: false },
+  ): boolean {
+    if (this._disposed) return false;
+    if (generation !== this._refreshGeneration) return false;
 
-    this.state.radio.channel = rdPacket.channel;
-    this.state.radio.latency = rdPacket.timeslot;
-    this.state.radio.signalQuality = rdPacket.quality;
-    this.state.radio.signalStrength = rdPacket.strength;
-
-    const dsPacket = await this.connection?.getDeviceStatus();
-    if (dsPacket == null) return false;
-
-    let missingPorts = this.state.devices
-      .map((d) => d?.port)
-      .filter((p): p is number => p !== undefined);
-
-    for (let i = 0; i < dsPacket.devices.length; i++) {
-      const device = dsPacket.devices[i]!;
-      this.state.devices[device.port] = device;
-
-      // remove device port from missing ports
-      missingPorts = missingPorts.filter((p) => p !== device.port);
+    if (snapshot.isAvailable === false) {
+      this.state.brain.isAvailable = false;
+      return false;
     }
 
-    missingPorts.forEach((port) => {
-      this.state.devices[port] = undefined;
-    });
+    this.state.matchMode = snapshot.matchMode;
+    this.state.isFieldControllerConnected = snapshot.isFieldControllerConnected;
+    Object.assign(this.state.brain, snapshot.brain);
+    Object.assign(this.state.controllers[0]!, snapshot.controllers[0]);
+    Object.assign(this.state.controllers[1]!, snapshot.controllers[1]);
+    Object.assign(this.state.radio, snapshot.radio);
 
+    const next: Array<ISmartDeviceInfo | undefined> = [];
+    for (const device of snapshot.devices) {
+      if (device != null) next[device.port] = device;
+    }
+    this.state.devices = next;
     return true;
   }
+}
+
+interface V5SerialDeviceSnapshot {
+  isAvailable: true;
+  matchMode: MatchMode;
+  isFieldControllerConnected: boolean;
+  brain: V5SerialDeviceState["brain"];
+  controllers: V5SerialDeviceState["controllers"];
+  radio: V5SerialDeviceState["radio"];
+  devices: ISmartDeviceInfo[];
 }
