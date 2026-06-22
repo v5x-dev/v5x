@@ -31,6 +31,12 @@ export interface Serial extends EventTarget {
   requestPort(options?: { filters?: SerialPortFilter[] }): Promise<SerialPort>;
 }
 
+interface AdapterPortInfo {
+  path: string;
+  vendorId?: string;
+  productId?: string;
+}
+
 class WebSerialPortAdapter extends EventTarget implements SerialPort {
   onconnect: (event: Event) => void = () => {};
   ondisconnect: (event: Event) => void = () => {};
@@ -133,7 +139,7 @@ class WebSerialAdapter extends EventTarget implements Serial {
 
   private async _listPortsLinux() {
     const ttys = await readdir("/sys/class/tty").catch(() => []);
-    const ports = [];
+    const ports: AdapterPortInfo[] = [];
 
     for (const name of ttys) {
       const sysPath = `/sys/class/tty/${name}`;
@@ -145,7 +151,7 @@ class WebSerialAdapter extends EventTarget implements Serial {
           join(realDevicePath, "subsystem"),
         ).catch(() => "");
 
-        const info: any = { path: `/dev/${name}` };
+        const info: AdapterPortInfo = { path: `/dev/${name}` };
 
         if (subsystem.includes("usb")) {
           let current = realDevicePath;
@@ -175,9 +181,7 @@ class WebSerialAdapter extends EventTarget implements Serial {
 
   async getPorts(): Promise<SerialPort[]> {
     const ports =
-      platform() === "linux"
-        ? await this._listPortsLinux()
-        : ((await list()) as any[]);
+      platform() === "linux" ? await this._listPortsLinux() : await list();
 
     return ports.map(
       (p) =>

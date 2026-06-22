@@ -13,6 +13,8 @@
   ],
   "scripts": {
     "build": "bun build ./src/index.ts --target bun --outfile ./dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "prepack": "bun run build"
   },
   "devDependencies": {
@@ -26,6 +28,7 @@
     "bun-serialport": "^0.1.1",
     "chalk": "^5.6.2",
     "cmd-table": "^1.6.0",
-    "commander": "^14.0.3"
+    "commander": "^14.0.3",
+    "fflate": "^0.8.3"
   }
 }

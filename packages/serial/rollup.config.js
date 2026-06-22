@@ -29,6 +29,7 @@ const licenseConfig = license({
 export default [
   {
     input: "./src/index.ts",
+    external: ["unzipit"],
     output: [
       {
         file: module,

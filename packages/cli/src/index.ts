@@ -34,4 +34,9 @@ program
   .addCommand(installCommand)
   .addCommand(kvCommand);
 
-program.parse();
+try {
+  await program.parseAsync();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}

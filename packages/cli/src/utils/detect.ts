@@ -1,4 +1,3 @@
-import { readdir } from "fs/promises";
 import { join } from "path";
 
 export type ProgramType =
@@ -7,6 +6,17 @@ export type ProgramType =
   | "vexcode-cpp"
   | "vexcode-py"
   | "unknown";
+
+function hasVexideDependency(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("dependencies" in value)) return false;
+  const dependencies = value.dependencies;
+  return (
+    typeof dependencies === "object" &&
+    dependencies !== null &&
+    "vexide" in dependencies
+  );
+}
 
 export async function detectProgramType(path: string): Promise<ProgramType> {
   const prosFile = Bun.file(join(path, "project.pros"));
@@ -22,14 +32,13 @@ export async function detectProgramType(path: string): Promise<ProgramType> {
   }
 
   if (await cargoFile.exists()) {
-    const config = Bun.TOML.parse(await cargoFile.text()) as {
-      dependencies: Record<string, any>;
-    };
-
-    if (Object.keys(config.dependencies).includes("vexide")) return "vexide";
+    const config: unknown = Bun.TOML.parse(await cargoFile.text());
+    if (hasVexideDependency(config)) return "vexide";
   }
 
-  if (await Promise.any(vexMkFiles.map((f) => f.exists()))) {
+  if (
+    (await Promise.all(vexMkFiles.map((file) => file.exists()))).some(Boolean)
+  ) {
     return "vexcode-cpp";
   }
 
