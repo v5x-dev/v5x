@@ -1,6 +1,6 @@
-import { CrcGenerator } from "./VexCRC";
-import { HostBoundPacket, Packet } from "./VexPacketBase";
-import * as AllPackets from "./VexPacketModels";
+import { CrcGenerator } from "./VexCRC.js";
+import { HostBoundPacket, Packet } from "./VexPacketBase.js";
+import * as AllPackets from "./VexPacketModels.js";
 
 const textEncoder = new TextEncoder();
 

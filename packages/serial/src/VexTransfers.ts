@@ -7,10 +7,10 @@ import {
   FileDownloadTarget,
   FileExitAction,
   RadioChannelType,
-} from "./Vex";
-import { type ProgramIniConfig } from "./VexIniConfig";
-import type { V5SerialDeviceState } from "./VexDeviceState";
-import { sleep, sleepUntilAsync } from "./VexFirmware";
+} from "./Vex.js";
+import { type ProgramIniConfig } from "./VexIniConfig.js";
+import type { V5SerialDeviceState } from "./VexDeviceState.js";
+import { sleep, sleepUntilAsync } from "./VexFirmware.js";
 import {
   EraseFileH2DPacket,
   EraseFileReplyD2HPacket,
@@ -29,7 +29,7 @@ import {
   ScreenCaptureH2DPacket,
   WriteKeyValueH2DPacket,
   WriteKeyValueReplyD2HPacket,
-} from "./VexPacketModels";
+} from "./VexPacketModels.js";
 
 export async function getValue(
   state: V5SerialDeviceState,

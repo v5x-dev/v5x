@@ -3,7 +3,7 @@
 // for unchanged code
 // -@meisZWFLZ
 
-import { type ZerobaseSlotNumber } from "./Vex";
+import { type ZerobaseSlotNumber } from "./Vex.js";
 class BaseIniBuilder {
   protected str = "";
   protected addLine(line: string): void {

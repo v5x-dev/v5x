@@ -15,9 +15,9 @@ import {
   USER_FLASH_USR_CODE_START,
   USER_PROG_CHUNK_SIZE,
   type SelectDashScreen,
-} from "./Vex";
-import { VexEventTarget } from "./VexEvent";
-import { type ProgramIniConfig } from "./VexIniConfig";
+} from "./Vex.js";
+import { VexEventTarget } from "./VexEvent.js";
+import { type ProgramIniConfig } from "./VexIniConfig.js";
 import {
   MatchStatusReplyD2HPacket,
   DeviceBoundPacket,
@@ -54,8 +54,8 @@ import {
   SendDashTouchReplyD2HPacket,
   SelectDashH2DPacket,
   SelectDashReplyD2HPacket,
-} from "./VexPacket";
-import { type VexFirmwareVersion } from "./VexFirmwareVersion";
+} from "./VexPacket.js";
+import { type VexFirmwareVersion } from "./VexFirmwareVersion.js";
 
 const thePacketEncoder = PacketEncoder.getInstance();
 

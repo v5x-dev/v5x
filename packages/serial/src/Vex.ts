@@ -1,5 +1,5 @@
-import { type VexFirmwareVersion } from "./VexFirmwareVersion";
-import { type HostBoundPacket } from "./VexPacket";
+import { type VexFirmwareVersion } from "./VexFirmwareVersion.js";
+import { type HostBoundPacket } from "./VexPacket.js";
 
 export const USER_PROG_CHUNK_SIZE = 4096; // chunk size
 export const USER_FLASH_START = 0x03000000; // start address of memory

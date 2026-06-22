@@ -11,18 +11,18 @@ import {
   type IFileWriteRequest,
   FileDownloadTarget,
   RadioChannelType,
-} from "./Vex";
-import { type V5SerialConnection } from "./VexConnection";
-import { VexEventTarget } from "./VexEvent";
-import { VexFirmwareVersion } from "./VexFirmwareVersion";
-import { type ProgramIniConfig } from "./VexIniConfig";
+} from "./Vex.js";
+import { type V5SerialConnection } from "./VexConnection.js";
+import { VexEventTarget } from "./VexEvent.js";
+import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
+import { type ProgramIniConfig } from "./VexIniConfig.js";
 import {
   FileControlH2DPacket,
   FileControlReplyD2HPacket,
-} from "./VexPacketModels";
-import type { V5SerialDevice } from "./VexDevice";
-import * as firmware from "./VexFirmware";
-import * as transfers from "./VexTransfers";
+} from "./VexPacketModels.js";
+import type { V5SerialDevice } from "./VexDevice.js";
+import * as firmware from "./VexFirmware.js";
+import * as transfers from "./VexTransfers.js";
 
 export abstract class VexSerialDevice extends VexEventTarget {
   connection: V5SerialConnection | undefined;
@@ -135,20 +135,18 @@ export class V5Brain {
     return this.state.brain.activeProgram;
   }
 
-  set activeProgram(value) {
-    void (async () => {
-      if (this.state.brain.activeProgram === value) return;
+  async setActiveProgram(value: SlotNumber | 0): Promise<boolean> {
+    if (this.state.brain.activeProgram === value) return true;
 
-      const conn = this.state._instance.connection;
-      if (conn == null) return;
+    const conn = this.state._instance.connection;
+    if (conn == null) return false;
 
-      const fn =
-        value === 0
-          ? await conn.stopProgram()
-          : await conn.loadProgram(value as SlotNumber);
+    const result =
+      value === 0 ? await conn.stopProgram() : await conn.loadProgram(value);
+    if (result == null) return false;
 
-      if (fn != null) this.state.brain.activeProgram = value;
-    })();
+    this.state.brain.activeProgram = value;
+    return true;
   }
 
   get battery(): V5Battery {

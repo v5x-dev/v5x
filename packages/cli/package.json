@@ -4,6 +4,7 @@
   "version": "0.0.21",
   "module": "dist/index.js",
   "type": "module",
+  "sideEffects": true,
   "engines": {
     "bun": ">=1.3.14"
   },
