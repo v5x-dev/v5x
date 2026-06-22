@@ -11,21 +11,23 @@ export default function registerKvCommand(program: Sade) {
     .action(async () => {
       const device = await connectV5Device();
 
-      const table = new Table({ compact: true });
-      table.addColumn("key");
-      table.addColumn("value");
+      try {
+        const table = new Table({ compact: true });
+        table.addColumn("key");
+        table.addColumn("value");
 
-      for (const key of WELL_KNOWN_KEYS) {
-        const value = await device.brain.getValue(key);
-        table.addRow([
-          key,
-          value === undefined || value === "" ? chalk.dim("(unset)") : value,
-        ]);
+        for (const key of WELL_KNOWN_KEYS) {
+          const value = await device.brain.getValue(key);
+          table.addRow([
+            key,
+            value === undefined || value === "" ? chalk.dim("(unset)") : value,
+          ]);
+        }
+
+        console.log(table.render());
+      } finally {
+        await device.dispose();
       }
-
-      console.log(table.render());
-
-      await device.dispose();
     });
 
   program
@@ -46,8 +48,8 @@ export default function registerKvCommand(program: Sade) {
       const device = await connectV5Device();
       try {
         const ok = await device.brain.setValue(key, value);
-        if (ok) console.log(`set ${key} to ${value}`);
-        else console.error(`failed to set ${key} to ${value}`);
+        if (!ok) throw new Error(`failed to set ${key} to ${value}`);
+        console.log(`set ${key} to ${value}`);
       } finally {
         await device.dispose();
       }

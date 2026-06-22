@@ -2,7 +2,7 @@ import { connectV5Device } from "../device";
 import {
   buildProject,
   createProgramConfig,
-  findProgramArtifact,
+  findProgramArtifacts,
   inspectProject,
 } from "./project";
 
@@ -20,7 +20,7 @@ export interface UploadOptions {
 export async function uploadProgram(options: UploadOptions): Promise<void> {
   const project = await inspectProject(options.path);
   if (options.build) await buildProject(project);
-  const artifact = await findProgramArtifact(project, options.artifact);
+  const artifacts = await findProgramArtifacts(project, options.artifact);
   const config = createProgramConfig({
     slot: options.slot,
     name: options.name ?? project.name,
@@ -29,7 +29,10 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
     type: project.type,
     run: options.run,
   });
-  const bytes = new Uint8Array(await Bun.file(artifact).arrayBuffer());
+  const bytes = new Uint8Array(await Bun.file(artifacts.hot).arrayBuffer());
+  const coldBytes = artifacts.cold
+    ? new Uint8Array(await Bun.file(artifacts.cold).arrayBuffer())
+    : undefined;
   const device = await connectV5Device();
 
   try {
@@ -37,7 +40,7 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
     const uploaded = await device.brain.uploadProgram(
       config,
       bytes,
-      undefined,
+      coldBytes,
       (state, current, total) => {
         if (state !== previousState) {
           if (previousState !== "") process.stderr.write("\n");

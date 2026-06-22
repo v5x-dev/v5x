@@ -1,4 +1,4 @@
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import { ProgramIniConfig, type ZerobaseSlotNumber } from "@v5x/serial";
 import { detectProgramType, type ProgramType } from "./detect";
@@ -181,6 +181,27 @@ export async function findProgramArtifact(
     );
   }
   return artifact;
+}
+
+export interface ProgramArtifacts {
+  hot: string;
+  cold?: string;
+}
+
+export async function findProgramArtifacts(
+  project: ProjectInfo,
+  explicitPath?: string,
+): Promise<ProgramArtifacts> {
+  const hot = await findProgramArtifact(project, explicitPath);
+  if (project.type !== "pros" || basename(hot) !== "hot.package.bin") {
+    return { hot };
+  }
+
+  const cold = await existingFile(join(dirname(hot), "cold.package.bin"));
+  if (cold === undefined) {
+    throw new Error(`PROS hot package is missing its cold package: ${hot}`);
+  }
+  return { hot, cold };
 }
 
 export function createProgramConfig(options: {

@@ -8,8 +8,8 @@ export default function registerRmCommand(program: Sade) {
       const device = await connectV5Device();
       try {
         const ok = await device.brain.removeFile(file);
-        if (ok) console.log(`erased ${file}`);
-        else console.log(`failed to erase ${file}`);
+        if (!ok) throw new Error(`failed to erase ${file}`);
+        console.log(`erased ${file}`);
       } finally {
         await device.dispose();
       }
