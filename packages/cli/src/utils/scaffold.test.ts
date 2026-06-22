@@ -6,26 +6,18 @@ import { zipSync } from "fflate";
 import { createProject } from "./scaffold";
 
 const temporaryDirectories: string[] = [];
-
-function releaseResponse(): Response {
-  return Response.json({
-    tag_name: "4.2.1",
-    assets: [
-      {
-        name: "kernel@4.2.1.zip",
-        browser_download_url: "https://example.test/kernel.zip",
-      },
-    ],
-  });
-}
+const prosArchive = zipSync({
+  "template.pros": new TextEncoder().encode('{"version":"4.2.1"}'),
+  "firmware.bin": new Uint8Array([1, 2, 3]),
+});
+const prosTemplate = {
+  tag: "4.2.1-test",
+  archiveUrl: "https://example.test/kernel.zip",
+  sha256: new Bun.CryptoHasher("sha256").update(prosArchive).digest("hex"),
+};
 
 function archiveResponse(): Response {
-  return new Response(
-    zipSync({
-      "template.pros": new TextEncoder().encode('{"version":"4.2.1"}'),
-      "firmware.bin": new Uint8Array([1, 2, 3]),
-    }),
-  );
+  return new Response(prosArchive);
 }
 
 afterEach(async () => {
@@ -81,7 +73,9 @@ test("removes only staged output when project creation fails", async () => {
     { preconnect: originalFetch.preconnect },
   );
   try {
-    await expect(createProject(path, "pros", "robot")).rejects.toThrow();
+    await expect(
+      createProject(path, "pros", "robot", prosTemplate),
+    ).rejects.toThrow();
     await expect(Bun.file(path).exists()).resolves.toBe(false);
   } finally {
     globalThis.fetch = originalFetch;
@@ -100,7 +94,9 @@ test("preserves an existing empty directory when creation fails", async () => {
     { preconnect: originalFetch.preconnect },
   );
   try {
-    await expect(createProject(path, "pros", "robot")).rejects.toThrow();
+    await expect(
+      createProject(path, "pros", "robot", prosTemplate),
+    ).rejects.toThrow();
     await expect(readdir(path)).resolves.toEqual([]);
   } finally {
     globalThis.fetch = originalFetch;
@@ -121,15 +117,14 @@ test("does not overwrite files created while a PROS project downloads", async ()
   globalThis.fetch = Object.assign(
     async () => {
       requestCount += 1;
-      if (requestCount === 1) return releaseResponse();
       await archiveBlocked;
       return archiveResponse();
     },
     { preconnect: originalFetch.preconnect },
   );
   try {
-    const creation = createProject(path, "pros", "robot");
-    while (requestCount < 2) await Bun.sleep(1);
+    const creation = createProject(path, "pros", "robot", prosTemplate);
+    while (requestCount < 1) await Bun.sleep(1);
     await Bun.write(join(path, "concurrent.txt"), "keep me");
     unblockArchive?.();
 
@@ -149,23 +144,40 @@ test("rejects an oversized PROS archive before reading it", async () => {
   const parent = await mkdtemp(join(tmpdir(), "v5x-scaffold-"));
   temporaryDirectories.push(parent);
   const path = join(parent, "oversized-project");
-  let requestCount = 0;
-
   const originalFetch = globalThis.fetch;
   globalThis.fetch = Object.assign(
-    async () => {
-      requestCount += 1;
-      if (requestCount === 1) return releaseResponse();
-      return new Response(new Uint8Array(), {
+    async () =>
+      new Response(new Uint8Array(), {
         headers: { "content-length": String(65 * 1024 * 1024) },
-      });
-    },
+      }),
     { preconnect: originalFetch.preconnect },
   );
   try {
-    await expect(createProject(path, "pros", "robot")).rejects.toThrow(
-      "size limit",
-    );
+    await expect(
+      createProject(path, "pros", "robot", prosTemplate),
+    ).rejects.toThrow("size limit");
+    await expect(Bun.file(path).exists()).resolves.toBe(false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects a PROS archive that fails integrity verification", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "v5x-scaffold-"));
+  temporaryDirectories.push(parent);
+  const path = join(parent, "invalid-project");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(async () => archiveResponse(), {
+    preconnect: originalFetch.preconnect,
+  });
+
+  try {
+    await expect(
+      createProject(path, "pros", "robot", {
+        ...prosTemplate,
+        sha256: "0".repeat(64),
+      }),
+    ).rejects.toThrow("SHA-256");
     await expect(Bun.file(path).exists()).resolves.toBe(false);
   } finally {
     globalThis.fetch = originalFetch;

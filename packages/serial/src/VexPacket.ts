@@ -502,35 +502,6 @@ export class GetFileMetadataH2DPacket extends DeviceBoundPacket {
   }
 }
 
-export class SetFileMetadataH2DPacket extends DeviceBoundPacket {
-  // DOES NOT WORK
-  static COMMAND_ID = 86;
-  static COMMAND_EXTENDED_ID = 26;
-
-  constructor(
-    vendor: FileVendor,
-    fileName: string,
-    fileInfo: IFileMetadata,
-    options: number,
-  ) {
-    const encodedName = encodeFixedText(fileName, "Filename", 23);
-    const encodedType = encodeFixedText(fileInfo.type, "File type", 4);
-
-    const payload = new Uint8Array(42);
-    const view = new DataView(payload.buffer);
-    view.setUint8(0, vendor);
-    view.setUint8(1, options);
-    view.setUint32(2, fileInfo.loadAddress, true);
-    payload.set(encodedType, 6);
-    const timestamp = fileInfo.timestamp - PacketEncoder.J2000_EPOCH + 100; // XXX: + 100 TEST ONLY
-    view.setUint32(10, timestamp, true);
-    payload.set(fileInfo.version.toUint8Array(), 14);
-    payload.set(encodedName, 18);
-
-    super(payload);
-  }
-}
-
 export class EraseFileH2DPacket extends DeviceBoundPacket {
   static COMMAND_ID = 86;
   static COMMAND_EXTENDED_ID = 27;
@@ -649,23 +620,6 @@ export class GetRadioStatusH2DPacket extends DeviceBoundPacket {
   }
 }
 
-export class GetUserDataH2DPacket extends DeviceBoundPacket {
-  // UNCONFIRMED
-  static COMMAND_ID = 86;
-  static COMMAND_EXTENDED_ID = 39;
-
-  constructor(e?: Uint8Array) {
-    const input = e?.slice(0, 224) ?? new Uint8Array(0);
-    const payload = new Uint8Array(2 + input.length);
-
-    payload[0] = 1; // stdio channel
-    payload[1] = input.length;
-    payload.set(input, 2);
-
-    super(payload);
-  }
-}
-
 export class ScreenCaptureH2DPacket extends DeviceBoundPacket {
   static COMMAND_ID = 86;
   static COMMAND_EXTENDED_ID = 40;
@@ -694,10 +648,8 @@ export class SendDashTouchH2DPacket extends DeviceBoundPacket {
 }
 
 export class SelectDashH2DPacket extends DeviceBoundPacket {
-  // UNSURE
   static COMMAND_ID = 86;
   static COMMAND_EXTENDED_ID = 43;
-  /** @param port untested */
   constructor(screen: number | SelectDashScreen, port: number) {
     const payload = new Uint8Array(2);
     payload[0] = screen;
@@ -707,35 +659,7 @@ export class SelectDashH2DPacket extends DeviceBoundPacket {
   }
 }
 
-export class EnableDashH2DPacket extends DeviceBoundPacket {
-  // UNSURE
-  static COMMAND_ID = 86;
-  static COMMAND_EXTENDED_ID = 44;
-
-  constructor(unknown1?: number) {
-    if (unknown1 === undefined) {
-      super(undefined);
-    } else {
-      const payload = new Uint8Array(1);
-      payload[0] = unknown1;
-
-      super(payload);
-    }
-  }
-}
-
-export class DisableDashH2DPacket extends DeviceBoundPacket {
-  // UNSURE
-  static COMMAND_ID = 86;
-  static COMMAND_EXTENDED_ID = 45;
-
-  constructor() {
-    super(undefined);
-  }
-}
-
 export class ReadKeyValueH2DPacket extends DeviceBoundPacket {
-  // UNSURE
   static COMMAND_ID = 86;
   static COMMAND_EXTENDED_ID = 46;
 
@@ -749,7 +673,6 @@ export class ReadKeyValueH2DPacket extends DeviceBoundPacket {
 }
 
 export class WriteKeyValueH2DPacket extends DeviceBoundPacket {
-  // UNSURE
   static COMMAND_ID = 86;
   static COMMAND_EXTENDED_ID = 47;
 
@@ -1071,11 +994,6 @@ export class GetFileMetadataReplyD2HPacket extends HostBoundPacket {
   }
 }
 
-export class SetFileMetadataReplyD2HPacket extends HostBoundPacket {
-  static COMMAND_ID = 86;
-  static COMMAND_EXTENDED_ID = 26;
-}
-
 export class EraseFileReplyD2HPacket extends HostBoundPacket {
   static COMMAND_ID = 86;
   static COMMAND_EXTENDED_ID = 27;
@@ -1345,11 +1263,6 @@ export class GetRadioStatusReplyD2HPacket extends HostBoundPacket {
   }
 }
 
-export class GetUserDataReplyD2HPacket extends HostBoundPacket {
-  static COMMAND_ID = 86;
-  static COMMAND_EXTENDED_ID = 39;
-}
-
 export class ScreenCaptureReplyD2HPacket extends HostBoundPacket {
   static COMMAND_ID = 86;
   static COMMAND_EXTENDED_ID = 40;
@@ -1368,16 +1281,6 @@ export class SendDashTouchReplyD2HPacket extends HostBoundPacket {
 export class SelectDashReplyD2HPacket extends HostBoundPacket {
   static COMMAND_ID = 86;
   static COMMAND_EXTENDED_ID = 43;
-}
-
-export class EnableDashReplyD2HPacket extends HostBoundPacket {
-  static COMMAND_ID = 86;
-  static COMMAND_EXTENDED_ID = 44;
-}
-
-export class DisableDashReplyD2HPacket extends HostBoundPacket {
-  static COMMAND_ID = 86;
-  static COMMAND_EXTENDED_ID = 45;
 }
 
 export class ReadKeyValueReplyD2HPacket extends HostBoundPacket {

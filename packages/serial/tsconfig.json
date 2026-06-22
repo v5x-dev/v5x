@@ -12,8 +12,6 @@
     "isolatedModules": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "preserveConstEnums": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,

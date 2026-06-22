@@ -12,9 +12,10 @@ import { unzipSync } from "fflate";
 
 export type ProjectToolchain = "pros" | "vexide";
 
-interface ProsRelease {
+export interface ProsTemplateSource {
   tag: string;
   archiveUrl: string;
+  sha256: string;
 }
 
 interface DestinationReservation {
@@ -24,9 +25,14 @@ interface DestinationReservation {
 }
 
 const FETCH_TIMEOUT_MS = 30_000;
-const RELEASE_METADATA_LIMIT = 1_000_000;
 const PROS_ARCHIVE_LIMIT = 64 * 1024 * 1024;
 const PROS_EXTRACTED_LIMIT = 256 * 1024 * 1024;
+const DEFAULT_PROS_TEMPLATE: ProsTemplateSource = {
+  tag: "4.2.2",
+  archiveUrl:
+    "https://github.com/purduesigbots/pros/releases/download/4.2.2/kernel%404.2.2.zip",
+  sha256: "f019642af93dc3d164d1c3e67a2a7dc75c795ac6a4d550c9221c480e2e7f4899",
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -149,41 +155,20 @@ async function writeFiles(
   }
 }
 
-async function latestProsRelease(): Promise<ProsRelease> {
+async function createProsProject(
+  path: string,
+  name: string,
+  source: ProsTemplateSource,
+): Promise<void> {
   const bytes = await fetchBytes(
-    "https://api.github.com/repos/purduesigbots/pros/releases/latest",
-    "find the latest PROS kernel",
-    RELEASE_METADATA_LIMIT,
-    { headers: { Accept: "application/vnd.github+json" } },
-  );
-  const release: unknown = JSON.parse(new TextDecoder().decode(bytes));
-  if (!isRecord(release) || typeof release.tag_name !== "string") {
-    throw new Error("GitHub returned invalid PROS release metadata");
-  }
-  if (!Array.isArray(release.assets)) {
-    throw new Error("the latest PROS release has no downloadable assets");
-  }
-
-  const expectedName = `kernel@${release.tag_name}.zip`;
-  const asset = release.assets.find(
-    (value) =>
-      isRecord(value) &&
-      value.name === expectedName &&
-      typeof value.browser_download_url === "string",
-  );
-  if (!isRecord(asset) || typeof asset.browser_download_url !== "string") {
-    throw new Error(`the latest PROS release is missing ${expectedName}`);
-  }
-  return { tag: release.tag_name, archiveUrl: asset.browser_download_url };
-}
-
-async function createProsProject(path: string, name: string): Promise<void> {
-  const release = await latestProsRelease();
-  const bytes = await fetchBytes(
-    release.archiveUrl,
-    `download PROS kernel ${release.tag}`,
+    source.archiveUrl,
+    `download PROS kernel ${source.tag}`,
     PROS_ARCHIVE_LIMIT,
   );
+  const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+  if (digest !== source.sha256) {
+    throw new Error(`PROS kernel ${source.tag} failed SHA-256 verification`);
+  }
   let extractedLength = 0;
   const archive = unzipSync(bytes, {
     filter(file) {
@@ -291,6 +276,7 @@ export async function createProject(
   inputPath: string,
   toolchain: ProjectToolchain,
   name = basename(resolve(inputPath)),
+  prosTemplate = DEFAULT_PROS_TEMPLATE,
 ): Promise<string> {
   validateProjectName(name);
   const path = resolve(inputPath);
@@ -301,7 +287,8 @@ export async function createProject(
 
   try {
     reservation = await reserveDestination(path);
-    if (toolchain === "pros") await createProsProject(stagingPath, name);
+    if (toolchain === "pros")
+      await createProsProject(stagingPath, name, prosTemplate);
     else await createVexideProject(stagingPath, name);
 
     try {
