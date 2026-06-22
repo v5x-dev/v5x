@@ -72,7 +72,8 @@ export class VexSerialConnection extends VexEventTarget {
   serial: Serial;
 
   callbacksQueue: IPacketCallback[] = [];
-  private isClosing = false;
+  private closingPromise: Promise<void> | undefined;
+  private disconnectListener: (() => void) | undefined;
   protected fileTransferTail = Promise.resolve();
 
   get isConnected(): boolean {
@@ -89,15 +90,22 @@ export class VexSerialConnection extends VexEventTarget {
   }
 
   async close(): Promise<void> {
-    if (this.isClosing) return;
+    if (this.closingPromise !== undefined) return await this.closingPromise;
     const hadResources =
       this.port !== undefined ||
       this.reader !== undefined ||
       this.writer !== undefined ||
       this.callbacksQueue.length > 0;
     if (!hadResources) return;
-    this.isClosing = true;
+    this.closingPromise = this.closeResources();
+    try {
+      await this.closingPromise;
+    } finally {
+      this.closingPromise = undefined;
+    }
+  }
 
+  private async closeResources(): Promise<void> {
     for (const callback of this.callbacksQueue.splice(0)) {
       clearTimeout(callback.timeout);
       callback.callback(AckType.CDC2_NACK);
@@ -133,13 +141,20 @@ export class VexSerialConnection extends VexEventTarget {
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 1)); // HACK: wait for the lock to be released
+      if (this.port !== undefined && this.disconnectListener !== undefined) {
+        try {
+          this.port.removeEventListener("disconnect", this.disconnectListener);
+        } catch {
+          // Continue closing ports whose adapter does not expose listener cleanup.
+        }
+      }
       await this.port?.close();
       this.port = undefined;
     } catch (e) {
       console.warn("Close port error.", e);
     } finally {
       this.port = undefined;
-      this.isClosing = false;
+      this.disconnectListener = undefined;
       this.emit("disconnected", undefined);
     }
   }
@@ -185,9 +200,10 @@ export class VexSerialConnection extends VexEventTarget {
       this.port = port;
       await port.open({ baudRate: 115200 });
 
-      this.port.addEventListener("disconnect", () => {
+      this.disconnectListener = () => {
         void this.close();
-      });
+      };
+      this.port.addEventListener("disconnect", this.disconnectListener);
 
       this.writer = this.port.writable.getWriter();
       this.reader = this.port.readable.getReader();
@@ -453,6 +469,22 @@ export class V5SerialConnection extends VexSerialConnection {
     coldFileBuf: Uint8Array | undefined,
     progressCallback: (state: string, current: number, total: number) => void,
   ): Promise<boolean | undefined> {
+    return await this.withFileTransferLock(async () =>
+      this.uploadProgramToDeviceUnlocked(
+        iniConfig,
+        binFileBuf,
+        coldFileBuf,
+        progressCallback,
+      ),
+    );
+  }
+
+  private async uploadProgramToDeviceUnlocked(
+    iniConfig: ProgramIniConfig,
+    binFileBuf: Uint8Array,
+    coldFileBuf: Uint8Array | undefined,
+    progressCallback: (state: string, current: number, total: number) => void,
+  ): Promise<boolean | undefined> {
     const iniFileBuffer = new TextEncoder().encode(iniConfig.createIni());
 
     const basename = iniConfig.baseName;
@@ -464,9 +496,12 @@ export class V5SerialConnection extends VexSerialConnection {
       vendor: FileVendor.USER,
       autoRun: false,
     };
-    const r1 = await this.uploadFileToDevice(iniRequest, (current, total) => {
-      progressCallback("INI", current, total);
-    });
+    const r1 = await this.uploadFileToDeviceUnlocked(
+      iniRequest,
+      (current, total) => {
+        progressCallback("INI", current, total);
+      },
+    );
     if (!r1) return false;
 
     // let prjRequest = { filename: basename + '.prj', buf: prjfile, vid: FileVendor.USER, loadAddr: undefined, exttype: 0, linkedFile: undefined };
@@ -483,7 +518,7 @@ export class V5SerialConnection extends VexSerialConnection {
           }
         : undefined;
     if (coldRequest != null) {
-      const r2 = await this.uploadFileToDevice(
+      const r2 = await this.uploadFileToDeviceUnlocked(
         coldRequest,
         (current, total) => {
           progressCallback("COLD", current, total);
@@ -501,9 +536,12 @@ export class V5SerialConnection extends VexSerialConnection {
       autoRun: iniConfig.autorun,
       linkedFile: coldRequest,
     };
-    const r3 = await this.uploadFileToDevice(binRequest, (current, total) => {
-      progressCallback("BIN", current, total);
-    });
+    const r3 = await this.uploadFileToDeviceUnlocked(
+      binRequest,
+      (current, total) => {
+        progressCallback("BIN", current, total);
+      },
+    );
 
     return r3;
   }

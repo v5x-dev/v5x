@@ -60,11 +60,12 @@
       "name": "@v5x/serial",
       "version": "0.5.4",
       "dependencies": {
+        "@types/dom-serial": "^1.0.2",
         "unzipit": "^2.0.3",
       },
       "devDependencies": {
         "@types/bun": "latest",
-        "@types/dom-serial": "^1.0.2",
+        "fflate": "^0.8.3",
       },
     },
   },

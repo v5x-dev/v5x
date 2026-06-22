@@ -27,6 +27,7 @@ import {
   ReadKeyValueH2DPacket,
   ReadKeyValueReplyD2HPacket,
   ScreenCaptureH2DPacket,
+  ScreenCaptureReplyD2HPacket,
   WriteKeyValueH2DPacket,
   WriteKeyValueReplyD2HPacket,
 } from "./VexPacketModels.js";
@@ -320,9 +321,12 @@ export async function captureScreen(
 
   if (conn == null || !conn.isConnected) return undefined;
   return await state.withFileTransfer(async () => {
-    await new Promise((resolve) => {
+    const response = await new Promise((resolve) => {
       conn.writeData(new ScreenCaptureH2DPacket(0), resolve);
     });
+    if (!(response instanceof ScreenCaptureReplyD2HPacket)) {
+      throw new Error("screen capture request was rejected");
+    }
 
     const height = 272;
     const width = 480;

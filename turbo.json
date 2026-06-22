@@ -13,14 +13,10 @@
       "cache": false
     },
     "format:check": {},
-    "lint": {
-      "dependsOn": ["^build"]
-    },
+    "lint": {},
     "test": {
       "dependsOn": ["^build"]
     },
-    "typecheck": {
-      "dependsOn": ["^build"]
-    }
+    "typecheck": {}
   }
 }

@@ -12,6 +12,10 @@ import {
   FactoryStatusReplyD2HPacket,
 } from "./VexPacketModels.js";
 
+const MAX_VEXOS_ARCHIVE_SIZE = 64 * 1024 * 1024;
+const MAX_FIRMWARE_IMAGE_SIZE = 32 * 1024 * 1024;
+const MAX_FIRMWARE_TOTAL_SIZE = 48 * 1024 * 1024;
+
 export async function downloadFileFromInternet(
   link: string,
   timeout = 30000,
@@ -23,7 +27,18 @@ export async function downloadFileFromInternet(
     if (!response.ok) {
       throw new Error(`failed to download ${link} (${response.status})`);
     }
-    return await response.arrayBuffer();
+    const declaredSize = Number(response.headers.get("content-length"));
+    if (
+      Number.isFinite(declaredSize) &&
+      declaredSize > MAX_VEXOS_ARCHIVE_SIZE
+    ) {
+      throw new Error(`download exceeds ${MAX_VEXOS_ARCHIVE_SIZE} bytes`);
+    }
+    const data = await response.arrayBuffer();
+    if (data.byteLength > MAX_VEXOS_ARCHIVE_SIZE) {
+      throw new Error(`download exceeds ${MAX_VEXOS_ARCHIVE_SIZE} bytes`);
+    }
+    return data;
   } finally {
     clearTimeout(timer);
   }
@@ -108,6 +123,13 @@ export async function uploadFirmware(
   }
   if (bootEntry.encrypted || assertEntry.encrypted) {
     throw new Error("VEXos archive contains encrypted firmware images");
+  }
+  if (
+    bootEntry.size > MAX_FIRMWARE_IMAGE_SIZE ||
+    assertEntry.size > MAX_FIRMWARE_IMAGE_SIZE ||
+    bootEntry.size + assertEntry.size > MAX_FIRMWARE_TOTAL_SIZE
+  ) {
+    throw new Error("VEXos firmware images exceed the supported size limit");
   }
   const bootBin = await bootEntry.arrayBuffer();
   const assertBin = await assertEntry.arrayBuffer();
