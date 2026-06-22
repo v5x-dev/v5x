@@ -26,7 +26,11 @@
     "type": "git",
     "url": "https://github.com/v5x-dev/v5x.git"
   },
-  "files": ["dist", "LICENSE", "README.md"],
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "keywords": [
     "v5",
     "vex",

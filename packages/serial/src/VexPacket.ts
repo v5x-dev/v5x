@@ -952,7 +952,11 @@ export class ReadFileReplyD2HPacket extends HostBoundPacket {
 
     this.addr = dataView.getUint32(n, true);
     this.length = this.payloadSize - 7;
-    this.buf = data.slice(n + 4, n + 4 + this.length);
+    const baseBuffer = data instanceof ArrayBuffer ? data : data.buffer;
+    this.buf = (baseBuffer as ArrayBuffer).slice(
+      n + 4,
+      n + 4 + this.length,
+    ) as ArrayBuffer;
   }
 
   static isValidPacket(data: Uint8Array, n: number): boolean {
