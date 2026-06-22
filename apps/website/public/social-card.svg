@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <rect width="1200" height="630" fill="#111114"/>
-  <path d="M115 170h165l320 360 300-360h165L670 630H520Z" fill="#8587ff" opacity=".13"/>
-  <text x="96" y="300" fill="#8587ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="132" font-weight="700" letter-spacing="-10">v5x</text>
+  <path d="M115 170h165l320 360 300-360h165L670 630H520Z" fill="#b8baff" opacity=".13"/>
+  <text x="96" y="300" fill="#b8baff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="132" font-weight="700" letter-spacing="-10">v5x</text>
   <text x="104" y="386" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="42">VEX V5 development tools</text>
   <text x="104" y="448" fill="#a1a1aa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28">build · upload · manage</text>
 </svg>

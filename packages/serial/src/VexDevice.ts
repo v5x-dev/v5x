@@ -120,12 +120,27 @@ export abstract class VexSerialDevice extends VexEventTarget {
 
   abstract connect(conn?: V5SerialConnection): Promise<boolean>;
 
-  abstract disconnect(): void;
+  abstract disconnect(): Promise<void>;
 }
 
 class V5SerialDeviceState {
   _instance: V5SerialDevice;
-  _isFileTransferring = false;
+  private fileTransferDepth = 0;
+
+  get _isFileTransferring(): boolean {
+    return this.fileTransferDepth > 0;
+  }
+
+  async withFileTransfer<Result>(
+    operation: () => Promise<Result>,
+  ): Promise<Result> {
+    this.fileTransferDepth++;
+    try {
+      return await operation();
+    } finally {
+      this.fileTransferDepth--;
+    }
+  }
 
   brain = {
     activeProgram: 0,
@@ -351,8 +366,6 @@ export class V5Brain {
     const conn = this.state._instance.connection;
     if (conn == null || !conn.isConnected) return;
 
-    this.state._isFileTransferring = true;
-
     let handle: IFileBasicInfo;
 
     // If request is a string, then it is a filename
@@ -362,15 +375,13 @@ export class V5Brain {
       handle = request;
     }
 
-    try {
+    return await this.state.withFileTransfer(async () => {
       return await conn.downloadFileToHost(
         handle,
         downloadTarget,
         progressCallback,
       );
-    } finally {
-      this.state._isFileTransferring = false;
-    }
+    });
   }
 
   async removeFile(
@@ -390,28 +401,32 @@ export class V5Brain {
       filename = request.filename;
     }
 
-    const result = await conn.writeDataAsync(
-      new EraseFileH2DPacket(vendor, filename),
-    );
-    const result2 = await conn.writeDataAsync(
-      new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
-    );
+    return await this.state.withFileTransfer(async () => {
+      const result = await conn.writeDataAsync(
+        new EraseFileH2DPacket(vendor, filename),
+      );
+      const result2 = await conn.writeDataAsync(
+        new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+      );
 
-    if (!(result instanceof EraseFileReplyD2HPacket)) return false;
-    if (!(result2 instanceof ExitFileTransferReplyD2HPacket)) return false;
+      if (!(result instanceof EraseFileReplyD2HPacket)) return false;
+      if (!(result2 instanceof ExitFileTransferReplyD2HPacket)) return false;
 
-    return true;
+      return true;
+    });
   }
 
   async removeAllFiles(): Promise<boolean | undefined> {
     const conn = this.state._instance.connection;
     if (conn == null || !conn.isConnected) return undefined;
 
-    const result = await conn.writeDataAsync(
-      new FileClearUpH2DPacket(FileVendor.USER),
-      30000,
-    );
-    return result instanceof FileClearUpReplyD2HPacket;
+    return await this.state.withFileTransfer(async () => {
+      const result = await conn.writeDataAsync(
+        new FileClearUpH2DPacket(FileVendor.USER),
+        30000,
+      );
+      return result instanceof FileClearUpReplyD2HPacket;
+    });
   }
 
   async uploadFirmware(
@@ -425,51 +440,49 @@ export class V5Brain {
 
     const pcb = progressCallback ?? (() => {});
 
-    let vexos: ArrayBuffer, bootBin: ArrayBuffer, assertBin: ArrayBuffer;
-
-    try {
-      if (usingVersion === undefined) {
-        pcb("FETCH CATALOG", 0, 1);
-
-        const catalog = await downloadFileFromInternet(
-          publicUrl + "catalog.txt",
-        );
-        const latestVersion = new TextDecoder().decode(catalog);
-        usingVersion = latestVersion;
-
-        pcb("FETCH CATALOG", 1, 1);
-
-        console.log("fetched catalog.txt", latestVersion);
-      }
-
-      pcb("FETCH VEXOS", 0, 1);
-
-      vexos = await downloadFileFromInternet(
-        publicUrl + usingVersion + ".vexos",
-      );
-
-      pcb("FETCH VEXOS", 1, 1);
-      pcb("UNZIP VEXOS", 0, 1);
-
-      const { unzip } = await import("unzipit");
-      const { entries } = await unzip(vexos);
-
-      const bootEntry = entries[usingVersion + "/BOOT.bin"];
-      const assertEntry = entries[usingVersion + "/assets.bin"];
-      if (bootEntry === undefined || assertEntry === undefined) {
-        throw new Error("VEXos archive is missing firmware images");
-      }
-      bootBin = await bootEntry.arrayBuffer();
-      assertBin = await assertEntry.arrayBuffer();
-
-      pcb("UNZIP VEXOS", 1, 1);
-    } catch (e) {
-      return undefined;
+    if (usingVersion === undefined) {
+      pcb("FETCH CATALOG", 0, 1);
+      const catalog = await downloadFileFromInternet(publicUrl + "catalog.txt");
+      usingVersion = new TextDecoder().decode(catalog).trim();
+      pcb("FETCH CATALOG", 1, 1);
     }
 
-    try {
-      this.state._isFileTransferring = true;
+    if (!/^[A-Za-z0-9._-]+$/.test(usingVersion)) {
+      throw new Error(`invalid VEXos version: ${usingVersion}`);
+    }
 
+    pcb("FETCH VEXOS", 0, 1);
+    const vexos = await downloadFileFromInternet(
+      publicUrl + usingVersion + ".vexos",
+    );
+    if (vexos.byteLength === 0) throw new Error("VEXos archive is empty");
+    pcb("FETCH VEXOS", 1, 1);
+    pcb("UNZIP VEXOS", 0, 1);
+
+    const { unzip } = await import("unzipit");
+    const { entries } = await unzip(vexos);
+    const bootEntry = entries[usingVersion + "/BOOT.bin"];
+    const assertEntry = entries[usingVersion + "/assets.bin"];
+    if (bootEntry === undefined || assertEntry === undefined) {
+      throw new Error("VEXos archive is missing firmware images");
+    }
+    if (bootEntry.encrypted || assertEntry.encrypted) {
+      throw new Error("VEXos archive contains encrypted firmware images");
+    }
+    const bootBin = await bootEntry.arrayBuffer();
+    const assertBin = await assertEntry.arrayBuffer();
+    if (bootBin.byteLength === 0 || assertBin.byteLength === 0) {
+      throw new Error("VEXos archive contains an empty firmware image");
+    }
+    if (
+      bootBin.byteLength !== bootEntry.size ||
+      assertBin.byteLength !== assertEntry.size
+    ) {
+      throw new Error("VEXos firmware image size does not match its metadata");
+    }
+    pcb("UNZIP VEXOS", 1, 1);
+
+    return await this.state.withFileTransfer(async () => {
       pcb("FACTORY ENB BOOT", 0, 0);
 
       const result = await conn.writeDataAsync(new FactoryEnableH2DPacket());
@@ -584,11 +597,8 @@ export class V5Brain {
         await sleep(500);
       }
       if (!assertComplete) return false;
-    } finally {
-      this.state._isFileTransferring = false;
-    }
-
-    return true;
+      return true;
+    });
   }
 
   async uploadProgram(
@@ -601,63 +611,71 @@ export class V5Brain {
     const conn = device.connection;
     if (conn == null || !conn.isConnected) return;
 
-    this.state._isFileTransferring = true;
+    let switchedToDownload = false;
 
-    try {
-      if (device.isV5Controller) {
-        await sleep(250);
+    return await this.state.withFileTransfer(async () => {
+      try {
+        if (device.isV5Controller) {
+          await sleep(250);
 
-        // V5 Controller doesn\'t appear to be connected to a V5 Brain
-        if (!(await device.refresh())) return;
+          // V5 Controller doesn\'t appear to be connected to a V5 Brain
+          if (!(await device.refresh())) return;
 
-        console.log("Transferring to download channel");
+          console.log("Transferring to download channel");
 
-        const p1 = await device.radio.changeChannel(RadioChannelType.DOWNLOAD);
-        if (!p1) return false;
+          const p1 = await device.radio.changeChannel(
+            RadioChannelType.DOWNLOAD,
+          );
+          if (!p1) return false;
+          switchedToDownload = true;
 
-        await sleep(250);
-        const transferred = await sleepUntilAsync(
-          async () => (await conn?.getSystemStatus(150)) != null,
-          10000,
-          200,
+          await sleep(250);
+          const transferred = await sleepUntilAsync(
+            async () => (await conn?.getSystemStatus(150)) != null,
+            10000,
+            200,
+          );
+          if (!transferred) return false;
+
+          console.log("Transferred to download channel");
+        }
+
+        const p2 = await conn.uploadProgramToDevice(
+          iniConfig,
+          binFileBuf,
+          coldFileBuf,
+          progressCallback,
         );
-        if (!transferred) return false;
+        if (!(p2 ?? false)) return false;
 
-        console.log("Transferred to download channel");
+        if (device.isV5Controller) {
+          // Disconnected
+          if (!device.brain.isAvailable) return false;
+
+          console.log("Transferring back to pit channel");
+
+          const p3 = await device.radio.changeChannel(RadioChannelType.PIT);
+          if (!p3) return false;
+          switchedToDownload = false;
+
+          await sleep(250);
+          const transferred = await sleepUntilAsync(
+            async () => (await conn?.getSystemStatus(150)) != null,
+            10000,
+            200,
+          );
+          if (!transferred) return false;
+
+          console.log("All done");
+        }
+
+        return true;
+      } finally {
+        if (switchedToDownload) {
+          await device.radio.changeChannel(RadioChannelType.PIT);
+        }
       }
-
-      const p2 = await conn.uploadProgramToDevice(
-        iniConfig,
-        binFileBuf,
-        coldFileBuf,
-        progressCallback,
-      );
-      if (!(p2 ?? false)) return false;
-
-      if (device.isV5Controller) {
-        // Disconnected
-        if (!device.brain.isAvailable) return false;
-
-        console.log("Transferring back to pit channel");
-
-        const p3 = await device.radio.changeChannel(RadioChannelType.PIT);
-        if (!p3) return false;
-
-        await sleep(250);
-        const transferred = await sleepUntilAsync(
-          async () => (await conn?.getSystemStatus(150)) != null,
-          10000,
-          200,
-        );
-        if (!transferred) return false;
-
-        console.log("All done");
-      }
-
-      return true;
-    } finally {
-      this.state._isFileTransferring = false;
-    }
+    });
   }
 
   async writeFile(
@@ -666,13 +684,9 @@ export class V5Brain {
   ): Promise<boolean | undefined> {
     const conn = this.state._instance.connection;
     if (conn == null || !conn.isConnected) return undefined;
-    this.state._isFileTransferring = true;
-
-    try {
+    return await this.state.withFileTransfer(async () => {
       return await conn.uploadFileToDevice(request, progressCallback);
-    } finally {
-      this.state._isFileTransferring = false;
-    }
+    });
   }
 
   /**
@@ -689,46 +703,48 @@ export class V5Brain {
     const conn = this.state._instance.connection;
 
     if (conn == null || !conn.isConnected) return undefined;
-    await new Promise((resolve) => {
-      conn.writeData(new ScreenCaptureH2DPacket(0), resolve);
-    });
+    return await this.state.withFileTransfer(async () => {
+      await new Promise((resolve) => {
+        conn.writeData(new ScreenCaptureH2DPacket(0), resolve);
+      });
 
-    const height = 272;
-    const width = 480;
-    const channels = 3;
-    const messageWidth = 512; // brain goofiness
-    const messageChannels = 4; // brain goofiness
+      const height = 272;
+      const width = 480;
+      const channels = 3;
+      const messageWidth = 512; // brain goofiness
+      const messageChannels = 4; // brain goofiness
 
-    let buf = await conn?.downloadFileToHost(
-      {
-        filename: "screen",
-        vendor: FileVendor.SYS,
-        loadAddress: 0,
-        size: messageWidth * height * messageChannels, // RGBA ig
-      },
-      FileDownloadTarget.FILE_TARGET_CBUF,
-      progressCallback,
-    );
-    if (buf == null) return;
+      let buf = await conn?.downloadFileToHost(
+        {
+          filename: "screen",
+          vendor: FileVendor.SYS,
+          loadAddress: 0,
+          size: messageWidth * height * messageChannels, // RGBA ig
+        },
+        FileDownloadTarget.FILE_TARGET_CBUF,
+        progressCallback,
+      );
+      if (buf == null) return;
 
-    buf = buf
-      // remove the extra columns
-      .filter(
-        (_byte, i) =>
-          i % (messageWidth * messageChannels) < width * messageChannels,
-      )
-      // remove the fake alpha channel
-      .filter((_byte, i) => (i + 1) % messageChannels !== 0);
+      buf = buf
+        // remove the extra columns
+        .filter(
+          (_byte, i) =>
+            i % (messageWidth * messageChannels) < width * messageChannels,
+        )
+        // remove the fake alpha channel
+        .filter((_byte, i) => (i + 1) % messageChannels !== 0);
 
-    // reverse the pixel (bgr -> rgb)
-    for (let i = 0; i < buf.length; i += channels) {
-      const px = buf.slice(i, i + channels).reverse();
-      for (let j = 0; j < px.length; j++) {
-        buf[i + j] = px[j]!;
+      // reverse the pixel (bgr -> rgb)
+      for (let i = 0; i < buf.length; i += channels) {
+        const px = buf.slice(i, i + channels).reverse();
+        for (let j = 0; j < px.length; j++) {
+          buf[i + j] = px[j]!;
+        }
       }
-    }
 
-    return buf;
+      return buf;
+    });
   }
 }
 
@@ -905,7 +921,9 @@ export class V5SerialDevice extends VexSerialDevice {
           !this.state._isFileTransferring
         ) {
           isLastRefreshComplete = false;
-          void this.refresh().finally(() => (isLastRefreshComplete = true));
+          void this.refresh()
+            .catch((error: unknown) => this.emit("error", error))
+            .finally(() => (isLastRefreshComplete = true));
         }
       }
     }, 200);

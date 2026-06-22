@@ -11,9 +11,9 @@
     }
   },
   "colors": {
-    "primary": "#5d5fef",
-    "light": "#8587ff",
-    "dark": "#5d5fef"
+    "primary": "#3730a3",
+    "light": "#b8baff",
+    "dark": "#6668cc"
   },
   "logo": "/assets/favicon.svg",
   "favicon": "/assets/favicon.svg",

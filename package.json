@@ -28,10 +28,13 @@
     "website:deploy": "bun run --cwd apps/website deploy",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "turbo run lint",
+    "lint": "oxlint packages apps --type-aware",
+    "test:coverage": "turbo run build --filter=@v5x/serial --filter=@v5x/cli && bun test --coverage packages",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
+    "oxlint": "^1.70.0",
+    "oxlint-tsgolint": "^0.23.0",
     "prettier": "^3.8.3",
     "turbo": "^2.5.3",
     "typescript": "^5.9.3"

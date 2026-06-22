@@ -181,6 +181,24 @@ export class PacketEncoder {
     }
     return (t << 8) + a;
   }
+
+  getHostHeaderLength(data: Uint8Array): number {
+    return (data[3]! & 0x80) === 0 ? 4 : 5;
+  }
+}
+
+const textEncoder = new TextEncoder();
+
+function encodeFixedText(
+  value: string,
+  field: string,
+  maxBytes: number,
+): Uint8Array {
+  const encoded = textEncoder.encode(value);
+  if (encoded.byteLength > maxBytes) {
+    throw new RangeError(`${field} must be at most ${maxBytes} UTF-8 bytes`);
+  }
+  return encoded;
 }
 
 export abstract class Packet {
@@ -349,7 +367,7 @@ export class InitFileTransferH2DPacket extends DeviceBoundPacket {
     ext ??= "";
     // files with gz extension are also type bin
     ext = ext === "gz" ? "bin" : ext;
-    payload.set(new TextEncoder().encode(type ?? ext), 16);
+    payload.set(encodeFixedText(type ?? ext, "File type", 4), 16);
 
     const timestamp = ((Date.now() / 1000) >>> 0) - PacketEncoder.J2000_EPOCH;
     view.setUint32(20, timestamp, true);
@@ -357,10 +375,8 @@ export class InitFileTransferH2DPacket extends DeviceBoundPacket {
     payload.set(version.toUint8Array(), 24);
 
     // filename
-    const nameEncoded = new TextEncoder().encode(name);
-    let offset = nameEncoded.length - 23;
-    if (offset < 0) offset = 0;
-    payload.set(nameEncoded.subarray(offset, offset + 23), 28);
+    const nameEncoded = encodeFixedText(name, "Filename", 23);
+    payload.set(nameEncoded, 28);
     view.setUint8(51, 0);
 
     super(payload);
@@ -412,11 +428,11 @@ export class LinkFileH2DPacket extends DeviceBoundPacket {
   static COMMAND_EXTENDED_ID = 21;
 
   constructor(vendor: FileVendor, fileName: string, options: number) {
-    const str = new TextEncoder().encode(fileName);
+    const str = encodeFixedText(fileName, "Filename", 23);
 
     const payload = new Uint8Array(26);
     payload.set([vendor, options], 0);
-    payload.set(str.subarray(0, 23), 2);
+    payload.set(str, 2);
 
     super(payload);
   }
@@ -462,10 +478,10 @@ export class LoadFileActionH2DPacket extends DeviceBoundPacket {
       fileName = "___s_" + (fileNameOrSlotNumber - 1) + ".bin";
     }
 
-    const encodedName = new TextEncoder().encode(fileName);
+    const encodedName = encodeFixedText(fileName, "Filename", 23);
     const payload = new Uint8Array(26);
     payload.set([vendor, actionId], 0);
-    payload.set(encodedName.subarray(0, 23), 2);
+    payload.set(encodedName, 2);
 
     super(payload);
   }
@@ -476,11 +492,11 @@ export class GetFileMetadataH2DPacket extends DeviceBoundPacket {
   static COMMAND_EXTENDED_ID = 25;
 
   constructor(vendor: FileVendor, fileName: string, options: number) {
-    const encodedName = new TextEncoder().encode(fileName);
+    const encodedName = encodeFixedText(fileName, "Filename", 23);
 
     const payload = new Uint8Array(26);
     payload.set([vendor, options], 0);
-    payload.set(encodedName.subarray(0, 23), 2);
+    payload.set(encodedName, 2);
 
     super(payload);
   }
@@ -497,19 +513,19 @@ export class SetFileMetadataH2DPacket extends DeviceBoundPacket {
     fileInfo: IFileMetadata,
     options: number,
   ) {
-    const encodedName = new TextEncoder().encode(fileName);
-    const encodedType = new TextEncoder().encode(fileInfo.type);
+    const encodedName = encodeFixedText(fileName, "Filename", 23);
+    const encodedType = encodeFixedText(fileInfo.type, "File type", 4);
 
     const payload = new Uint8Array(42);
     const view = new DataView(payload.buffer);
     view.setUint8(0, vendor);
     view.setUint8(1, options);
     view.setUint32(2, fileInfo.loadAddress, true);
-    payload.set(encodedType.subarray(0, 4), 6);
+    payload.set(encodedType, 6);
     const timestamp = fileInfo.timestamp - PacketEncoder.J2000_EPOCH + 100; // XXX: + 100 TEST ONLY
     view.setUint32(10, timestamp, true);
     payload.set(fileInfo.version.toUint8Array(), 14);
-    payload.set(encodedName.subarray(0, 23), 18);
+    payload.set(encodedName, 18);
 
     super(payload);
   }
@@ -520,11 +536,11 @@ export class EraseFileH2DPacket extends DeviceBoundPacket {
   static COMMAND_EXTENDED_ID = 27;
 
   constructor(vendor: FileVendor, fileName: string) {
-    const encodedName = new TextEncoder().encode(fileName);
+    const encodedName = encodeFixedText(fileName, "Filename", 23);
 
     const payload = new Uint8Array(26);
     payload.set([vendor, 128], 0);
-    payload.set(encodedName.subarray(0, 23), 2);
+    payload.set(encodedName, 2);
 
     super(payload);
   }
@@ -535,11 +551,11 @@ export class GetProgramSlotInfoH2DPacket extends DeviceBoundPacket {
   static COMMAND_EXTENDED_ID = 28;
 
   constructor(vendor: FileVendor, fileName: string) {
-    const encodedName = new TextEncoder().encode(fileName);
+    const encodedName = encodeFixedText(fileName, "Filename", 23);
 
     const payload = new Uint8Array(26);
     payload.set([vendor, 0], 0);
-    payload.set(encodedName.subarray(0, 23), 2);
+    payload.set(encodedName, 2);
 
     super(payload);
   }
@@ -724,8 +740,9 @@ export class ReadKeyValueH2DPacket extends DeviceBoundPacket {
   static COMMAND_EXTENDED_ID = 46;
 
   constructor(key: string) {
+    const encodedKey = encodeFixedText(key, "Key", 31);
     const payload = new Uint8Array(32);
-    payload.set(new TextEncoder().encode(key), 0);
+    payload.set(encodedKey, 0);
 
     super(payload);
   }
@@ -737,10 +754,11 @@ export class WriteKeyValueH2DPacket extends DeviceBoundPacket {
   static COMMAND_EXTENDED_ID = 47;
 
   constructor(key: string, value: string) {
-    let strk = new TextEncoder().encode(key);
-    const strv = new TextEncoder().encode(value);
-
-    if (strk.byteLength > 31) strk = strk.subarray(0, 31);
+    const strk = encodeFixedText(key, "Key", 31);
+    const strv = textEncoder.encode(value);
+    if (strk.byteLength + strv.byteLength + 20 > 0x7fff) {
+      throw new RangeError("Key and value are too large for a protocol packet");
+    }
 
     const payload = new Uint8Array(strk.length + strv.length + 20);
     payload.set(strk, 0);
@@ -794,7 +812,7 @@ export class HostBoundPacket extends Packet {
     super(data);
 
     this.payloadSize = Packet.ENCODER.getPayloadSize(this.data);
-    const n = this.payloadSize > 128 ? 5 : 4;
+    const n = Packet.ENCODER.getHostHeaderLength(this.data);
 
     // skip command id check
 
@@ -964,19 +982,17 @@ export class ReadFileReplyD2HPacket extends HostBoundPacket {
     super(data);
 
     const dataView = PacketView.fromPacket(this);
-    const n = this.ackIndex;
 
-    this.addr = dataView.getUint32(n, true);
-    this.length = this.payloadSize - 7;
-    const baseBuffer = data instanceof ArrayBuffer ? data : data.buffer;
-    this.buf = (baseBuffer as ArrayBuffer).slice(
-      n + 4,
-      n + 4 + this.length,
-    ) as ArrayBuffer;
+    this.addr = dataView.nextUint32();
+    this.length = this.payloadSize - 8;
+    this.buf = this.data.slice(
+      dataView.position,
+      dataView.position + this.length,
+    ).buffer;
   }
 
   static isValidPacket(data: Uint8Array, n: number): boolean {
-    return data[4] === 4 ? data[n + 1] === AckType.CDC2_ACK : true;
+    return super.isValidPacket(data, n);
   }
 }
 
