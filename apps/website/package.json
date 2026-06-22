@@ -14,7 +14,7 @@
   "dependencies": {
     "@fontsource-variable/cascadia-mono": "^5.2.2",
     "@tailwindcss/vite": "^4.3.1",
-    "astro": "^6.4.7",
+    "astro": "^7",
     "lucide-astro": "^0.556.0",
     "tailwindcss": "^4.3.1"
   },
