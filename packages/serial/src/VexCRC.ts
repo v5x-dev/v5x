@@ -31,7 +31,6 @@ const CRC16TABLE = [
 ];
 
 export class CrcGenerator {
-  crc16Table: Uint32Array;
   crc32Table: Uint32Array;
   static POLYNOMIAL_CRC32 = 79764919;
   static POLYNOMIAL_CRC16 = 4129;
@@ -52,8 +51,8 @@ export class CrcGenerator {
 
     // now calculate CRC16
     for (j = 0; j < numberOfBytes; j++) {
-      i = ((accumulator >>> 8) ^ buf[j]) & 0xff;
-      accumulator = ((accumulator << 8) ^ CRC16TABLE[i]) >>> 0;
+      i = ((accumulator >>> 8) ^ buf[j]!) & 0xff;
+      accumulator = ((accumulator << 8) ^ CRC16TABLE[i]!) >>> 0;
     }
     return (accumulator & 0xffff) >>> 0;
   }
@@ -88,8 +87,8 @@ export class CrcGenerator {
 
     // now calculate CRC32
     for (j = 0; j < numberOfBytes; j++) {
-      i = ((crcAccumulator >>> 24) ^ buf[j]) & 0xff;
-      crcAccumulator = ((crcAccumulator << 8) ^ this.crc32Table[i]) >>> 0;
+      i = ((crcAccumulator >>> 24) ^ buf[j]!) & 0xff;
+      crcAccumulator = ((crcAccumulator << 8) ^ this.crc32Table[i]!) >>> 0;
     }
     return (crcAccumulator & 0xffffffff) >>> 0;
   }

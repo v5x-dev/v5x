@@ -6,9 +6,16 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "js-yaml": "^4.1.2",
+    "qs": "^6.15.2",
+    "tar": "^7.5.16",
+    "yaml": "^2.8.3"
+  },
   "scripts": {
     "build": "turbo run build",
-    "test": "turbo run test --filter=@v5x/cli",
+    "test": "turbo run test",
     "dev": "turbo run dev",
     "cli": "bun packages/cli/src/index.ts",
     "docs:dev": "bun run --cwd apps/docs dev",

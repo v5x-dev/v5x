@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { unzipSync } from "fflate";
+import { resolveArchiveDestination } from "./archive-path";
 
 const outputDirectory = join(import.meta.dir, "..", ".wrangler", "site");
 const archivePath = join(import.meta.dir, "..", ".wrangler", "export.zip");
@@ -26,10 +27,11 @@ for (const archivePath of paths) {
       : archivePath;
 
   if (!relativePath || excludedFiles.has(relativePath)) continue;
-
-  const destination = join(outputDirectory, relativePath);
+  const destination = resolveArchiveDestination(outputDirectory, relativePath);
   await mkdir(dirname(destination), { recursive: true });
   const file = archive[archivePath];
+  if (file === undefined)
+    throw new Error(`missing archive entry: ${archivePath}`);
 
   if (relativePath.endsWith(".html")) {
     const pathname =

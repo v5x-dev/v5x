@@ -18,6 +18,7 @@
     "build:cjs": "bun build ./src/index.ts --target node --format cjs --outfile ./dist/index.cjs --external unzipit",
     "build:dts": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
     "test": "bun test",
     "prepack": "bun run build",
     "clean": "rm -rf dist"

@@ -46,53 +46,33 @@ import {
 
 export async function downloadFileFromInternet(
   link: string,
+  timeout = 30000,
 ): Promise<ArrayBuffer> {
-  return await new Promise<ArrayBuffer>((resolve, reject) => {
-    const oReq = new XMLHttpRequest();
-    oReq.open("GET", link, true);
-    oReq.responseType = "arraybuffer";
-
-    oReq.onload = function (_oEvent) {
-      const arrayBuffer = oReq.response; // Note: not oReq.responseText
-      resolve(arrayBuffer);
-    };
-
-    oReq.onerror = function (oEvent) {
-      reject(oEvent);
-    };
-
-    oReq.send(null);
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(link, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`failed to download ${link} (${response.status})`);
+    }
+    return await response.arrayBuffer();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 export async function sleepUntilAsync(
   f: () => Promise<boolean>,
   timeout: number,
   interval = 20,
 ): Promise<boolean> {
-  return await new Promise<boolean>((resolve) => {
-    let lastTime = new Date().getTime();
-    let stopped = false;
-    const stopper = setTimeout(() => {
-      stopped = true;
-      resolve(false);
-    }, timeout);
-    const checker = (val: boolean): void => {
-      if (stopped) return;
-
-      if (val) {
-        clearTimeout(stopper);
-        resolve(true);
-      } else if (new Date().getTime() - lastTime > interval) {
-        lastTime = new Date().getTime();
-        void f().then(checker);
-      } else
-        setTimeout(() => {
-          lastTime = new Date().getTime();
-          void f().then(checker);
-        }, new Date().getTime() - lastTime);
-    };
-    void f().then(checker);
-  });
+  const deadline = Date.now() + timeout;
+  while (Date.now() <= deadline) {
+    if (await f()) return true;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await sleep(Math.min(interval, remaining));
+  }
+  return false;
 }
 
 export async function sleepUntil(
@@ -331,7 +311,7 @@ export class V5Brain {
     );
 
     for (let i = 0; i < iniFiles.length; i++) {
-      const ini = iniFiles[i];
+      const ini = iniFiles[i]!;
       if (ini.size === 0) continue;
 
       const programName = /(.+?)(\.[^.]*$|$)/.exec(ini.filename)?.[1] ?? "";
@@ -388,9 +368,8 @@ export class V5Brain {
         downloadTarget,
         progressCallback,
       );
-    } catch (e) {
+    } finally {
       this.state._isFileTransferring = false;
-      throw e;
     }
   }
 
@@ -475,8 +454,13 @@ export class V5Brain {
       const { unzip } = await import("unzipit");
       const { entries } = await unzip(vexos);
 
-      bootBin = await entries[usingVersion + "/BOOT.bin"].arrayBuffer();
-      assertBin = await entries[usingVersion + "/assets.bin"].arrayBuffer();
+      const bootEntry = entries[usingVersion + "/BOOT.bin"];
+      const assertEntry = entries[usingVersion + "/assets.bin"];
+      if (bootEntry === undefined || assertEntry === undefined) {
+        throw new Error("VEXos archive is missing firmware images");
+      }
+      bootBin = await bootEntry.arrayBuffer();
+      assertBin = await assertEntry.arrayBuffer();
 
       pcb("UNZIP VEXOS", 1, 1);
     } catch (e) {
@@ -510,7 +494,9 @@ export class V5Brain {
       );
       if (!result2) return false;
 
-      while (true) {
+      const bootDeadline = Date.now() + 120000;
+      let bootComplete = false;
+      while (Date.now() < bootDeadline) {
         const result3 = await conn.writeDataAsync(
           new FactoryStatusH2DPacket(),
           10000,
@@ -530,12 +516,16 @@ export class V5Brain {
               pcb("FINISHING BOOT", result3.percent, 100);
               break;
           }
-          if (result3.status === 0 && result3.percent === 100) break;
+          if (result3.status === 0 && result3.percent === 100) {
+            bootComplete = true;
+            break;
+          }
         } else {
           return false;
         }
         await sleep(500);
       }
+      if (!bootComplete) return false;
 
       pcb("FACTORY ENB ASSERT", 0, 0);
 
@@ -561,7 +551,9 @@ export class V5Brain {
       );
       if (!result6) return false;
 
-      while (true) {
+      const assertDeadline = Date.now() + 120000;
+      let assertComplete = false;
+      while (Date.now() < assertDeadline) {
         const result7 = await conn.writeDataAsync(
           new FactoryStatusH2DPacket(),
           10000,
@@ -582,15 +574,18 @@ export class V5Brain {
               break;
           }
 
-          if (result7.status === 0 && result7.percent === 100) break;
+          if (result7.status === 0 && result7.percent === 100) {
+            assertComplete = true;
+            break;
+          }
         } else {
           return false;
         }
         await sleep(500);
       }
-    } catch (e) {
+      if (!assertComplete) return false;
+    } finally {
       this.state._isFileTransferring = false;
-      throw e;
     }
 
     return true;
@@ -621,11 +616,12 @@ export class V5Brain {
         if (!p1) return false;
 
         await sleep(250);
-        await sleepUntilAsync(
+        const transferred = await sleepUntilAsync(
           async () => (await conn?.getSystemStatus(150)) != null,
           10000,
           200,
         );
+        if (!transferred) return false;
 
         console.log("Transferred to download channel");
       }
@@ -648,19 +644,19 @@ export class V5Brain {
         if (!p3) return false;
 
         await sleep(250);
-        await sleepUntilAsync(
+        const transferred = await sleepUntilAsync(
           async () => (await conn?.getSystemStatus(150)) != null,
           10000,
           200,
         );
+        if (!transferred) return false;
 
         console.log("All done");
       }
 
       return true;
-    } catch (e) {
+    } finally {
       this.state._isFileTransferring = false;
-      throw e;
     }
   }
 
@@ -668,16 +664,14 @@ export class V5Brain {
     request: IFileWriteRequest,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<boolean | undefined> {
-    this.state._isFileTransferring = true;
-
     const conn = this.state._instance.connection;
     if (conn == null || !conn.isConnected) return undefined;
+    this.state._isFileTransferring = true;
 
     try {
       return await conn.uploadFileToDevice(request, progressCallback);
-    } catch (e) {
+    } finally {
       this.state._isFileTransferring = false;
-      throw e;
     }
   }
 
@@ -730,7 +724,7 @@ export class V5Brain {
     for (let i = 0; i < buf.length; i += channels) {
       const px = buf.slice(i, i + channels).reverse();
       for (let j = 0; j < px.length; j++) {
-        buf[i + j] = px[j];
+        buf[i + j] = px[j]!;
       }
     }
 
@@ -800,7 +794,7 @@ export class V5Controller {
   }
 
   get batteryPercent(): number {
-    return this.state.controllers[this.controllerIndex].battery;
+    return this.state.controllers[this.controllerIndex]!.battery;
   }
 
   get isMasterController(): boolean {
@@ -808,11 +802,11 @@ export class V5Controller {
   }
 
   get isAvailable(): boolean {
-    return this.state.controllers[this.controllerIndex].isAvailable;
+    return this.state.controllers[this.controllerIndex]!.isAvailable;
   }
 
   get isCharging(): boolean | undefined {
-    return this.state.controllers[this.controllerIndex].isCharging;
+    return this.state.controllers[this.controllerIndex]!.isCharging;
   }
 }
 
@@ -891,6 +885,7 @@ export class V5SerialDevice extends VexSerialDevice {
   pauseRefreshOnFileTransfer = true;
 
   protected _isReconnecting = false;
+  private _isDisconnecting = false;
   private _refreshInterval: ReturnType<typeof setInterval>;
   state: V5SerialDeviceState = new V5SerialDeviceState(this);
 
@@ -963,9 +958,12 @@ export class V5SerialDevice extends VexSerialDevice {
   async connect(conn?: V5SerialConnection): Promise<boolean> {
     if (this.isConnected) return true;
 
-    if (conn != null && !conn.isConnected) {
-      if ((await conn.query1()) === null) return false;
-
+    if (conn != null) {
+      if (!conn.isConnected && !(await conn.open())) return false;
+      if ((await conn.query1()) === null) {
+        await conn.close();
+        return false;
+      }
       this.connection = conn;
     } else {
       let tryIdx = 0;
@@ -999,8 +997,14 @@ export class V5SerialDevice extends VexSerialDevice {
   }
 
   async disconnect(): Promise<void> {
-    await this.connection?.close();
+    this._isDisconnecting = true;
+    const connection = this.connection;
     this.connection = undefined;
+    try {
+      await connection?.close();
+    } finally {
+      this._isDisconnecting = false;
+    }
   }
 
   async dispose(): Promise<void> {
@@ -1035,61 +1039,62 @@ export class V5SerialDevice extends VexSerialDevice {
     }
 
     this._isReconnecting = true;
+    try {
+      // eslint-disable-next-line no-unmodified-loop-condition
+      while (timeout === 0 || new Date().getTime() < endTime) {
+        // console.log("try to reconnect");
 
-    // eslint-disable-next-line no-unmodified-loop-condition
-    while (timeout === 0 || new Date().getTime() < endTime) {
-      // console.log("try to reconnect");
+        let tryIdx = 0;
+        while (true) {
+          const c = new V5SerialConnection(this.defaultSerial);
 
-      let tryIdx = 0;
-      while (true) {
-        const c = new V5SerialConnection(this.defaultSerial);
+          const result = await c.open(tryIdx++, false);
 
-        const result = await c.open(tryIdx++, false);
+          if (result === undefined) break; // no port left
+          if (!result) {
+            // has been opened
+            await c.close();
+            continue;
+          }
 
-        if (result === undefined) break; // no port left
-        if (!result) {
-          // has been opened
-          await c.close();
-          continue;
+          const result2 = await c.getSystemStatus(200);
+          if (result2 === null) {
+            // no response
+            await c.close();
+            continue;
+          }
+
+          if (
+            this.brain.uniqueId !== 0 &&
+            result2.uniqueId !== this.brain.uniqueId
+          ) {
+            // uuid not match
+            await c.close();
+            continue;
+          }
+
+          this.connection = c;
+          break;
         }
 
-        const result2 = await c.getSystemStatus(200);
-        if (result2 === null) {
-          // no response
-          await c.close();
-          continue;
-        }
+        if (this.isConnected) break;
 
-        if (
-          this.brain.uniqueId !== 0 &&
-          result2.uniqueId !== this.brain.uniqueId
-        ) {
-          // uuid not match
-          await c.close();
-          continue;
-        }
-
-        this.connection = c;
-        break;
+        // try again every second or when the number of ports is different
+        const getPortCount = async (): Promise<number> =>
+          (await this.defaultSerial.getPorts()).length;
+        const portsCount = await getPortCount();
+        await sleepUntilAsync(
+          async () => (await getPortCount()) !== portsCount,
+          1000,
+        );
       }
-
-      if (this.isConnected) break;
-
-      // try again every second or when the number of ports is different
-      const getPortCount = async (): Promise<number> =>
-        (await this.defaultSerial.getPorts()).length;
-      const portsCount = await getPortCount();
-      await sleepUntilAsync(
-        async () => (await getPortCount()) !== portsCount,
-        1000,
-      );
+    } finally {
+      this._isReconnecting = false;
     }
-
-    this._isReconnecting = false;
 
     if (!this.isConnected) return false;
 
-    void this.doAfterConnect();
+    await this.doAfterConnect();
 
     return true;
   }
@@ -1100,7 +1105,7 @@ export class V5SerialDevice extends VexSerialDevice {
     //console.log("doAfterConnect");
 
     this.connection.on("disconnected", (_data) => {
-      if (this.autoReconnect) void this.reconnect();
+      if (this.autoReconnect && !this._isDisconnecting) void this.reconnect();
     });
 
     await this.refresh();
@@ -1117,8 +1122,8 @@ export class V5SerialDevice extends VexSerialDevice {
     this.state.brain.cpu1Version = ssPacket.cpu1Version;
     this.state.brain.systemVersion = ssPacket.systemVersion;
 
-    const flags2 = ssPacket.sysflags[2];
-    this.state.controllers[0].isCharging = (flags2 & 0b10000000) !== 0;
+    const flags2 = ssPacket.sysflags[2]!;
+    this.state.controllers[0]!.isCharging = (flags2 & 0b10000000) !== 0;
     this.state.matchMode =
       (flags2 & 0b00100000) !== 0
         ? "disabled"
@@ -1127,7 +1132,7 @@ export class V5SerialDevice extends VexSerialDevice {
           : "driver";
     this.state.isFieldControllerConnected = (flags2 & 0b00010000) !== 0;
 
-    const flags4 = ssPacket.sysflags[4];
+    const flags4 = ssPacket.sysflags[4]!;
     this.state.brain.settings.usingLanguage = (flags4 & 0b11110000) >> 4;
     this.state.brain.settings.isWhiteTheme = (flags4 & 0b00000100) !== 0;
     this.state.brain.settings.isScreenReversed = (flags4 & 0b00000001) === 0;
@@ -1144,15 +1149,15 @@ export class V5SerialDevice extends VexSerialDevice {
     this.state.brain.battery.isCharging = (flags5 & Math.pow(2, 32 - 15)) !== 0;
     this.state.brain.button.isPressed = (flags5 & Math.pow(2, 32 - 17)) !== 0;
     this.state.radio.isVexNet = (flags5 & Math.pow(2, 32 - 18)) !== 0;
-    this.state.controllers[1].isAvailable =
+    this.state.controllers[1]!.isAvailable =
       (flags5 & Math.pow(2, 32 - 19)) !== 0;
     this.state.radio.isConnected = (flags5 & Math.pow(2, 32 - 22)) !== 0;
     this.state.radio.isAvailable = (flags5 & Math.pow(2, 32 - 23)) !== 0;
     this.state.brain.battery.batteryPercent = sfPacket.battery ?? 0;
-    this.state.controllers[0].isAvailable =
-      this.state.radio.isConnected || this.state.controllers[0].isCharging;
-    this.state.controllers[0].battery = sfPacket.controllerBatteryPercent ?? 0;
-    this.state.controllers[1].battery =
+    this.state.controllers[0]!.isAvailable =
+      this.state.radio.isConnected || this.state.controllers[0]!.isCharging;
+    this.state.controllers[0]!.battery = sfPacket.controllerBatteryPercent ?? 0;
+    this.state.controllers[1]!.battery =
       sfPacket.partnerControllerBatteryPercent ?? 0;
     this.state.brain.activeProgram = sfPacket.currentProgram;
     this.state.brain.isAvailable =
@@ -1174,7 +1179,7 @@ export class V5SerialDevice extends VexSerialDevice {
       .filter((p): p is number => p !== undefined);
 
     for (let i = 0; i < dsPacket.devices.length; i++) {
-      const device = dsPacket.devices[i];
+      const device = dsPacket.devices[i]!;
       this.state.devices[device.port] = device;
 
       // remove device port from missing ports

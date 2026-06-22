@@ -6,11 +6,12 @@ export default function registerRmCommand(program: Sade) {
     .command("rm <file>", "erase a file from flash")
     .action(async (file) => {
       const device = await connectV5Device();
-
-      const ok = await device.brain.removeFile(file);
-      if (ok) console.log(`erased ${file}`);
-      else console.log(`failed to erase ${file}`);
-
-      await device.dispose();
+      try {
+        const ok = await device.brain.removeFile(file);
+        if (ok) console.log(`erased ${file}`);
+        else console.log(`failed to erase ${file}`);
+      } finally {
+        await device.dispose();
+      }
     });
 }

@@ -38,8 +38,13 @@ class IniSectionBuilder<
 
     const formattedKey = this.keyTransform(key).padEnd(12).slice(0, 12);
     const trimmedVal = this.object[key].toString().slice(0, maxValueLength);
+    const escapedVal = trimmedVal.replace(
+      /["\\\u0000-\u001f\u007f]/g,
+      (character) =>
+        `\\x${character.charCodeAt(0).toString(16).padStart(2, "0")}`,
+    );
 
-    this.addLine(`${formattedKey} = "${trimmedVal}"`);
+    this.addLine(`${formattedKey} = "${escapedVal}"`);
   }
 
   public addObjProperty(

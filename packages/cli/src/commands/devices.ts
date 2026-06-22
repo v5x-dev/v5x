@@ -39,25 +39,22 @@ export default function registerDevicesCommand(program: Sade) {
     .command("devices", "list devices connected to brain", { alias: "lsdev" })
     .action(async () => {
       const device = await connectV5Device();
-
-      const smartDevices = device.devices;
-
-      const table = new Table({ compact: true });
-
-      table.addColumn("port");
-      table.addColumn("type");
-      table.addColumn("version");
-
-      smartDevices.forEach((d) => {
-        table.addRow([
-          d.port.toString(),
-          SMART_DEVICE_LABELS[d.type],
-          formatVersion(d.version),
-        ]);
-      });
-
-      console.log(table.render());
-
-      await device.dispose();
+      try {
+        const smartDevices = device.devices;
+        const table = new Table({ compact: true });
+        table.addColumn("port");
+        table.addColumn("type");
+        table.addColumn("version");
+        smartDevices.forEach((d) => {
+          table.addRow([
+            d.port.toString(),
+            SMART_DEVICE_LABELS[d.type],
+            formatVersion(d.version),
+          ]);
+        });
+        console.log(table.render());
+      } finally {
+        await device.dispose();
+      }
     });
 }

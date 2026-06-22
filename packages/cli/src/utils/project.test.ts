@@ -69,3 +69,17 @@ test("creates brain metadata using one-based CLI slots", () => {
   expect(config.program.slot).toBe(7);
   expect(config.autorun).toBe(true);
 });
+
+test("does not upload an unrelated binary from the project tree", async () => {
+  const path = await temporaryDirectory();
+  await mkdir(join(path, "notes"));
+  await writeFile(join(path, "notes", "stale.bin"), "stale");
+  const project = {
+    path,
+    type: "vexide" as const,
+    name: "robot",
+    description: "",
+  };
+
+  expect(findProgramArtifact(project)).rejects.toThrow("pass --file");
+});
