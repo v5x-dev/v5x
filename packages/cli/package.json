@@ -21,9 +21,6 @@
     "@v5x/serial": "workspace:*",
     "@types/bun": "latest"
   },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
   "dependencies": {
     "bun-serialport": "^0.1.1",
     "chalk": "^5.6.2",

@@ -2,96 +2,54 @@
   "name": "@v5x/serial",
   "version": "0.5.4",
   "description": "implementation of the v5 serial protocol",
-  "main": "dist/v5-serial-protocol.cjs.js",
-  "typings": "index.d.ts",
-  "module": "dist/v5-serial-protocol.es.js",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./dts/index.d.ts",
-      "import": "./dist/v5-serial-protocol.es.js",
-      "require": "./dist/v5-serial-protocol.cjs.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "scripts": {
-    "start": "ts-node examples/connect.ts",
-    "build": "tsc && NODE_ENV=production rollup -c",
-    "dev": "rollup -c -w",
-    "test": "jest",
-    "pretest": "npm run build",
-    "check-lint": "eslint \"src/**.ts\" --cache --cache-location node_modules/.cache/eslint/.eslintcache",
-    "check-format": "prettier . -c --cache",
-    "pre-commit": "npm run check-lint && npm run check-format",
-    "lint": "npm run check-lint -- --fix",
-    "format": "prettier . --write --cache",
-    "clean": "npm run lint && npm run format",
-    "semantic-release": "semantic-release"
+    "build": "bun run build:esm && bun run build:cjs && bun run build:dts",
+    "build:esm": "bun build ./src/index.ts --target browser --format esm --outfile ./dist/index.js --external unzipit",
+    "build:cjs": "bun build ./src/index.ts --target node --format cjs --outfile ./dist/index.cjs --external unzipit",
+    "build:dts": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "prepack": "bun run build",
+    "clean": "rm -rf dist"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/beanarchystudios/v5x.git"
+    "url": "https://github.com/v5x-dev/v5x.git"
   },
-  "files": [
-    "dts/*",
-    "dist/*",
-    "index.d.ts",
-    "/*.min.js*",
-    "LICENSE",
-    "README.md"
+  "files": ["dist", "LICENSE", "README.md"],
+  "keywords": [
+    "v5",
+    "vex",
+    "vex-robotics",
+    "vex-v5",
+    "serial",
+    "protocol",
+    "web-serial",
+    "robotics",
+    "pros",
+    "vexide"
   ],
-  "keywords": [],
   "author": "qainguin <slimaster14@gmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/beanarchystudios/v5x/issues"
+    "url": "https://github.com/v5x-dev/v5x/issues"
   },
-  "homepage": "https://github.com/beanarchystudios/v5x#readme",
+  "homepage": "https://docs.v5x.dev/serial/overview",
   "devDependencies": {
-    "@babel/core": "^7.18.2",
-    "@babel/preset-env": "^7.18.2",
-    "@babel/preset-typescript": "^7.17.12",
-    "@rollup/plugin-commonjs": "^22.0.0",
-    "@rollup/plugin-json": "^4.1.0",
-    "@rollup/plugin-node-resolve": "^13.3.0",
-    "@rollup/plugin-typescript": "^8.3.2",
-    "@types/jest": "^28.1.1",
-    "babel-jest": "^28.1.1",
-    "crc": "^4.1.1",
-    "jest": "^28.1.1",
-    "node-web-serial-ponyfill": "^0.5.3",
-    "rollup": "^2.75.6",
-    "rollup-plugin-dts": "^4.2.2",
-    "rollup-plugin-exclude-dependencies-from-bundle": "^1.1.22",
-    "rollup-plugin-license": "^2.8.0",
-    "rollup-plugin-terser": "^7.0.2",
-    "ts-jest": "^28.0.4",
-    "ts-node": "^10.8.1",
-    "tslib": "^2.4.0",
-    "typescript": "^4.7.3",
-    "@commitlint/cli": "^18.4.3",
-    "@commitlint/config-conventional": "^18.4.3",
-    "@typescript-eslint/eslint-plugin": "^6.12.0",
-    "@typescript-eslint/parser": "^6.12.0",
-    "eslint": "^8.54.0",
-    "eslint-config-prettier": "^9.0.0",
-    "eslint-config-standard-with-typescript": "^40.0.0",
-    "prettier": "^3.1.0",
-    "semantic-release": "^22.0.8",
-    "husky": "^8.0.0"
+    "@types/bun": "latest",
+    "@types/dom-serial": "^1.0.2"
   },
   "dependencies": {
-    "@types/dom-serial": "^1.0.2",
     "unzipit": "^1.4.0"
-  },
-  "release": {
-    "branches": [
-      "stable",
-      {
-        "name": "pre-release",
-        "prerelease": true
-      }
-    ]
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
   }
 }
