@@ -150,38 +150,51 @@ export class V5Brain {
 
   /**
    * @deprecated Setting this property dispatches a fire-and-forget
-   * request that cannot be awaited. Use {@link runProgram} and
-   * {@link stopProgram} instead, which return promises that reject
-   * when the device refuses or is disconnected.
+   * request that cannot be awaited. Use {@link setActiveProgram}
+   * instead, which returns a promise that resolves to `false` when
+   * the device refuses or is disconnected.
    */
   set activeProgram(value) {
-    void (async () => {
-      try {
-        if (value === 0) await this.stopProgram();
-        else await this.runProgram(value as SlotNumber);
-      } catch {
-        // Intentionally swallow errors to preserve the legacy
-        // fire-and-forget contract; callers should migrate to the
-        // promise-returning methods.
-      }
-    })();
+    void this.setActiveProgram(value as SlotNumber | 0).catch(() => {
+      // Preserve the legacy fire-and-forget contract; callers who
+      // need rejection handling should migrate to setActiveProgram().
+    });
+  }
+
+  /**
+   * Load a program slot on the brain, or stop the currently running
+   * program when called with `0`. Returns `true` when the device
+   * acknowledges the command and the local snapshot is updated.
+   * Returns `false` when the device refuses, the request times out,
+   * or no connection is currently open.
+   */
+  async setActiveProgram(value: SlotNumber | 0): Promise<boolean> {
+    if (this.state.brain.activeProgram === value) return true;
+
+    const conn = this.state._instance.connection;
+    if (conn == null) return false;
+
+    const result =
+      value === 0 ? await conn.stopProgram() : await conn.loadProgram(value);
+    if (result == null) return false;
+
+    this.state.brain.activeProgram = value;
+    return true;
   }
 
   /**
    * Request that the brain start running the program in the given slot.
-   * The returned promise resolves once the device acknowledges the
-   * command and rejects if the device NACKs, the request times out, or
-   * the connection is not currently open.
+   * Returns `true` when the device acknowledges the command and the
+   * local snapshot is updated. Returns `false` when the device refuses,
+   * the request times out, or no connection is currently open.
    */
   async runProgram(slot: SlotNumber | string): Promise<boolean> {
-    const reply = await this.state._instance.connection?.runProgram(slot);
-    if (reply == null) {
-      throw new Error(
-        this.state._instance.isConnected
-          ? "runProgram command was rejected"
-          : "device is not connected",
-      );
-    }
+    const conn = this.state._instance.connection;
+    if (conn == null) return false;
+
+    const reply = await conn.runProgram(slot);
+    if (reply == null) return false;
+
     const slotNumber =
       typeof slot === "string" ? Number.parseInt(slot, 10) : slot;
     if (Number.isFinite(slotNumber))
@@ -190,20 +203,18 @@ export class V5Brain {
   }
 
   /**
-   * Request that the brain stop the currently running program. The
-   * returned promise resolves once the device acknowledges the command
-   * and rejects if the device NACKs, the request times out, or the
-   * connection is not currently open.
+   * Request that the brain stop the currently running program. Returns
+   * `true` when the device acknowledges the command and the local
+   * snapshot is updated. Returns `false` when the device refuses, the
+   * request times out, or no connection is currently open.
    */
   async stopProgram(): Promise<boolean> {
-    const reply = await this.state._instance.connection?.stopProgram();
-    if (reply == null) {
-      throw new Error(
-        this.state._instance.isConnected
-          ? "stopProgram command was rejected"
-          : "device is not connected",
-      );
-    }
+    const conn = this.state._instance.connection;
+    if (conn == null) return false;
+
+    const reply = await conn.stopProgram();
+    if (reply == null) return false;
+
     this.state.brain.activeProgram = 0;
     return true;
   }

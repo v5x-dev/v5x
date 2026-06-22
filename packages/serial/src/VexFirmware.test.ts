@@ -1,0 +1,82 @@
+import { afterEach, expect, test } from "bun:test";
+import { zipSync } from "fflate";
+import { V5SerialDevice } from "./VexDevice";
+import { V5SerialConnection } from "./VexConnection";
+import {
+  FactoryEnableReplyD2HPacket,
+  FactoryStatusReplyD2HPacket,
+} from "./VexPacketModels";
+import { protocolReply } from "./protocol.test-support";
+
+const serial = { getPorts: async () => [] } as unknown as Serial;
+const devices: V5SerialDevice[] = [];
+
+afterEach(async () => {
+  await Promise.all(devices.splice(0).map((device) => device.dispose()));
+});
+
+test("firmware upload validates an archive and uploads both images", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const uploadedTargets: number[] = [];
+  const factoryReply = protocolReply(FactoryEnableReplyD2HPacket);
+  const finishedReply = protocolReply(FactoryStatusReplyD2HPacket, {
+    status: 0,
+    percent: 100,
+  });
+  let replyIndex = 0;
+  const uploadFile = (async (request) => {
+    uploadedTargets.push(request.downloadTarget);
+    return true;
+  }) satisfies V5SerialConnection["uploadFileToDevice"];
+  device.connection = {
+    isConnected: true,
+    writeDataAsync: async () =>
+      [factoryReply, finishedReply, factoryReply, finishedReply][replyIndex++],
+    uploadFileToDevice: uploadFile,
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+
+  const archive = zipSync({
+    "1.2.3/BOOT.bin": new Uint8Array([1, 2]),
+    "1.2.3/assets.bin": new Uint8Array([3, 4]),
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(async () => new Response(archive), {
+    preconnect: originalFetch.preconnect,
+  });
+
+  try {
+    expect(
+      await device.brain.uploadFirmware("https://example.test/", "1.2.3"),
+    ).toBe(true);
+    expect(uploadedTargets).toHaveLength(2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("firmware downloads reject declared oversized responses before reading", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  device.connection = {
+    isConnected: true,
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(
+    async () =>
+      new Response(new Uint8Array([1]), {
+        headers: { "content-length": String(65 * 1024 * 1024) },
+      }),
+    { preconnect: originalFetch.preconnect },
+  );
+
+  try {
+    await expect(
+      device.brain.uploadFirmware("https://example.test/", "1.2.3"),
+    ).rejects.toThrow("exceeds");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

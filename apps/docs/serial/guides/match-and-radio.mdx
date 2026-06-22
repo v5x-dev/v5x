@@ -7,7 +7,8 @@ description: "Read competition state and change controller radio channels."
 import { RadioChannelType } from "@v5x/serial";
 
 console.log(device.matchMode);
-await device.setMatchMode("disabled");
+const updated = await device.setMatchMode("disabled");
+if (!updated) throw new Error("Unable to update match mode");
 
 if (device.radio.isAvailable) {
   console.log(device.radio.channel, device.radio.latency);

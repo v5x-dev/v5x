@@ -21,14 +21,14 @@ const device = new V5SerialDevice(navigator.serial);
 
 ## Methods
 
-| Method                   | Result                                             |
-| ------------------------ | -------------------------------------------------- |
-| `connect(connection?)`   | Connect and initialize state.                      |
-| `disconnect()`           | Close the current connection.                      |
-| `dispose()`              | Stop timers and permanently clean up the instance. |
-| `reconnect(timeout?)`    | Reconnect, waiting forever when timeout is `0`.    |
-| `refresh()`              | Refresh high-level device state.                   |
-| `setMatchMode(mode)`     | Update the match mode; resolves on acknowledge.    |
-| `mockTouch(x, y, press)` | Send a brain touch event.                          |
+| Method                   | Result                                               |
+| ------------------------ | ---------------------------------------------------- |
+| `connect(connection?)`   | Connect and initialize state.                        |
+| `disconnect()`           | Close the current connection.                        |
+| `dispose()`              | Stop timers and permanently clean up the instance.   |
+| `reconnect(timeout?)`    | Reconnect, waiting forever when timeout is `0`.      |
+| `refresh()`              | Refresh high-level device state.                     |
+| `setMatchMode(mode)`     | Update match mode and resolve after acknowledgement. |
+| `mockTouch(x, y, press)` | Send a brain touch event.                            |
 
 [View source](https://github.com/v5x-dev/v5x/blob/main/packages/serial/src/VexDevice.ts)

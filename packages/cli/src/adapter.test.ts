@@ -1,5 +1,53 @@
-import { describe, expect, test } from "bun:test";
-import { WebSerialAdapter } from "./adapter";
+import { describe, expect, mock, test } from "bun:test";
+
+class FakeNativePort {
+  static instances: FakeNativePort[] = [];
+  static closeError: Error | undefined;
+  readonly writes: Uint8Array[] = [];
+  private readonly listeners = new Map<
+    string,
+    Set<(value: Uint8Array | Error) => void>
+  >();
+
+  constructor(_options: object) {
+    FakeNativePort.instances.push(this);
+  }
+
+  async open(): Promise<void> {}
+
+  async close(): Promise<void> {
+    if (FakeNativePort.closeError !== undefined) {
+      const error = FakeNativePort.closeError;
+      FakeNativePort.closeError = undefined;
+      throw error;
+    }
+  }
+
+  async write(data: Uint8Array): Promise<void> {
+    this.writes.push(data);
+  }
+
+  on(event: string, listener: (value: Uint8Array | Error) => void): void {
+    const listeners = this.listeners.get(event) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(event, listeners);
+  }
+
+  emit(event: string, value: Uint8Array | Error): void {
+    for (const listener of this.listeners.get(event) ?? []) listener(value);
+  }
+
+  removeAllListeners(): void {
+    this.listeners.clear();
+  }
+}
+
+await mock.module("bun-serialport", () => ({
+  SerialPort: FakeNativePort,
+  list: async () => [],
+}));
+
+const { WebSerialAdapter } = await import("./adapter");
 
 describe("WebSerialAdapter", () => {
   test("reuses port objects so open state is shared", async () => {
@@ -36,5 +84,51 @@ describe("WebSerialAdapter", () => {
   test("reports Windows as unsupported", async () => {
     const adapter = new WebSerialAdapter("win32", async () => []);
     expect(adapter.getPorts()).rejects.toThrow("not supported");
+  });
+
+  test("models closed, open, errored, and reopened stream states", async () => {
+    const adapter = new WebSerialAdapter("darwin", async () => [
+      { path: "/dev/cu.test", vendorId: "2888", productId: "0501" },
+    ]);
+    const port = (await adapter.getPorts())[0]!;
+
+    expect(port.readable).toBeNull();
+    expect(port.writable).toBeNull();
+    await port.open({ baudRate: 115200 });
+    expect(port.readable).not.toBeNull();
+    expect(port.writable).not.toBeNull();
+
+    const nativePort = FakeNativePort.instances.at(-1)!;
+    const reader = port.readable!.getReader();
+    nativePort.emit("data", new Uint8Array([1, 2, 3]));
+    expect((await reader.read()).value).toEqual(new Uint8Array([1, 2, 3]));
+    reader.releaseLock();
+
+    const writer = port.writable!.getWriter();
+    await writer.write(new Uint8Array([4, 5]));
+    writer.releaseLock();
+    expect(nativePort.writes).toEqual([new Uint8Array([4, 5])]);
+
+    await port.close();
+    expect(port.readable).toBeNull();
+    expect(port.writable).toBeNull();
+    await port.open({ baudRate: 115200 });
+    expect(port.readable).not.toBeNull();
+    await port.close();
+  });
+
+  test("native close rejection still clears adapter state", async () => {
+    const adapter = new WebSerialAdapter("darwin", async () => [
+      { path: "/dev/cu.error" },
+    ]);
+    const port = (await adapter.getPorts())[0]!;
+    await port.open({ baudRate: 115200 });
+    FakeNativePort.closeError = new Error("native close failed");
+
+    await expect(port.close()).rejects.toThrow("native close failed");
+    expect(port.readable).toBeNull();
+    expect(port.writable).toBeNull();
+    await port.open({ baudRate: 115200 });
+    await port.close();
   });
 });

@@ -14,7 +14,8 @@ The CLI supports PROS, vexide, and VEXcode C++ projects. The corresponding
 compiler toolchain must be installed before building a project.
 
 The current CLI release supports Linux. Native device discovery is not
-currently supported on macOS or Windows. For browser integrations, use
+currently supported on macOS or Windows, and Bun 1.3.14 or newer is required.
+For browser integrations, use
 `@v5x/serial` in a browser that implements Web Serial.
 
 ```sh

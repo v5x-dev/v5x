@@ -24,6 +24,8 @@ import {
   WriteFileH2DPacket,
   WriteFileReplyD2HPacket,
 } from "./VexPacket";
+import { ProgramIniConfig } from "./VexIniConfig";
+import { deferred, protocolReply } from "./protocol.test-support";
 
 function connectionWithWriter() {
   const connection = new V5SerialConnection({} as Serial);
@@ -83,6 +85,7 @@ test("open discovers unopened authorized ports and emits connected when ready", 
       writable = null;
     },
     addEventListener: () => {},
+    removeEventListener: () => {},
   } as unknown as SerialPort;
   const serial = {
     getPorts: async () => [port],
@@ -247,6 +250,80 @@ test("file transfers are serialized", async () => {
   await first;
   await second;
   expect(initCount).toBe(2);
+});
+
+test("whole-program uploads block concurrent transfers until every file finishes", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const firstInit = deferred<void>();
+  const finalProgramExit = deferred<void>();
+  let initCount = 0;
+  connection.writeDataAsync = async (packet) => {
+    if (packet instanceof InitFileTransferH2DPacket) {
+      initCount++;
+      if (initCount === 1) await firstInit.promise;
+      return initReply(1024, 0);
+    }
+    if (packet instanceof WriteFileH2DPacket) {
+      return protocolReply(WriteFileReplyD2HPacket);
+    }
+    if (packet instanceof LinkFileH2DPacket) {
+      return protocolReply(LinkFileReplyD2HPacket);
+    }
+    if (packet instanceof ExitFileTransferH2DPacket && initCount === 3) {
+      await finalProgramExit.promise;
+    }
+    return protocolReply(ExitFileTransferReplyD2HPacket);
+  };
+
+  const config = new ProgramIniConfig();
+  const upload = connection.uploadProgramToDevice(
+    config,
+    new Uint8Array([1]),
+    new Uint8Array([2]),
+    () => {},
+  );
+  const download = connection.downloadFileToHost({
+    filename: "queued.bin",
+    vendor: FileVendor.USER,
+  });
+  await Bun.sleep(0);
+  expect(initCount).toBe(1);
+
+  firstInit.resolve();
+  while (initCount < 3) await Bun.sleep(0);
+  expect(initCount).toBe(3);
+  finalProgramExit.resolve();
+  expect(await upload).toBe(true);
+  await download;
+  expect(initCount).toBe(4);
+});
+
+test("concurrent closes await one cleanup operation", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const writerClosed = deferred<void>();
+  let writerCloseCount = 0;
+  let portCloseCount = 0;
+  connection.writer = {
+    close: async () => {
+      writerCloseCount++;
+      await writerClosed.promise;
+    },
+    releaseLock: () => {},
+  } as unknown as WritableStreamDefaultWriter<unknown>;
+  connection.port = {
+    close: async () => {
+      portCloseCount++;
+    },
+  } as unknown as SerialPort;
+
+  const first = connection.close();
+  const second = connection.close();
+  await Bun.sleep(0);
+  expect(writerCloseCount).toBe(1);
+  expect(portCloseCount).toBe(0);
+  writerClosed.resolve();
+  await Promise.all([first, second]);
+  expect(portCloseCount).toBe(1);
 });
 
 test("reader resynchronizes after leading garbage", async () => {

@@ -5,6 +5,8 @@
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -53,9 +55,10 @@
   "homepage": "https://docs.v5x.dev/serial/overview",
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/dom-serial": "^1.0.2"
+    "fflate": "^0.8.3"
   },
   "dependencies": {
+    "@types/dom-serial": "^1.0.2",
     "unzipit": "^2.0.3"
   }
 }

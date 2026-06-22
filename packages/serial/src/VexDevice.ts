@@ -105,8 +105,8 @@ export class V5SerialDevice extends VexSerialDevice {
   /**
    * @deprecated Setting this property dispatches a fire-and-forget
    * request whose result cannot be observed. Use {@link setMatchMode}
-   * instead, which returns a promise that rejects when the device
-   * refuses or is disconnected.
+   * instead, which returns a promise that resolves to `false` when
+   * the device refuses or is disconnected.
    */
   set matchMode(value) {
     void this.setMatchMode(value).catch(() => {
@@ -117,20 +117,13 @@ export class V5SerialDevice extends VexSerialDevice {
 
   /**
    * Update the match mode and resolve only after the device
-   * acknowledges the command. The new value is committed to the
-   * observed state only when the reply is a valid acknowledgement.
-   * Rejects when the device NACKs, the request times out, or no
-   * connection is currently open.
+   * acknowledges the command. Returns `true` when the new value is
+   * committed to the observed state. Returns `false` when the device
+   * NACKs, the request times out, or no connection is currently open.
    */
   async setMatchMode(mode: MatchMode): Promise<boolean> {
     const reply = await this.connection?.setMatchMode(mode);
-    if (reply == null) {
-      throw new Error(
-        this.isConnected
-          ? "setMatchMode command was rejected"
-          : "device is not connected",
-      );
-    }
+    if (reply == null) return false;
     this.state.matchMode = mode;
     return true;
   }

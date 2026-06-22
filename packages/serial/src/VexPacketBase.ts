@@ -1,5 +1,5 @@
-import { AckType, type DataArray } from "./Vex";
-import type { PacketEncoder } from "./VexPacketEncoder";
+import { AckType, type DataArray } from "./Vex.js";
+import type { PacketEncoder } from "./VexPacketEncoder.js";
 
 export abstract class Packet {
   data: Uint8Array; // the buffer sent to the device or received from the device

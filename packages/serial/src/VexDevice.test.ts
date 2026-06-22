@@ -140,6 +140,43 @@ test("concurrent file operations keep automatic refresh paused", async () => {
   expect(device.state.isFileTransferring).toBe(false);
 });
 
+test("state-changing methods wait for acknowledgement before updating state", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const loadedSlots: number[] = [];
+  let stopped = false;
+  device.connection = {
+    isConnected: true,
+    setMatchMode: async () => ({}),
+    loadProgram: async (slot: number) => {
+      loadedSlots.push(slot);
+      return {};
+    },
+    stopProgram: async () => {
+      stopped = true;
+      return {};
+    },
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+
+  expect(await device.setMatchMode("driver")).toBe(true);
+  expect(device.matchMode).toBe("driver");
+  expect(await device.brain.setActiveProgram(2)).toBe(true);
+  expect(device.brain.activeProgram).toBe(2);
+  expect(loadedSlots).toEqual([2]);
+  expect(await device.brain.setActiveProgram(0)).toBe(true);
+  expect(device.brain.activeProgram).toBe(0);
+  expect(stopped).toBe(true);
+});
+
+test("state-changing methods report a disconnected device", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+
+  expect(await device.setMatchMode("driver")).toBe(false);
+  expect(await device.brain.setActiveProgram(1)).toBe(false);
+});
+
 test("controller uploads restore the pit channel after upload failure", async () => {
   const channels: RadioChannelType[] = [];
   class ControllerDevice extends V5SerialDevice {

@@ -1,3 +1,3 @@
-export * from "./VexPacketBase";
-export * from "./VexPacketEncoder";
-export * from "./VexPacketModels";
+export * from "./VexPacketBase.js";
+export * from "./VexPacketEncoder.js";
+export * from "./VexPacketModels.js";
