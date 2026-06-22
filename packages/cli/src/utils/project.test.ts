@@ -6,6 +6,7 @@ import { detectProgramType } from "./detect";
 import {
   createProgramConfig,
   findProgramArtifact,
+  findProgramArtifacts,
   inspectProject,
 } from "./project";
 
@@ -82,4 +83,36 @@ test("does not upload an unrelated binary from the project tree", async () => {
   };
 
   expect(findProgramArtifact(project)).rejects.toThrow("pass --file");
+});
+
+test("finds both halves of a PROS package", async () => {
+  const path = await temporaryDirectory();
+  await mkdir(join(path, "bin"));
+  const hot = join(path, "bin", "hot.package.bin");
+  const cold = join(path, "bin", "cold.package.bin");
+  await writeFile(hot, "hot");
+  await writeFile(cold, "cold");
+
+  const project = {
+    path,
+    type: "pros" as const,
+    name: "robot",
+    description: "",
+  };
+
+  expect(await findProgramArtifacts(project)).toEqual({ hot, cold });
+});
+
+test("rejects an incomplete PROS package", async () => {
+  const path = await temporaryDirectory();
+  await mkdir(join(path, "bin"));
+  await writeFile(join(path, "bin", "hot.package.bin"), "hot");
+  const project = {
+    path,
+    type: "pros" as const,
+    name: "robot",
+    description: "",
+  };
+
+  expect(findProgramArtifacts(project)).rejects.toThrow("cold package");
 });

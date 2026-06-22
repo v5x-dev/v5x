@@ -9,6 +9,7 @@ export default function registerCatCommand(program: Sade) {
       try {
         const decoder = new TextDecoder();
         const content = await device.brain.readFile(file);
+        if (content === undefined) throw new Error(`failed to read ${file}`);
         console.log(decoder.decode(content));
       } finally {
         await device.dispose();

@@ -32,7 +32,8 @@ export default function registerScreenshotCommand(program: Sade) {
       const device = await connectV5Device();
       try {
         const data = await device.brain.captureScreen();
-        if (data) printKittyRGB(data);
+        if (data === undefined) throw new Error("failed to capture screenshot");
+        printKittyRGB(data);
       } finally {
         await device.dispose();
       }

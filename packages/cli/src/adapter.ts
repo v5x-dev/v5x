@@ -1,4 +1,4 @@
-import { SerialPort as BunSerialPortRaw, list } from "bun-serialport";
+import type { SerialPort as BunSerialPortRaw } from "bun-serialport";
 import { readdir, realpath, readlink } from "node:fs/promises";
 import { join } from "node:path";
 import { platform } from "node:os";
@@ -31,13 +31,18 @@ export interface Serial extends EventTarget {
   requestPort(options?: { filters?: SerialPortFilter[] }): Promise<SerialPort>;
 }
 
-interface AdapterPortInfo {
+export interface AdapterPortInfo {
   path: string;
   vendorId?: string;
   productId?: string;
 }
 
-class WebSerialPortAdapter extends EventTarget implements SerialPort {
+async function listPorts(): Promise<AdapterPortInfo[]> {
+  const serialPort = await import("bun-serialport");
+  return serialPort.list();
+}
+
+export class WebSerialPortAdapter extends EventTarget implements SerialPort {
   onconnect: (event: Event) => void = () => {};
   ondisconnect: (event: Event) => void = () => {};
 
@@ -69,13 +74,15 @@ class WebSerialPortAdapter extends EventTarget implements SerialPort {
   async open(options: { baudRate: number }): Promise<void> {
     if (this._port) throw new Error("Port already open");
 
-    this._port = new BunSerialPortRaw({
+    const { SerialPort } = await import("bun-serialport");
+    const port = new SerialPort({
       path: this._path,
       baudRate: options.baudRate,
       autoOpen: false,
     });
 
-    await this._port.open();
+    await port.open();
+    this._port = port;
 
     this._readable = new ReadableStream({
       start: (controller) => {
@@ -137,9 +144,22 @@ class WebSerialPortAdapter extends EventTarget implements SerialPort {
   }
 }
 
-class WebSerialAdapter extends EventTarget implements Serial {
+export class WebSerialAdapter extends EventTarget implements Serial {
   onconnect: (event: Event) => void = () => {};
   ondisconnect: (event: Event) => void = () => {};
+
+  private readonly _ports = new Map<string, WebSerialPortAdapter>();
+  private readonly _operatingSystem: NodeJS.Platform;
+  private readonly _listPorts: () => Promise<AdapterPortInfo[]>;
+
+  constructor(
+    operatingSystem: NodeJS.Platform = platform(),
+    listPortsCallback: () => Promise<AdapterPortInfo[]> = listPorts,
+  ) {
+    super();
+    this._operatingSystem = operatingSystem;
+    this._listPorts = listPortsCallback;
+  }
 
   private async _listPortsLinux() {
     const ttys = await readdir("/sys/class/tty").catch(() => []);
@@ -184,16 +204,39 @@ class WebSerialAdapter extends EventTarget implements Serial {
   }
 
   async getPorts(): Promise<SerialPort[]> {
-    const ports =
-      platform() === "linux" ? await this._listPortsLinux() : await list();
+    if (this._operatingSystem === "win32") {
+      throw new Error(
+        "Windows serial access is not supported by this v5x CLI build; use Linux or macOS",
+      );
+    }
 
-    return ports.map(
-      (p) =>
-        new WebSerialPortAdapter(p.path, {
-          usbVendorId: p.vendorId ? parseInt(p.vendorId, 16) : undefined,
-          usbProductId: p.productId ? parseInt(p.productId, 16) : undefined,
-        }),
-    );
+    const ports =
+      this._operatingSystem === "linux"
+        ? await this._listPortsLinux()
+        : await this._listPorts();
+
+    const activePaths = new Set(ports.map((port) => port.path));
+    for (const [path, port] of this._ports) {
+      if (!activePaths.has(path) && port.readable === null)
+        this._ports.delete(path);
+    }
+
+    return ports.map((port) => {
+      const cached = this._ports.get(port.path);
+      if (cached) return cached;
+
+      const vendorId = port.vendorId
+        ? parseInt(port.vendorId, 16)
+        : this._operatingSystem === "darwin"
+          ? 10376
+          : undefined;
+      const adapter = new WebSerialPortAdapter(port.path, {
+        usbVendorId: vendorId,
+        usbProductId: port.productId ? parseInt(port.productId, 16) : undefined,
+      });
+      this._ports.set(port.path, adapter);
+      return adapter;
+    });
   }
 
   async requestPort(options?: {
