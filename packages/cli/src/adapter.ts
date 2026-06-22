@@ -89,7 +89,7 @@ class WebSerialPortAdapter extends EventTarget implements SerialPort {
         });
       },
       cancel: () => {
-        this.close();
+        void this.close();
       },
     });
 
@@ -113,7 +113,9 @@ class WebSerialPortAdapter extends EventTarget implements SerialPort {
     if (this._readerController) {
       try {
         this._readerController.close();
-      } catch (e) {}
+      } catch {
+        // The controller may already have been closed by the native port.
+      }
       this._readerController = null;
     }
 
@@ -121,7 +123,9 @@ class WebSerialPortAdapter extends EventTarget implements SerialPort {
 
     try {
       port.removeAllListeners?.();
-    } catch (e) {}
+    } catch {
+      // Some native serial implementations do not expose listener cleanup.
+    }
     this._readable = null;
     this._writable = null;
 
