@@ -4,6 +4,7 @@ import { unzipSync } from "fflate";
 
 const outputDirectory = join(import.meta.dir, "..", ".wrangler", "site");
 const archivePath = join(import.meta.dir, "..", ".wrangler", "export.zip");
+const siteUrl = "https://docs.v5x.dev";
 const excludedFiles = new Set([
   "serve.js",
   "Start Docs.command",
@@ -28,7 +29,25 @@ for (const archivePath of paths) {
 
   const destination = join(outputDirectory, relativePath);
   await mkdir(dirname(destination), { recursive: true });
-  await writeFile(destination, archive[archivePath]);
+  const file = archive[archivePath];
+
+  if (relativePath.endsWith(".html")) {
+    const pathname =
+      relativePath === "index.html"
+        ? "/"
+        : `/${relativePath.replace(/\/index\.html$/, "")}`;
+    const canonicalUrl = `${siteUrl}${pathname}`;
+    const html = new TextDecoder()
+      .decode(file)
+      .replace(
+        "</head>",
+        `<link rel="canonical" href="${canonicalUrl}"/><meta property="og:url" content="${canonicalUrl}"/></head>`,
+      );
+    await writeFile(destination, html);
+    continue;
+  }
+
+  await writeFile(destination, file);
 }
 
 const exportedPaths = Object.keys(archive).map((path) =>
@@ -44,5 +63,29 @@ if (!exportedPaths.includes("index.html")) {
 if (!exportedPaths.some((path) => path.startsWith("_next/static/"))) {
   throw new Error("Mintlify export did not contain _next/static assets");
 }
+
+const sitemapPaths = exportedPaths
+  .filter(
+    (path) =>
+      path === "index.html" ||
+      (path.endsWith("/index.html") && path !== "index/index.html"),
+  )
+  .map((path) =>
+    path === "index.html" ? "/" : `/${path.replace(/\/index\.html$/, "")}`,
+  )
+  .sort();
+const sitemap = [
+  '<?xml version="1.0" encoding="UTF-8"?>',
+  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+  ...sitemapPaths.map((path) => `  <url><loc>${siteUrl}${path}</loc></url>`),
+  "</urlset>",
+  "",
+].join("\n");
+
+await writeFile(join(outputDirectory, "sitemap.xml"), sitemap);
+await writeFile(
+  join(outputDirectory, "robots.txt"),
+  `User-agent: *\nAllow: /\n\nSitemap: ${siteUrl}/sitemap.xml\n`,
+);
 
 console.log(`prepared ${paths.length} files for Cloudflare Workers`);
