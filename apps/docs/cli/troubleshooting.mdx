@@ -1,0 +1,28 @@
+---
+title: "CLI troubleshooting"
+description: "Resolve project detection, toolchain, and serial connection failures."
+---
+
+<AccordionGroup>
+  <Accordion title="v5x cannot detect the project">
+    Run the command from the directory containing `project.pros`, the vexide
+    `Cargo.toml`, or the VEXcode `vex` Make files. Alternatively, pass that
+    directory as `path`.
+  </Accordion>
+  <Accordion title="The compiler executable is missing">
+    Install the appropriate toolchain and ensure Cargo, PROS, Python, or Make is
+    available on `PATH`.
+  </Accordion>
+  <Accordion title="No V5 device is connected">
+    Turn on the brain, reconnect its USB cable, close competing serial
+    applications, and verify operating-system permissions.
+  </Accordion>
+  <Accordion title="An upload artifact cannot be found">
+    Build the project first. When using `--no-build`, pass the intended `.bin`
+    file with `--file`.
+  </Accordion>
+  <Accordion title="The screenshot is blank">
+    Use a terminal implementing the Kitty graphics protocol. The command writes
+    graphics escape sequences rather than an image file.
+  </Accordion>
+</AccordionGroup>

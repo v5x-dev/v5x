@@ -1,0 +1,29 @@
+---
+title: "Manage files"
+description: "List, read, write, and remove files in brain storage."
+---
+
+```ts
+import { FileDownloadTarget, FileVendor } from "@v5x/serial";
+
+const files = await device.brain.listFiles(FileVendor.USER);
+const data = await device.brain.readFile("slot_1.ini");
+
+const written = await device.brain.writeFile({
+  filename: "example.txt",
+  vendor: FileVendor.USER,
+  downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+  buf: new TextEncoder().encode("hello"),
+  autoRun: false,
+});
+
+if (!written) throw new Error("Write failed");
+console.log(files, data && new TextDecoder().decode(data));
+```
+
+Remove one user file with `removeFile("example.txt")`. `removeAllFiles()` clears the user vendor.
+
+<Warning>
+  File removal is destructive. Avoid system and firmware vendors unless the
+  protocol operation is fully understood.
+</Warning>

@@ -1,0 +1,28 @@
+---
+title: "Browser setup"
+description: "Meet the Web Serial security and permission requirements."
+---
+
+## Requirements
+
+- A browser implementing Web Serial.
+- HTTPS in production or `localhost` during development.
+- A user action, such as a button click, before opening the device chooser.
+- Exclusive access to the selected serial port.
+
+```ts
+import { V5SerialDevice } from "@v5x/serial";
+
+const connectButton = document.querySelector<HTMLButtonElement>("#connect");
+
+connectButton?.addEventListener("click", async () => {
+  const device = new V5SerialDevice(navigator.serial);
+  const connected = await device.connect();
+  console.log({ connected });
+});
+```
+
+<Warning>
+  Keep the device instance so it can be disposed later. Creating one starts its
+  periodic refresh timer.
+</Warning>

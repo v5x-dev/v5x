@@ -2,6 +2,8 @@
 
 A Bun-powered command-line interface for building and managing VEX V5 programs.
 
+See the [complete CLI documentation](https://docs.v5x.dev/cli/overview) for workflows and command reference.
+
 ## Install
 
 ```sh

@@ -1,0 +1,23 @@
+---
+title: "ProgramIniConfig"
+description: "Create the metadata paired with an uploaded program binary."
+---
+
+```ts
+import { ProgramIniConfig } from "@v5x/serial";
+
+const config = new ProgramIniConfig();
+config.baseName = "slot_2";
+config.autorun = false;
+config.project.ide = "Custom";
+config.program.name = "Robot";
+config.program.slot = 1;
+config.program.icon = "default.bmp";
+config.program.description = "Competition program";
+
+console.log(config.createIni());
+```
+
+`program.slot` is zero-based from `0` through `7`. `setProgramDate()` sets the ISO date and timezone explicitly; `createIni()` sets them automatically when missing.
+
+Use `config`, `controller1`, and `controller2` to add port and controller metadata before generating the INI document.

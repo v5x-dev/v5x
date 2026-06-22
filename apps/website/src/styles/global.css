@@ -1,0 +1,10 @@
+@import "@fontsource-variable/cascadia-mono";
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --font-mono:
+    "Cascadia Mono Variable", "Cascadia Mono", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}

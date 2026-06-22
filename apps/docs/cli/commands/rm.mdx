@@ -1,0 +1,16 @@
+---
+title: "rm"
+description: "Erase a file from brain flash."
+---
+
+```bash
+v5x rm <file>
+```
+
+<ParamField path="file" type="string" required>
+  File identifier to erase.
+</ParamField>
+
+<Warning>
+  File removal cannot be undone. List files with `v5x dir` before erasing one.
+</Warning>

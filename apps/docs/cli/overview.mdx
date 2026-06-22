@@ -1,0 +1,25 @@
+---
+title: "CLI overview"
+description: "Build projects and manage a connected V5 brain with v5x."
+---
+
+`@v5x/cli` is a Bun-powered command-line interface for the complete local development loop.
+
+```bash
+v5x build
+v5x upload --slot 2
+v5x run --slot 2
+```
+
+## Command groups
+
+<CardGroup cols={2}>
+  <Card title="Project commands" icon="hammer" href="/cli/project-workflows">
+    Create, build, clean, upload, and run programs.
+  </Card>
+  <Card title="Brain commands" icon="cpu" href="/cli/commands/devices">
+    Inspect devices, files, screenshots, and system values.
+  </Card>
+</CardGroup>
+
+Run `v5x <command> --help` for the syntax installed with your CLI version.

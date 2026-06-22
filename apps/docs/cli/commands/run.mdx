@@ -1,0 +1,17 @@
+---
+title: "run"
+description: "Build, upload, and immediately start a program."
+---
+
+```bash
+v5x run [path] [options]
+```
+
+Alias: `v5x r`
+
+`run` accepts the same `--slot`, `--name`, `--description`, `--icon`, `--file`, and `--no-build` options as `upload`. It always asks the brain to start the uploaded program.
+
+```bash
+v5x run --slot 1
+v5x run ./robot --slot 4 --name "Autonomous"
+```

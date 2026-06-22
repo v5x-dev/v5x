@@ -1,0 +1,142 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "v5x",
+  "description": "Build, upload, and manage VEX V5 programs with the v5x CLI and serial library.",
+  "colors": {
+    "primary": "#5d5fef",
+    "light": "#8587ff",
+    "dark": "#5d5fef"
+  },
+  "logo": "/assets/favicon.svg",
+  "favicon": "/assets/favicon.svg",
+  "icons": {
+    "library": "lucide"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Overview",
+        "icon": "house",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": ["index", "quickstart"]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/supported-projects",
+              "concepts/device-connections"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI",
+        "icon": "terminal",
+        "groups": [
+          {
+            "group": "CLI",
+            "pages": [
+              "cli/overview",
+              "cli/installation",
+              "cli/project-workflows"
+            ]
+          },
+          {
+            "group": "Project commands",
+            "pages": [
+              "cli/commands/build",
+              "cli/commands/clean",
+              "cli/commands/new",
+              "cli/commands/init",
+              "cli/commands/install",
+              "cli/commands/upload",
+              "cli/commands/run"
+            ]
+          },
+          {
+            "group": "Brain commands",
+            "pages": [
+              "cli/commands/devices",
+              "cli/commands/dir",
+              "cli/commands/cat",
+              "cli/commands/rm",
+              "cli/commands/screenshot",
+              "cli/commands/kv"
+            ]
+          },
+          {
+            "group": "Help",
+            "pages": ["cli/troubleshooting"]
+          }
+        ]
+      },
+      {
+        "tab": "Serial",
+        "icon": "usb",
+        "groups": [
+          {
+            "group": "Serial library",
+            "pages": [
+              "serial/overview",
+              "serial/installation",
+              "serial/browser-setup"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "serial/guides/connect-and-disconnect",
+              "serial/guides/inspect-device-state",
+              "serial/guides/manage-programs",
+              "serial/guides/manage-files",
+              "serial/guides/screenshots-and-touch",
+              "serial/guides/match-and-radio",
+              "serial/guides/key-value-settings"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "serial/reference/v5-serial-device",
+              "serial/reference/v5-serial-connection",
+              "serial/reference/v5-brain",
+              "serial/reference/peripherals",
+              "serial/reference/program-ini-config",
+              "serial/reference/firmware-version",
+              "serial/reference/enums-and-types"
+            ]
+          },
+          {
+            "group": "Help",
+            "pages": ["serial/troubleshooting"]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "",
+        "href": "https://www.npmjs.com/org/v5x",
+        "icon": "/assets/npm.svg"
+      },
+      {
+        "label": "",
+        "href": "https://github.com/v5x-dev/v5x",
+        "icon": "/assets/github.svg"
+      }
+    ]
+  },
+  "contextual": {
+    "options": ["copy", "view", "cursor", "vscode"]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/v5x-dev/v5x"
+    }
+  }
+}

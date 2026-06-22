@@ -1,0 +1,22 @@
+---
+title: "Supported projects"
+description: "How v5x detects and builds PROS, vexide, and VEXcode projects."
+---
+
+v5x detects a project from files in its root directory.
+
+| Project     | Detection                          | Build tool       |
+| ----------- | ---------------------------------- | ---------------- |
+| PROS        | `project.pros`                     | `pros`           |
+| vexide      | `Cargo.toml` with vexide metadata  | `cargo v5`       |
+| VEXcode C++ | `vex/mkenv.mk` or `vex/mkrules.mk` | Project Makefile |
+
+The compiler toolchain remains responsible for producing the program binary. v5x locates that artifact, creates the brain metadata, and transfers both to the selected slot.
+
+<Warning>
+  Run commands from the project root, or pass the project directory as the
+  optional `path` argument. Detection fails when the identifying files are
+  outside that directory.
+</Warning>
+
+Project creation currently supports PROS and vexide. Existing VEXcode C++ projects can be built and uploaded but cannot be scaffolded by `v5x new` or `v5x init`.

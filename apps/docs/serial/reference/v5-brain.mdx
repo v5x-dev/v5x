@@ -1,0 +1,29 @@
+---
+title: "V5Brain"
+description: "Programs, files, system state, and screen operations."
+---
+
+Access this view through `device.brain`.
+
+## State views
+
+- `isRunningProgram` and `activeProgram`
+- `battery`, `button`, and `settings`
+- `cpu0Version`, `cpu1Version`, and `systemVersion`
+- `isAvailable` and `uniqueId`
+
+## Operations
+
+- `getValue()` and `setValue()`
+- `listFiles()`, `readFile()`, `writeFile()`, `removeFile()`, and `removeAllFiles()`
+- `listProgram()` and `uploadProgram()`
+- `captureScreen()`
+- `uploadFirmware()`
+
+<Warning>
+  `uploadFirmware()` downloads and writes VEXos components. Loss of power,
+  incompatible firmware, or interrupted communication can leave the device
+  unusable. Keep firmware updates out of normal application flows.
+</Warning>
+
+[View source](https://github.com/v5x-dev/v5x/blob/main/packages/serial/src/VexDevice.ts)

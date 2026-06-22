@@ -1,0 +1,26 @@
+---
+title: "V5SerialConnection"
+description: "Direct request/response connection API."
+---
+
+Use `V5SerialConnection` when an application needs direct status or transfer operations without the high-level state model.
+
+```ts
+import { V5SerialConnection } from "@v5x/serial";
+
+const connection = new V5SerialConnection(navigator.serial);
+
+try {
+  const opened = await connection.open();
+  if (!opened) throw new Error("Unable to open a compatible port");
+  console.log(await connection.getSystemStatus());
+} finally {
+  await connection.close();
+}
+```
+
+Important methods include `getDeviceStatus`, `getRadioStatus`, `getSystemFlags`, `getSystemStatus`, `getMatchStatus`, file transfers, program transfers, `loadProgram`, `stopProgram`, `setMatchMode`, `mockTouch`, and `openScreen`.
+
+`open(use, askUser)` returns `true` for success, `false` for an unusable selected port, or `undefined` when no port is available or selected.
+
+[View source](https://github.com/v5x-dev/v5x/blob/main/packages/serial/src/VexConnection.ts)

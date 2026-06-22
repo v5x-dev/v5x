@@ -1,0 +1,24 @@
+---
+title: "Inspect device state"
+description: "Read brain, controller, radio, and smart-port state."
+---
+
+State views are refreshed by `V5SerialDevice` every 200 milliseconds by default.
+
+```ts
+await device.refresh();
+
+console.log({
+  brainAvailable: device.brain.isAvailable,
+  battery: device.brain.battery.batteryPercent,
+  systemVersion: device.brain.systemVersion.toUserString(),
+  fieldConnected: device.isFieldControllerConnected,
+  matchMode: device.matchMode,
+});
+
+for (const smartDevice of device.devices) {
+  console.log(smartDevice.port, smartDevice.type, smartDevice.version);
+}
+```
+
+Disable `autoRefresh` when the application controls polling itself. Call `refresh()` before reading views that must reflect the latest response.

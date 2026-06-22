@@ -1,0 +1,16 @@
+---
+title: "clean"
+description: "Remove outputs produced by a supported project toolchain."
+---
+
+```bash
+v5x clean [path]
+```
+
+Alias: `v5x cl`
+
+<ParamField path="path" type="string">
+  Project directory. Defaults to the current directory.
+</ParamField>
+
+The project must be detectable before v5x delegates cleanup to its toolchain. No brain connection is required.

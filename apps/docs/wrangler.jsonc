@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "v5x-docs",
+  "compatibility_date": "2026-06-21",
+  "assets": {
+    "directory": "./.wrangler/site",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+  },
+  "routes": [
+    {
+      "pattern": "docs.v5x.dev",
+      "custom_domain": true,
+    },
+  ],
+}

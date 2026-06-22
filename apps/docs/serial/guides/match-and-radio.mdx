@@ -1,0 +1,23 @@
+---
+title: "Match mode and radio"
+description: "Read competition state and change controller radio channels."
+---
+
+```ts
+import { RadioChannelType } from "@v5x/serial";
+
+console.log(device.matchMode);
+device.matchMode = "disabled";
+
+if (device.radio.isAvailable) {
+  console.log(device.radio.channel, device.radio.latency);
+  await device.radio.changeChannel(RadioChannelType.PIT);
+}
+```
+
+`matchMode` is `"driver"`, `"autonomous"`, or `"disabled"`. Radio channels include `PIT` and `DOWNLOAD`.
+
+<Warning>
+  Do not change competition or radio state during an active match. Channel
+  changes can interrupt communication.
+</Warning>

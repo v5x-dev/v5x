@@ -1,0 +1,24 @@
+---
+title: "Screenshots and touch"
+description: "Capture brain pixels and send simulated touch input."
+---
+
+```ts
+const pixels = await device.brain.captureScreen((current, total) => {
+  console.log(`${current}/${total}`);
+});
+
+if (pixels) {
+  console.log(pixels.length);
+}
+
+await device.mockTouch(240, 136, true);
+await device.mockTouch(240, 136, false);
+```
+
+The screenshot is a 480×272 RGB buffer. Each pixel uses three consecutive bytes in red, green, blue order.
+
+<Warning>
+  Simulated touches interact with the current brain UI. Confirm coordinates and
+  screen state before sending input.
+</Warning>

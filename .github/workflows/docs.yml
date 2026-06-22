@@ -1,0 +1,76 @@
+name: Documentation
+
+on:
+  pull_request:
+    paths:
+      - "apps/docs/**"
+      - "packages/cli/src/**"
+      - "packages/serial/src/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/docs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/docs/**"
+      - "packages/cli/src/**"
+      - "packages/serial/src/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate documentation
+        run: bun run docs:check
+
+      - name: Build static export
+        run: bun run docs:export
+
+      - name: Upload static export
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5x-docs-${{ github.sha }}
+          path: apps/docs/.wrangler/site
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Export and deploy documentation
+        run: bun run docs:deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

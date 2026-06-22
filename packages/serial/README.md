@@ -2,6 +2,8 @@
 
 TypeScript implementation of the VEX V5 serial protocol.
 
+See the [serial library documentation](https://docs.v5x.dev/serial/overview) for browser setup, guides, and high-level API reference.
+
 This package provides helpers for connecting to V5 devices over the Web Serial
 API, reading device state, transferring files, and working with protocol
 packets.

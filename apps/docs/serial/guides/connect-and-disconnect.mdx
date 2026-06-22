@@ -1,0 +1,26 @@
+---
+title: "Connect and disconnect"
+description: "Manage the complete V5SerialDevice lifecycle."
+---
+
+Use `V5SerialDevice` for most applications. It finds compatible ports, verifies the device, refreshes state, and exposes high-level views.
+
+```ts
+import { V5SerialDevice } from "@v5x/serial";
+
+const device = new V5SerialDevice(navigator.serial);
+
+try {
+  const connected = await device.connect();
+  if (!connected) throw new Error("Connection was not established");
+
+  console.log(device.isConnected);
+  await device.refresh();
+} finally {
+  await device.dispose();
+}
+```
+
+`disconnect()` closes the current port. `dispose()` also disables automatic refresh and reconnect behavior and clears the internal timer. Use `dispose()` when the instance will not be reused.
+
+Set `autoReconnect`, `autoRefresh`, or `pauseRefreshOnFileTransfer` before connecting when the defaults do not fit the application.

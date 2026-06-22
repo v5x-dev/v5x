@@ -1,0 +1,42 @@
+---
+title: "Manage programs"
+description: "List, upload, start, and stop V5 programs."
+---
+
+## List programs
+
+```ts
+const programs = await device.brain.listProgram();
+
+for (const program of programs ?? []) {
+  console.log(program.name, program.slot, program.size);
+}
+```
+
+## Upload a program
+
+```ts
+import { ProgramIniConfig } from "@v5x/serial";
+
+const config = new ProgramIniConfig();
+config.baseName = "slot_1";
+config.program.name = "Robot";
+config.program.slot = 0;
+config.autorun = true;
+
+const binary = new Uint8Array(
+  await fetch("/robot.bin").then((res) => res.arrayBuffer()),
+);
+const uploaded = await device.brain.uploadProgram(
+  config,
+  binary,
+  undefined,
+  (state, current, total) => console.log(state, current, total),
+);
+
+if (!uploaded) throw new Error("Upload failed");
+```
+
+`ProgramIniConfig.program.slot` is zero-based. The first brain slot is `0` in this metadata object.
+
+Set `device.brain.activeProgram` to a one-based slot from 1 through 8 to request that it run. Set it to `0` to request a stop.

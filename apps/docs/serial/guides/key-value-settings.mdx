@@ -1,0 +1,18 @@
+---
+title: "Key/value settings"
+description: "Read and update system configuration values."
+---
+
+```ts
+const current = await device.brain.getValue("example.key");
+const updated = await device.brain.setValue("example.key", "value");
+
+console.log({ current, updated });
+```
+
+`getValue()` returns `undefined` when no usable reply is received. `setValue()` returns whether the brain acknowledged the write.
+
+<Warning>
+  These are system-level values. Only write keys documented for the target VEXos
+  version.
+</Warning>

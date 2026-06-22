@@ -1,0 +1,19 @@
+---
+title: "install"
+description: "Install a supported V5 development toolchain."
+---
+
+```bash
+v5x install <toolchain>
+```
+
+<ParamField path="toolchain" type="string" required>
+  Either `pros` or `vexide`.
+</ParamField>
+
+| Value    | Operation                                           | Prerequisite       |
+| -------- | --------------------------------------------------- | ------------------ |
+| `vexide` | Runs `cargo install cargo-v5`                       | Cargo              |
+| `pros`   | Runs the user-scoped `pros-cli` Python installation | Python 3 or Python |
+
+This command installs external software and may need the relevant package directories on your `PATH`.

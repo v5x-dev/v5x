@@ -1,0 +1,24 @@
+---
+title: "new"
+description: "Create a PROS or vexide project in a new directory."
+---
+
+```bash
+v5x new <name> --type <pros|vexide>
+```
+
+Alias: `v5x n`
+
+<ParamField path="name" type="string" required>
+  New directory and project name.
+</ParamField>
+
+<ParamField query="type" type="string" required>
+  Project template. Must be `pros` or `vexide`.
+</ParamField>
+
+```bash
+v5x new competition --type pros
+```
+
+v5x refuses to overwrite a non-empty destination.

@@ -1,0 +1,36 @@
+---
+title: "Install the CLI"
+description: "Install v5x and the compiler required by your project."
+---
+
+## Install with Bun
+
+```bash
+bun add --global @v5x/cli
+v5x --version
+```
+
+The CLI runs on Bun and must be available on your shell's `PATH`.
+
+## Install a toolchain
+
+<Tabs>
+  <Tab title="vexide">
+    ```bash
+    v5x install vexide
+    ```
+
+    This requires Rust and Cargo. It installs `cargo-v5` with Cargo.
+
+  </Tab>
+  <Tab title="PROS">
+    ```bash
+    v5x install pros
+    ```
+
+    This requires Python. It installs `pros-cli` into the current user's Python environment.
+
+  </Tab>
+</Tabs>
+
+VEXcode C++ projects use the compiler and Make environment supplied by their project setup.

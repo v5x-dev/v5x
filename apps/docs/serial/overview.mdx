@@ -1,0 +1,26 @@
+---
+title: "Serial library overview"
+description: "Build browser applications that communicate directly with VEX V5 devices."
+---
+
+`@v5x/serial` implements the V5 serial protocol in TypeScript. It provides a high-level device model for connections, brain state, programs, files, controllers, smart devices, radio state, and screenshots.
+
+```ts
+import { V5SerialDevice } from "@v5x/serial";
+
+const device = new V5SerialDevice(navigator.serial);
+
+try {
+  if (!(await device.connect())) throw new Error("V5 device not found");
+  console.log(device.brain.systemVersion.toUserString());
+} finally {
+  await device.dispose();
+}
+```
+
+<Warning>
+  Web Serial requires a secure context and explicit user permission. Browser
+  support is not universal.
+</Warning>
+
+The package also exports packet-level protocol classes. Those are advanced internals and are not covered by this high-level guide.

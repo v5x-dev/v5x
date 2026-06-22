@@ -1,0 +1,27 @@
+---
+title: "Enums and types"
+description: "Common types used by the high-level serial API."
+---
+
+## Core types
+
+| Type                 | Purpose                                                  |
+| -------------------- | -------------------------------------------------------- |
+| `MatchMode`          | `"driver"`, `"autonomous"`, or `"disabled"`.             |
+| `SlotNumber`         | One-based brain slots 1 through 8.                       |
+| `ZerobaseSlotNumber` | Metadata slots 0 through 7.                              |
+| `PortNumber`         | Smart ports 1 through 21.                                |
+| `IFileBasicInfo`     | Filename, vendor, and optional address and size.         |
+| `IFileHandle`        | Complete file metadata returned by directory operations. |
+| `IFileWriteRequest`  | Data and transfer options for a file write.              |
+| `IProgramInfo`       | Program name, binary, size, time, and slot information.  |
+
+## Common enums
+
+- `FileVendor` selects user, system, VEX, PROS, and development storage areas.
+- `FileDownloadTarget` selects QSPI and specialized transfer buffers.
+- `RadioChannelType` selects pit or download communication.
+- `SmartDeviceType` identifies devices attached to smart ports.
+- `SerialDeviceType` identifies connected USB device products.
+
+Most applications should use `FileVendor.USER` and `FileDownloadTarget.FILE_TARGET_QSPI`.

@@ -4,12 +4,15 @@ node_modules
 # Build outputs
 dist
 build
+.astro
 
 # Turborepo
 .turbo
 
 # Bun
 .bun
+apps/docs/.wrangler
+apps/website/.wrangler
 
 # TypeScript
 *.tsbuildinfo

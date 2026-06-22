@@ -1,0 +1,32 @@
+---
+title: "Serial troubleshooting"
+description: "Resolve Web Serial, connection, refresh, and transfer problems."
+---
+
+<AccordionGroup>
+  <Accordion title="navigator.serial is undefined">
+    Use a browser with Web Serial support and load the page over HTTPS or
+    localhost. Feature-detect `navigator.serial` before showing connection
+    controls.
+  </Accordion>
+  <Accordion title="The chooser does not open">
+    Call `connect()` from a user gesture such as a click. Browser permission
+    prompts are commonly blocked outside a user action.
+  </Accordion>
+  <Accordion title="The port cannot be opened">
+    Close other serial applications, reconnect the cable, and forget then
+    re-grant the browser's device permission if necessary.
+  </Accordion>
+  <Accordion title="State is stale">
+    Ensure `autoRefresh` is enabled or call `refresh()` manually. Refresh pauses
+    during file transfers by default.
+  </Accordion>
+  <Accordion title="The page keeps polling after disconnect">
+    Call `dispose()` when abandoning a device instance. `disconnect()` closes
+    the port but does not clear the refresh timer.
+  </Accordion>
+  <Accordion title="A transfer returns undefined">
+    Confirm the connection is still active. High-level methods commonly return
+    `undefined` when there is no usable connection or reply.
+  </Accordion>
+</AccordionGroup>

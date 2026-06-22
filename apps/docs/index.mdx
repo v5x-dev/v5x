@@ -1,0 +1,26 @@
+---
+title: "v5x documentation"
+description: "Build and manage VEX V5 programs from the command line or JavaScript."
+---
+
+v5x is a set of tools for developing on the VEX V5 platform. It talks directly to a V5 brain over USB instead of requiring a separate upload utility.
+
+<CardGroup cols={2}>
+  <Card title="Use the CLI" icon="terminal" href="/cli/overview">
+    Build, upload, run, and inspect V5 programs from a terminal.
+  </Card>
+  <Card title="Use the serial library" icon="usb" href="/serial/overview">
+    Build browser tools on top of the V5 serial protocol.
+  </Card>
+</CardGroup>
+
+## Packages
+
+| Package       | Use it when                                                                         |
+| ------------- | ----------------------------------------------------------------------------------- |
+| `@v5x/cli`    | You want a ready-to-use workflow for PROS, vexide, or VEXcode C++ projects.         |
+| `@v5x/serial` | You are building a browser application that connects to a brain through Web Serial. |
+
+<Note>
+  v5x is an independent project. It is not an official VEX Robotics product.
+</Note>

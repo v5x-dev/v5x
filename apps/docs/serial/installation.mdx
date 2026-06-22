@@ -1,0 +1,21 @@
+---
+title: "Install the serial library"
+description: "Add @v5x/serial to a browser TypeScript project."
+---
+
+```bash
+bun add @v5x/serial
+```
+
+Import APIs from the package root:
+
+```ts
+import { FileVendor, ProgramIniConfig, V5SerialDevice } from "@v5x/serial";
+```
+
+The browser project must include DOM library types. If its TypeScript environment does not define Web Serial, add compatible Web Serial declarations separately.
+
+<Note>
+  The package is transport-oriented and does not render a device chooser or
+  application UI.
+</Note>

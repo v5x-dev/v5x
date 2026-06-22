@@ -1,0 +1,61 @@
+---
+import "../styles/global.css";
+import { Moon, Sun } from "lucide-astro";
+---
+
+<!doctype html>
+<html lang="en" class="h-full [color-scheme:light] dark:[color-scheme:dark]">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#ffffff" />
+    <title>v5x — modern v5 development</title>
+    <script is:inline>
+      const savedTheme = localStorage.getItem("theme");
+      const theme =
+        savedTheme ??
+        (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute("content", theme === "dark" ? "#111114" : "#ffffff");
+    </script>
+  </head>
+  <body
+    class="min-h-full bg-white font-mono text-zinc-900 transition-colors dark:bg-[#111114] dark:text-zinc-100 motion-reduce:transition-none"
+  >
+    <button
+      id="theme-toggle"
+      class="fixed top-4 right-4 z-10 grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent p-0 text-zinc-500 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-indigo-400 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-100"
+      type="button"
+      aria-label="Switch to dark mode"
+      title="Switch theme"
+    >
+      <Moon class="block dark:hidden" size={20} stroke-width={1.75} aria-hidden="true" />
+      <Sun class="hidden dark:block" size={20} stroke-width={1.75} aria-hidden="true" />
+    </button>
+    <slot />
+    <script is:inline>
+      const toggle = document.querySelector("#theme-toggle");
+      const setToggleLabel = () => {
+        const nextTheme =
+          document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        toggle?.setAttribute("aria-label", `Switch to ${nextTheme} mode`);
+      };
+
+      setToggleLabel();
+      toggle?.addEventListener("click", () => {
+        const theme =
+          document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = theme;
+        localStorage.setItem("theme", theme);
+        document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute("content", theme === "dark" ? "#111114" : "#ffffff");
+        setToggleLabel();
+      });
+    </script>
+  </body>
+</html>

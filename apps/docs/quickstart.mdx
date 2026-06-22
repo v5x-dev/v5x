@@ -1,0 +1,43 @@
+---
+title: "Quickstart"
+description: "Install v5x and upload your first program."
+---
+
+<Steps>
+  <Step title="Install the CLI">
+    ```bash
+    bun add --global @v5x/cli
+    ```
+  </Step>
+  <Step title="Install your project toolchain">
+    ```bash
+    v5x install vexide
+    # or
+    v5x install pros
+    ```
+  </Step>
+  <Step title="Connect the brain">
+    Connect the V5 brain to the computer with a USB cable and turn it on. Close other applications that may have claimed the serial port.
+  </Step>
+  <Step title="Build and upload">
+    Run this inside an existing supported project:
+
+    ```bash
+    v5x upload --slot 1
+    ```
+
+  </Step>
+  <Step title="Start the program">
+    Build, upload, and immediately run the program:
+
+    ```bash
+    v5x run --slot 1
+    ```
+
+  </Step>
+</Steps>
+
+<Tip>
+  Run `v5x new robot --type vexide` or `v5x new robot --type pros` to create a
+  project from a built-in template.
+</Tip>

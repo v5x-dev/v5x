@@ -1,0 +1,27 @@
+---
+title: "upload"
+description: "Build and upload a program to a brain slot."
+---
+
+```bash
+v5x upload [path] [options]
+```
+
+Alias: `v5x u`
+
+| Option              | Default             | Description                         |
+| ------------------- | ------------------- | ----------------------------------- |
+| `-s, --slot`        | `1`                 | Destination program slot.           |
+| `-n, --name`        | Project name        | Name displayed on the brain.        |
+| `-d, --description` | Project description | Program description.                |
+| `-i, --icon`        | `default.bmp`       | Brain icon filename.                |
+| `-f, --file`        | Detected artifact   | Existing `.bin` artifact to upload. |
+| `--no-build`        | Build enabled       | Skip the compiler step.             |
+| `--run`             | `false`             | Start the program after upload.     |
+
+```bash
+v5x upload ./robot --slot 2 --name "Driver"
+v5x upload ./robot --slot 2 --no-build --file ./bin/robot.bin
+```
+
+The command reports transfer progress on standard error and always disposes the device connection after the transfer attempt.

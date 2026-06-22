@@ -1,0 +1,25 @@
+---
+title: "Device connections"
+description: "Requirements for reliable USB communication with a V5 brain."
+---
+
+The CLI discovers a V5 brain through the operating system's serial devices. The serial library uses the browser's Web Serial API.
+
+## Before connecting
+
+- Turn on the brain and connect it directly over USB.
+- Use a data-capable USB cable.
+- Close VEXcode and other tools that may already own the port.
+- On Linux, ensure your user can access the relevant `/dev/tty*` device.
+- In a browser, use a secure context and grant device permission when prompted.
+
+Only one process should control the serial port at a time. A permission or “port already open” error usually means another process owns it.
+
+<CardGroup cols={2}>
+  <Card title="CLI troubleshooting" href="/cli/troubleshooting" icon="wrench" />
+  <Card
+    title="Serial troubleshooting"
+    href="/serial/troubleshooting"
+    icon="wrench"
+  />
+</CardGroup>

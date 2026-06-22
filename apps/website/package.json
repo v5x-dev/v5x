@@ -1,0 +1,25 @@
+{
+  "name": "@v5x/website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "check": "astro check",
+    "deploy": "bun run build && wrangler deploy",
+    "deploy:dry": "bun run build && wrangler deploy --dry-run",
+    "lint": "astro check"
+  },
+  "dependencies": {
+    "@fontsource-variable/cascadia-mono": "^5.2.2",
+    "@tailwindcss/vite": "^4.3.1",
+    "astro": "^6.4.7",
+    "lucide-astro": "^0.556.0",
+    "tailwindcss": "^4.3.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.103.0"
+  }
+}

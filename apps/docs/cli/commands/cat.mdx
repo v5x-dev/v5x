@@ -1,0 +1,18 @@
+---
+title: "cat"
+description: "Read a text file from brain flash."
+---
+
+```bash
+v5x cat <file>
+```
+
+<ParamField path="file" type="string" required>
+  File identifier understood by the brain file API.
+</ParamField>
+
+The returned bytes are decoded as text and printed to standard output.
+
+```bash
+v5x cat slot_1.ini
+```

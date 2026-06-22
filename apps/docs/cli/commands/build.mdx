@@ -1,0 +1,20 @@
+---
+title: "build"
+description: "Build a supported V5 project."
+---
+
+```bash
+v5x build [path]
+```
+
+Alias: `v5x b`
+
+<ParamField path="path" type="string">
+  Project directory. Defaults to the current directory.
+</ParamField>
+
+v5x detects the project type and invokes its compiler. This command does not require a connected brain.
+
+```bash
+v5x build ./robot
+```

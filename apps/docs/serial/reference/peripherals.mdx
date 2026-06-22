@@ -1,0 +1,17 @@
+---
+title: "Peripheral views"
+description: "Read battery, controller, smart-device, button, settings, and radio state."
+---
+
+| View              | Important properties                                                          |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `V5Battery`       | `batteryPercent`, `isCharging`                                                |
+| `V5BrainButton`   | `isPressed`, `isDoublePressed`                                                |
+| `V5BrainSettings` | `isScreenReversed`, `isWhiteTheme`, `usingLanguage`                           |
+| `V5Controller`    | `batteryPercent`, `isMasterController`, `isAvailable`, `isCharging`           |
+| `V5SmartDevice`   | `isAvailable`, `port`, `type`, `version`                                      |
+| `V5Radio`         | `channel`, `isAvailable`, `isConnected`, `isVexNet`, `isRadioData`, `latency` |
+
+These objects are state views created by `V5SerialDevice`. Obtain them from `device.brain`, `device.controllers`, `device.devices`, and `device.radio` instead of constructing them directly.
+
+`V5Radio.changeChannel()` changes between `RadioChannelType.PIT` and `RadioChannelType.DOWNLOAD`.

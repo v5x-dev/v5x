@@ -2,6 +2,8 @@
 
 This project is a collection of tools to make it very easy to develop on the V5 system, and make it easier to build on top of.
 
+Read the full documentation at [docs.v5x.dev](https://docs.v5x.dev).
+
 ## Packages
 
 ### [@v5x/cli](https://github.com/beanarchystudios/v5x/tree/main/packages/cli)
@@ -17,3 +19,12 @@ It implements the V5 serial communication protocol in TypeScript.
 Instead of shelling out to external binaries, this package talks directly to the V5 brain over USB/serial.
 
 This is a fork of [v5-serial-protocol](https://github.com/LemLib/v5-serial-protocol) with extra features and fixes, major props to [jerrylum](https://github.com/Jerrylum) and the [LemLib](https://github.com/LemLib) team for making this whole project possible.
+
+## Documentation development
+
+```sh
+bun run docs:check
+bun run docs:export
+```
+
+Run `bun run docs:dev` when you want to start the local Mintlify preview.

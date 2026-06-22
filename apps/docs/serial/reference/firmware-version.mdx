@@ -1,0 +1,18 @@
+---
+title: "VexFirmwareVersion"
+description: "Parse, format, encode, and compare VEXos versions."
+---
+
+```ts
+import { VexFirmwareVersion } from "@v5x/serial";
+
+const version = VexFirmwareVersion.fromString("1.1.4.b2");
+const required = new VexFirmwareVersion(1, 1, 0, 0);
+
+console.log(version.toUserString());
+console.log(version.toInternalString());
+console.log(version.isBeta());
+console.log(version.compare(required) >= 0);
+```
+
+Factory methods include `fromString`, `fromCatalogString`, `fromUint8Array`, and `allZero`. Use `toUint8Array(reverse?)` for protocol encoding.
