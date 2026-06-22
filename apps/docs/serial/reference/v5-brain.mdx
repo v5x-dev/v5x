@@ -26,4 +26,11 @@ Access this view through `device.brain`.
   unusable. Keep firmware updates out of normal application flows.
 </Warning>
 
+## Program control
+
+`activeProgram` is read-only state. Use `await setActiveProgram(slot)` to load
+slots 1 through 8 and `await setActiveProgram(0)` to stop the running program.
+The method resolves to `false` when the device is disconnected or does not
+acknowledge the command.
+
 [View source](https://github.com/v5x-dev/v5x/blob/main/packages/serial/src/VexDevice.ts)
