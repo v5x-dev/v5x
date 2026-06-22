@@ -1,7 +1,7 @@
 {
   "name": "@v5x/cli",
-  "description": "modern v5 development",
-  "version": "0.0.20",
+  "description": "modern v5 tools",
+  "version": "0.0.21",
   "module": "dist/index.js",
   "type": "module",
   "bin": {
