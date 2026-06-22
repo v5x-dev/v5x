@@ -23,6 +23,14 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
+      - run: bun run test:coverage
+      - name: Upload coverage summary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-summary
+          path: |
+            coverage/summary.md
+            coverage/lcov.info
       - run: bun run build
       - run: bun audit
       - name: Pack and install published packages
@@ -38,4 +46,7 @@ jobs:
           bun add ./v5x-serial-*.tgz ./v5x-cli-*.tgz
           bun -e 'import("@v5x/serial").then((module) => { if (typeof module.V5SerialDevice !== "function") throw new Error("missing V5SerialDevice export"); })'
           node -e 'const module = require("@v5x/serial"); if (typeof module.V5SerialDevice !== "function") throw new Error("missing CommonJS export")'
+          bun -e 'await Bun.write("consumer.ts", "import { VexFirmwareVersion } from \"@v5x/serial\";\nnew VexFirmwareVersion(1, 2, 3, 4);\n"); await Bun.write("tsconfig.json", JSON.stringify({ compilerOptions: { module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true } }));'
+          "$GITHUB_WORKSPACE/node_modules/.bin/tsc" -p tsconfig.json
+          bun build consumer.ts --target browser --outdir browser-smoke
           ./node_modules/.bin/v5x --help

@@ -1,5 +1,5 @@
-import { type MatchMode, SerialDeviceType } from "./Vex";
-import { V5SerialConnection } from "./VexConnection";
+import { type MatchMode, SerialDeviceType } from "./Vex.js";
+import { V5SerialConnection } from "./VexConnection.js";
 import {
   V5Brain,
   V5Controller,
@@ -7,8 +7,8 @@ import {
   V5SerialDeviceState,
   V5SmartDevice,
   VexSerialDevice,
-} from "./VexDeviceState";
-import { sleepUntil, sleepUntilAsync } from "./VexFirmware";
+} from "./VexDeviceState.js";
+import { sleepUntil, sleepUntilAsync } from "./VexFirmware.js";
 
 // Re-exports for backward compatibility with the previous VexDevice module.
 export {
@@ -21,14 +21,14 @@ export {
   V5SmartDevice,
   V5Radio,
   V5SerialDeviceState,
-} from "./VexDeviceState";
+} from "./VexDeviceState.js";
 export {
   sleep,
   sleepUntil,
   sleepUntilAsync,
   downloadFileFromInternet,
   uploadFirmware,
-} from "./VexFirmware";
+} from "./VexFirmware.js";
 
 export class V5SerialDevice extends VexSerialDevice {
   autoReconnect = true;

@@ -7,10 +7,10 @@ import {
   FileDownloadTarget,
   FileExitAction,
   RadioChannelType,
-} from "./Vex";
-import { type ProgramIniConfig } from "./VexIniConfig";
-import type { V5SerialDeviceState } from "./VexDeviceState";
-import { sleep, sleepUntilAsync } from "./VexFirmware";
+} from "./Vex.js";
+import { type ProgramIniConfig } from "./VexIniConfig.js";
+import type { V5SerialDeviceState } from "./VexDeviceState.js";
+import { sleep, sleepUntilAsync } from "./VexFirmware.js";
 import {
   EraseFileH2DPacket,
   EraseFileReplyD2HPacket,
@@ -27,9 +27,10 @@ import {
   ReadKeyValueH2DPacket,
   ReadKeyValueReplyD2HPacket,
   ScreenCaptureH2DPacket,
+  ScreenCaptureReplyD2HPacket,
   WriteKeyValueH2DPacket,
   WriteKeyValueReplyD2HPacket,
-} from "./VexPacketModels";
+} from "./VexPacketModels.js";
 
 export async function getValue(
   state: V5SerialDeviceState,
@@ -320,9 +321,12 @@ export async function captureScreen(
 
   if (conn == null || !conn.isConnected) return undefined;
   return await state.withFileTransfer(async () => {
-    await new Promise((resolve) => {
+    const response = await new Promise((resolve) => {
       conn.writeData(new ScreenCaptureH2DPacket(0), resolve);
     });
+    if (!(response instanceof ScreenCaptureReplyD2HPacket)) {
+      throw new Error("screen capture request was rejected");
+    }
 
     const height = 272;
     const width = 480;

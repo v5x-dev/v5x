@@ -1,4 +1,4 @@
-import { PacketView } from "./VexPacketView";
+import { PacketView } from "./VexPacketView.js";
 import {
   type DataArray,
   type FileDownloadTarget,
@@ -13,10 +13,10 @@ import {
   type MatchMode,
   type SlotNumber,
   type SelectDashScreen,
-} from "./Vex";
-import { VexFirmwareVersion } from "./VexFirmwareVersion";
-import { DeviceBoundPacket, HostBoundPacket, Packet } from "./VexPacketBase";
-import { PacketEncoder, encodeFixedText } from "./VexPacketEncoder";
+} from "./Vex.js";
+import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
+import { DeviceBoundPacket, HostBoundPacket, Packet } from "./VexPacketBase.js";
+import { PacketEncoder, encodeFixedText } from "./VexPacketEncoder.js";
 
 const textEncoder = new TextEncoder();
 

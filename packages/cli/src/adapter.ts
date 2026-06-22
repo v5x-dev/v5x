@@ -16,8 +16,8 @@ export interface SerialPortInfo {
 export interface SerialPort extends EventTarget {
   onconnect: (event: Event) => void;
   ondisconnect: (event: Event) => void;
-  readonly readable: ReadableStream<Uint8Array>;
-  readonly writable: WritableStream<Uint8Array>;
+  readonly readable: ReadableStream<Uint8Array> | null;
+  readonly writable: WritableStream<Uint8Array> | null;
   getInfo(): SerialPortInfo;
   open(options: { baudRate: number }): Promise<void>;
   close(): Promise<void>;
@@ -60,11 +60,11 @@ export class WebSerialPortAdapter extends EventTarget implements SerialPort {
     this._info = info;
   }
 
-  get readable(): ReadableStream<Uint8Array> {
-    return this._readable as unknown as ReadableStream<Uint8Array>;
+  get readable(): ReadableStream<Uint8Array> | null {
+    return this._readable;
   }
-  get writable(): WritableStream<Uint8Array> {
-    return this._writable as unknown as WritableStream<Uint8Array>;
+  get writable(): WritableStream<Uint8Array> | null {
+    return this._writable;
   }
 
   getInfo(): SerialPortInfo {
@@ -126,17 +126,18 @@ export class WebSerialPortAdapter extends EventTarget implements SerialPort {
       this._readerController = null;
     }
 
-    await port.close();
-
     try {
-      port.removeAllListeners?.();
-    } catch {
-      // Some native serial implementations do not expose listener cleanup.
+      await port.close();
+    } finally {
+      try {
+        port.removeAllListeners?.();
+      } catch {
+        // Some native serial implementations do not expose listener cleanup.
+      }
+      this._readable = null;
+      this._writable = null;
+      this.dispatchEvent(new Event("disconnect"));
     }
-    this._readable = null;
-    this._writable = null;
-
-    this.dispatchEvent(new Event("disconnect"));
   }
 
   async forget(): Promise<void> {
