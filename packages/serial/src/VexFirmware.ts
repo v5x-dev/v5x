@@ -3,14 +3,14 @@ import {
   FileVendor,
   type IFileWriteRequest,
   USER_FLASH_USR_CODE_START,
-} from "./Vex";
-import type { V5SerialDeviceState } from "./VexDeviceState";
+} from "./Vex.js";
+import type { V5SerialDeviceState } from "./VexDeviceState.js";
 import {
   FactoryEnableH2DPacket,
   FactoryEnableReplyD2HPacket,
   FactoryStatusH2DPacket,
   FactoryStatusReplyD2HPacket,
-} from "./VexPacketModels";
+} from "./VexPacketModels.js";
 
 /** Maximum number of bytes accepted when downloading the version catalog. */
 const MAX_CATALOG_BYTES = 4 * 1024;

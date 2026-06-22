@@ -7,11 +7,11 @@ import {
   FileDownloadTarget,
   RadioChannelType,
   AckType,
-} from "./Vex";
-import { type ProgramIniConfig } from "./VexIniConfig";
-import type { V5SerialDeviceState } from "./VexDeviceState";
-import { sleep, sleepUntilAsync } from "./VexFirmware";
-import type { HostBoundPacket } from "./VexPacketBase";
+} from "./Vex.js";
+import { type ProgramIniConfig } from "./VexIniConfig.js";
+import type { V5SerialDeviceState } from "./VexDeviceState.js";
+import { sleep, sleepUntilAsync } from "./VexFirmware.js";
+import type { HostBoundPacket } from "./VexPacketBase.js";
 import {
   GetDirectoryEntryH2DPacket,
   GetDirectoryEntryReplyD2HPacket,
@@ -25,7 +25,7 @@ import {
   ScreenCaptureReplyD2HPacket,
   WriteKeyValueH2DPacket,
   WriteKeyValueReplyD2HPacket,
-} from "./VexPacketModels";
+} from "./VexPacketModels.js";
 
 export async function getValue(
   state: V5SerialDeviceState,

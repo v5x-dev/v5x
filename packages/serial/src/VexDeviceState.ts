@@ -11,18 +11,18 @@ import {
   type IFileWriteRequest,
   FileDownloadTarget,
   RadioChannelType,
-} from "./Vex";
-import { type V5SerialConnection } from "./VexConnection";
-import { VexEventTarget } from "./VexEvent";
-import { VexFirmwareVersion } from "./VexFirmwareVersion";
-import { type ProgramIniConfig } from "./VexIniConfig";
+} from "./Vex.js";
+import { type V5SerialConnection } from "./VexConnection.js";
+import { VexEventTarget } from "./VexEvent.js";
+import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
+import { type ProgramIniConfig } from "./VexIniConfig.js";
 import {
   FileControlH2DPacket,
   FileControlReplyD2HPacket,
-} from "./VexPacketModels";
-import type { V5SerialDevice } from "./VexDevice";
-import * as firmware from "./VexFirmware";
-import * as transfers from "./VexTransfers";
+} from "./VexPacketModels.js";
+import type { V5SerialDevice } from "./VexDevice.js";
+import * as firmware from "./VexFirmware.js";
+import * as transfers from "./VexTransfers.js";
 
 export abstract class VexSerialDevice extends VexEventTarget {
   connection: V5SerialConnection | undefined;
