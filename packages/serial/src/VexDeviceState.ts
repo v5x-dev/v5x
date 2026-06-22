@@ -135,20 +135,18 @@ export class V5Brain {
     return this.state.brain.activeProgram;
   }
 
-  set activeProgram(value) {
-    void (async () => {
-      if (this.state.brain.activeProgram === value) return;
+  async setActiveProgram(value: SlotNumber | 0): Promise<boolean> {
+    if (this.state.brain.activeProgram === value) return true;
 
-      const conn = this.state._instance.connection;
-      if (conn == null) return;
+    const conn = this.state._instance.connection;
+    if (conn == null) return false;
 
-      const fn =
-        value === 0
-          ? await conn.stopProgram()
-          : await conn.loadProgram(value as SlotNumber);
+    const result =
+      value === 0 ? await conn.stopProgram() : await conn.loadProgram(value);
+    if (result == null) return false;
 
-      if (fn != null) this.state.brain.activeProgram = value;
-    })();
+    this.state.brain.activeProgram = value;
+    return true;
   }
 
   get battery(): V5Battery {

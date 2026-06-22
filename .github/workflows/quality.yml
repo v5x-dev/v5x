@@ -41,6 +41,8 @@ jobs:
           bun pm pack --destination "$smoke_dir"
           cd ../cli
           bun pm pack --destination "$smoke_dir"
+          cd ../..
+          bun scripts/verify-package-tarballs.ts "$smoke_dir"/*.tgz
           cd "$smoke_dir"
           bun init -y
           bun add ./v5x-serial-*.tgz ./v5x-cli-*.tgz

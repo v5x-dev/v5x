@@ -93,11 +93,10 @@ export class V5SerialDevice extends VexSerialDevice {
     return this.state.matchMode;
   }
 
-  set matchMode(value) {
-    void (async () => {
-      if ((await this.connection?.setMatchMode(value)) != null)
-        this.state.matchMode = value;
-    })();
+  async setMatchMode(value: MatchMode): Promise<boolean> {
+    if ((await this.connection?.setMatchMode(value)) == null) return false;
+    this.state.matchMode = value;
+    return true;
   }
 
   get radio(): V5Radio {
