@@ -44,11 +44,17 @@ export class PacketEncoder {
     this.crcgen = new CrcGenerator();
 
     Object.values(AllPackets).forEach((packet) => {
-      if (packet.prototype instanceof HostBoundPacket) {
+      if (
+        typeof packet === "function" &&
+        packet.prototype instanceof HostBoundPacket
+      ) {
+        const packetType = packet as unknown as typeof HostBoundPacket & {
+          COMMAND_ID: number;
+          COMMAND_EXTENDED_ID: number | undefined;
+        };
         this.allPacketsTable[
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (packet as any).COMMAND_ID + " " + (packet as any).COMMAND_EXTENDED_ID
-        ] = packet as typeof HostBoundPacket;
+          packetType.COMMAND_ID + " " + packetType.COMMAND_EXTENDED_ID
+        ] = packetType;
       }
     });
   }
@@ -162,16 +168,16 @@ export class PacketEncoder {
   validateMessageCdc(data: Uint8Array): boolean {
     const message = data.subarray(0, data.byteLength - 2);
     const lastTwoBytes =
-      (data[data.byteLength - 2] << 8) + data[data.byteLength - 1];
+      (data[data.byteLength - 2]! << 8) + data[data.byteLength - 1]!;
     return this.crcgen.crc16(message, 0) === lastTwoBytes;
   }
 
   getPayloadSize(data: Uint8Array): number {
     let t = 0;
-    let a = data[3];
+    let a = data[3]!;
     if ((128 & a) !== 0) {
       t = 127 & a;
-      a = data[4];
+      a = data[4]!;
     }
     return (t << 8) + a;
   }
@@ -189,10 +195,20 @@ export abstract class Packet {
 }
 
 export class DeviceBoundPacket extends Packet {
+  get commandId(): number {
+    return (this.constructor as typeof DeviceBoundPacket).COMMAND_ID;
+  }
+
+  get commandExtendedId(): number | undefined {
+    return (this.constructor as typeof DeviceBoundPacket).COMMAND_EXTENDED_ID;
+  }
+
+  static COMMAND_ID: number;
+  static COMMAND_EXTENDED_ID: number | undefined;
+
   constructor(payload?: Uint8Array) {
     super(new Uint8Array());
-    // eslint-disable-next-line no-proto, @typescript-eslint/no-explicit-any
-    const me = (this as any).__proto__.constructor;
+    const me = this.constructor as typeof DeviceBoundPacket;
 
     if (me.COMMAND_EXTENDED_ID === undefined) {
       if (payload === undefined) {
@@ -782,7 +798,7 @@ export class HostBoundPacket extends Packet {
 
     // skip command id check
 
-    this.ack = this.data[(this.ackIndex = n + 1)];
+    this.ack = this.data[(this.ackIndex = n + 1)]!;
   }
 
   static isValidPacket(data: Uint8Array, n: number): boolean {
@@ -804,12 +820,12 @@ export class Query1ReplyD2HPacket extends HostBoundPacket {
   constructor(data: DataArray) {
     super(data);
 
-    this.joystickFlag1 = this.data[4];
-    this.joystickFlag2 = this.data[5];
-    this.brainFlag1 = this.data[6]; // a.k.a vex version
-    this.brainFlag2 = this.data[7];
-    this.bootloadFlag1 = this.data[10];
-    this.bootloadFlag2 = this.data[11];
+    this.joystickFlag1 = this.data[4]!;
+    this.joystickFlag2 = this.data[5]!;
+    this.brainFlag1 = this.data[6]!; // a.k.a vex version
+    this.brainFlag2 = this.data[7]!;
+    this.bootloadFlag1 = this.data[10]!;
+    this.bootloadFlag2 = this.data[11]!;
   }
 }
 
@@ -823,12 +839,12 @@ export class SystemVersionReplyD2HPacket extends HostBoundPacket {
     super(data);
 
     this.version = new VexFirmwareVersion(
-      this.data[4],
-      this.data[5],
-      this.data[6],
-      this.data[8],
+      this.data[4]!,
+      this.data[5]!,
+      this.data[6]!,
+      this.data[8]!,
     );
-    this.hardware = this.data[7];
+    this.hardware = this.data[7]!;
   }
 }
 
@@ -1201,9 +1217,9 @@ export class GetSystemStatusReplyD2HPacket extends HostBoundPacket {
         0,
         dataView.nextUint8(),
       ];
-      this.eventBrain = (1 & this.sysflags[6]) !== 0;
-      this.romBootloaderActive = (2 & this.sysflags[6]) !== 0;
-      this.ramBootloaderActive = (4 & this.sysflags[6]) !== 0;
+      this.eventBrain = (1 & this.sysflags[6]!) !== 0;
+      this.romBootloaderActive = (2 & this.sysflags[6]!) !== 0;
+      this.ramBootloaderActive = (4 & this.sysflags[6]!) !== 0;
 
       dataView.nextUint16();
 
@@ -1308,8 +1324,8 @@ export class GetRadioStatusReplyD2HPacket extends HostBoundPacket {
     this.device = dataView.nextUint8();
     this.quality = dataView.nextUint16();
     this.strength = dataView.nextInt16();
-    this.channel = this.data[n + 6];
-    this.timeslot = this.data[n + 7];
+    this.channel = this.data[n + 6]!;
+    this.timeslot = this.data[n + 7]!;
   }
 }
 

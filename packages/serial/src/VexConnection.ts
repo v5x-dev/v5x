@@ -53,7 +53,7 @@ import {
   SendDashTouchH2DPacket,
   SendDashTouchReplyD2HPacket,
   SelectDashH2DPacket,
-  type SelectDashReplyD2HPacket,
+  SelectDashReplyD2HPacket,
 } from "./VexPacket";
 import { type VexFirmwareVersion } from "./VexFirmwareVersion";
 
@@ -72,6 +72,7 @@ export class VexSerialConnection extends VexEventTarget {
   serial: Serial;
 
   callbacksQueue: IPacketCallback[] = [];
+  private isClosing = false;
 
   get isConnected(): boolean {
     return (
@@ -87,23 +88,43 @@ export class VexSerialConnection extends VexEventTarget {
   }
 
   async close(): Promise<void> {
-    if (!this.isConnected) return;
+    if (this.isClosing) return;
+    const hadResources =
+      this.port !== undefined ||
+      this.reader !== undefined ||
+      this.writer !== undefined ||
+      this.callbacksQueue.length > 0;
+    if (!hadResources) return;
+    this.isClosing = true;
 
-    try {
-      await this.writer?.close();
-      this.writer = undefined;
-    } catch (e) {}
+    for (const callback of this.callbacksQueue.splice(0)) {
+      clearTimeout(callback.timeout);
+      callback.callback(AckType.CDC2_NACK);
+    }
 
+    const writer = this.writer;
+    this.writer = undefined;
     try {
-      await this.reader?.cancel();
+      await writer?.close();
+    } catch {
+    } finally {
+      writer?.releaseLock();
+    }
+
+    const reader = this.reader;
+    this.reader = undefined;
+    try {
+      await reader?.cancel();
       try {
-        while (this.reader != null) {
-          const { done } = await this.reader.read();
+        while (reader != null) {
+          const { done } = await reader.read();
           if (done) break;
         }
-      } catch (e) {}
-      this.reader = undefined;
-    } catch (e) {}
+      } catch {}
+    } catch {
+    } finally {
+      reader?.releaseLock();
+    }
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 1)); // HACK: wait for the lock to be released
@@ -112,6 +133,8 @@ export class VexSerialConnection extends VexEventTarget {
     } catch (e) {
       console.warn("Close port error.", e);
     } finally {
+      this.port = undefined;
+      this.isClosing = false;
       this.emit("disconnected", undefined);
     }
   }
@@ -136,7 +159,7 @@ export class VexSerialConnection extends VexEventTarget {
                 f.usbProductId === info.usbProductId),
           );
         })
-        .filter((e) => e.readable !== null);
+        .filter((candidate) => candidate.readable === null);
 
       port = ports[use];
     }
@@ -154,22 +177,21 @@ export class VexSerialConnection extends VexEventTarget {
     if (port.readable != null) return false;
 
     try {
-      await port.open({ baudRate: 115200 });
-
       this.port = port;
+      await port.open({ baudRate: 115200 });
 
       this.port.addEventListener("disconnect", () => {
         void this.close();
       });
 
-      this.emit("connected", undefined);
-
       this.writer = this.port.writable.getWriter();
       this.reader = this.port.readable.getReader();
       void this.startReader();
+      this.emit("connected", undefined);
 
       return true;
     } catch (e) {
+      await this.close();
       return false;
     }
   }
@@ -198,17 +220,18 @@ export class VexSerialConnection extends VexEventTarget {
         const cb = {
           callback: resolve,
           timeout: setTimeout(() => {
-            this.callbacksQueue.shift()?.callback(AckType.TIMEOUT);
+            const index = this.callbacksQueue.indexOf(cb);
+            if (index === -1) return;
+            this.callbacksQueue.splice(index, 1);
+            cb.callback(AckType.TIMEOUT);
           }, timeout),
           wantedCommandId:
             rawData instanceof DeviceBoundPacket
-              ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (rawData.constructor as any).COMMAND_ID
+              ? rawData.commandId
               : undefined,
           wantedCommandExId:
             rawData instanceof DeviceBoundPacket
-              ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (rawData.constructor as any).COMMAND_EXTENDED_ID
+              ? rawData.commandExtendedId
               : undefined,
         };
         this.callbacksQueue.push(cb);
@@ -219,7 +242,10 @@ export class VexSerialConnection extends VexEventTarget {
             logData(data, 100);
           })
           .catch(() => {
-            this.callbacksQueue.splice(this.callbacksQueue.indexOf(cb), 1);
+            const index = this.callbacksQueue.indexOf(cb);
+            if (index === -1) return;
+            this.callbacksQueue.splice(index, 1);
+            clearTimeout(cb.timeout);
             resolve(AckType.WRITE_ERROR);
           });
       },
@@ -276,7 +302,7 @@ export class VexSerialConnection extends VexEventTarget {
         let wantedCmdId: number | undefined;
         let wantedCmdExId: number | undefined;
         let tryIdx = 0;
-        while ((callbackInfo = this.callbacksQueue[tryIdx++]) !== null) {
+        while ((callbackInfo = this.callbacksQueue[tryIdx++]) !== undefined) {
           wantedCmdId = callbackInfo?.wantedCommandId;
           wantedCmdExId = callbackInfo?.wantedCommandExId;
 
@@ -314,7 +340,7 @@ export class VexSerialConnection extends VexEventTarget {
           } else {
             console.warn("ack", ack);
 
-            callbackInfo.callback(ack);
+            callbackInfo.callback(ack!);
           }
         }
 
@@ -688,7 +714,7 @@ export class V5SerialConnection extends VexSerialConnection {
     const result = await this.writeDataAsync(
       new SelectDashH2DPacket(screen, port),
     );
-    return result instanceof SendDashTouchReplyD2HPacket ? result : null;
+    return result instanceof SelectDashReplyD2HPacket ? result : null;
   }
 }
 
@@ -698,7 +724,7 @@ function logData(data: Uint8Array, limitedSize: number): void {
   limitedSize ||= data.length;
   let a = "";
   for (let n = 0; n < data.length && n < limitedSize; n++)
-    a += ("00" + data[n].toString(16)).substr(-2, 2) + " ";
+    a += ("00" + data[n]!.toString(16)).substr(-2, 2) + " ";
   limitedSize < data.length && (a += " ... ");
 
   // console.log(a);

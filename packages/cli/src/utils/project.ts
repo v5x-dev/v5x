@@ -124,11 +124,15 @@ async function existingFile(
   return (await stat(path).catch(() => undefined))?.isFile() ? path : undefined;
 }
 
-async function newestBinary(root: string): Promise<string | undefined> {
-  const glob = new Bun.Glob("**/*.bin");
+async function newestNamedBinary(
+  root: string,
+  name: string,
+): Promise<string | undefined> {
+  if (!(await stat(root).catch(() => undefined))?.isDirectory())
+    return undefined;
+  const glob = new Bun.Glob(`**/${name}.bin`);
   const candidates: Array<{ path: string; modified: number }> = [];
   for await (const relativePath of glob.scan({ cwd: root, onlyFiles: true })) {
-    if (relativePath.includes("node_modules/")) continue;
     const path = resolve(root, relativePath);
     const info = await stat(path);
     candidates.push({ path, modified: info.mtimeMs });
@@ -165,9 +169,16 @@ export async function findProgramArtifact(
     if (candidate !== undefined) return candidate;
   }
 
-  const artifact = await newestBinary(project.path);
+  const outputRoot =
+    project.type === "vexide" ? join(project.path, "target") : undefined;
+  const artifact =
+    outputRoot === undefined
+      ? undefined
+      : await newestNamedBinary(outputRoot, project.name);
   if (artifact === undefined) {
-    throw new Error(`no .bin artifact found under ${project.path}`);
+    throw new Error(
+      `no program artifact found for ${project.name}; build the project or pass --file`,
+    );
   }
   return artifact;
 }

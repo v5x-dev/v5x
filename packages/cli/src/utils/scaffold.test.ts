@@ -36,3 +36,21 @@ test("refuses to overwrite a non-empty directory", async () => {
     "project directory is not empty",
   );
 });
+
+test("removes partial output when project creation fails", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "v5x-scaffold-"));
+  temporaryDirectories.push(parent);
+  const path = join(parent, "bad-project");
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(
+    async () => new Response("failed", { status: 500 }),
+    { preconnect: originalFetch.preconnect },
+  );
+  try {
+    await expect(createProject(path, "pros", "robot")).rejects.toThrow();
+    await expect(Bun.file(path).exists()).resolves.toBe(false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

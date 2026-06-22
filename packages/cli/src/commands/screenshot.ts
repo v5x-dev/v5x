@@ -30,10 +30,11 @@ export default function registerScreenshotCommand(program: Sade) {
     })
     .action(async () => {
       const device = await connectV5Device();
-
-      const data = await device.brain.captureScreen();
-      if (data) printKittyRGB(data);
-
-      await device.dispose();
+      try {
+        const data = await device.brain.captureScreen();
+        if (data) printKittyRGB(data);
+      } finally {
+        await device.dispose();
+      }
     });
 }

@@ -31,7 +31,7 @@ export class VexFirmwareVersion {
     while (parts.length < 4) {
       parts.push(0);
     }
-    return new VexFirmwareVersion(parts[0], parts[1], parts[2], parts[3]);
+    return new VexFirmwareVersion(parts[0]!, parts[1]!, parts[2]!, parts[3]!);
   }
 
   /**
@@ -46,10 +46,10 @@ export class VexFirmwareVersion {
     reverse: boolean = false,
   ): VexFirmwareVersion {
     return new VexFirmwareVersion(
-      data[offset + (reverse ? 3 : 0)],
-      data[offset + (reverse ? 2 : 1)],
-      data[offset + (reverse ? 1 : 2)],
-      data[offset + (reverse ? 0 : 3)],
+      data[offset + (reverse ? 3 : 0)]!,
+      data[offset + (reverse ? 2 : 1)]!,
+      data[offset + (reverse ? 1 : 2)]!,
+      data[offset + (reverse ? 0 : 3)]!,
     );
   }
 

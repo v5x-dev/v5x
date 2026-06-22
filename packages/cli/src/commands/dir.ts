@@ -49,9 +49,9 @@ function formatDate(date: Date) {
   const day = date.getDate();
   const year = date.getFullYear();
 
-  const hour = date.getUTCHours();
-  const minute = date.getUTCMinutes();
-  const second = date.getUTCSeconds();
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+  const second = date.getSeconds();
 
   return `${month}/${day}/${year} ${hour}:${minute}:${second}`;
 }
@@ -74,46 +74,38 @@ export default function registerDirCommand(program: Sade) {
     .command("dir", "list files on flash", { alias: "ls" })
     .action(async () => {
       const device = await connectV5Device();
-
-      const files = [];
-
-      for (const vendor of VENDORS) {
-        const vendorFiles = (await device.brain.listFiles(vendor)) ?? [];
-
-        files.push(
-          ...vendorFiles.map((file) => ({
-            ...file,
-            vendor,
-          })),
+      try {
+        const files = [];
+        for (const vendor of VENDORS) {
+          const vendorFiles = (await device.brain.listFiles(vendor)) ?? [];
+          files.push(
+            ...vendorFiles.map((file) => ({
+              ...file,
+              vendor,
+            })),
+          );
+        }
+        const table = new Table({ compact: true });
+        table.addColumn("name");
+        table.addColumn("size");
+        table.addColumn("load address");
+        table.addColumn("timestamp");
+        table.addColumn("crc32");
+        files.forEach(
+          ({ vendor, filename, size, loadAddress, timestamp, crc32 }) => {
+            const date = new Date(timestamp * 1000);
+            table.addRow([
+              vendorPrefix(vendor) + filename,
+              formatSize(size),
+              `0x${loadAddress.toString(16)}`,
+              formatDate(date),
+              `0x${crc32.toString(16)}`,
+            ]);
+          },
         );
+        console.log(table.render());
+      } finally {
+        await device.dispose();
       }
-
-      const table = new Table({
-        compact: true,
-      });
-
-      table.addColumn("name");
-      table.addColumn("size");
-      table.addColumn("load address");
-      table.addColumn("timestamp");
-      table.addColumn("crc32");
-
-      files.forEach(
-        ({ vendor, filename, size, loadAddress, timestamp, crc32 }) => {
-          const date = new Date(timestamp * 1000);
-
-          table.addRow([
-            vendorPrefix(vendor) + filename,
-            formatSize(size),
-            `0x${loadAddress.toString(16)}`,
-            formatDate(date),
-            `0x${crc32.toString(16)}`,
-          ]);
-        },
-      );
-
-      console.log(table.render());
-
-      await device.dispose();
     });
 }

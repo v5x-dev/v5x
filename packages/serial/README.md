@@ -48,5 +48,4 @@ can open.
 bun run build
 ```
 
-The build emits JavaScript bundles to `dist/` and TypeScript declarations to
-`dts/` and `index.d.ts`.
+The build emits JavaScript bundles and TypeScript declarations under `dist/`.

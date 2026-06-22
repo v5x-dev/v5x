@@ -8,7 +8,8 @@
     "check": "astro check",
     "deploy": "bun run build && wrangler deploy",
     "deploy:dry": "bun run build && wrangler deploy --dry-run",
-    "lint": "astro check"
+    "lint": "astro check",
+    "typecheck": "astro check"
   },
   "dependencies": {
     "@fontsource-variable/cascadia-mono": "^5.2.2",

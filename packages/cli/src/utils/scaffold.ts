@@ -1,4 +1,4 @@
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { unzipSync } from "fflate";
 
@@ -184,10 +184,18 @@ export async function createProject(
 ): Promise<string> {
   validateProjectName(name);
   const path = resolve(inputPath);
+  const existed =
+    (await stat(path).catch(() => undefined))?.isDirectory() ?? false;
   await prepareDirectory(path);
 
-  if (toolchain === "pros") await createProsProject(path, name);
-  else await createVexideProject(path, name);
+  try {
+    if (toolchain === "pros") await createProsProject(path, name);
+    else await createVexideProject(path, name);
+  } catch (error) {
+    await rm(path, { recursive: true, force: true });
+    if (existed) await mkdir(path, { recursive: true });
+    throw error;
+  }
 
   return path;
 }

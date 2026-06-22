@@ -94,7 +94,7 @@ export class PacketView extends DataView<ArrayBuffer> {
 
   nextVersion(reverse = false): VexFirmwareVersion {
     const result = VexFirmwareVersion.fromUint8Array(
-      new Uint8Array(this.buffer),
+      new Uint8Array(this.buffer, this.byteOffset, this.byteLength),
       this.position,
       reverse,
     );
