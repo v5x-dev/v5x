@@ -839,4 +839,3 @@ describe("firmware size limits", () => {
     }
   });
 });
-
