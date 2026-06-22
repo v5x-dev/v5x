@@ -1,4 +1,4 @@
-import { createCommand } from "commander";
+import type { Sade } from "sade";
 import { connectV5Device } from "../device";
 import { Table } from "cmd-table";
 import { SmartDeviceType } from "@v5x/serial";
@@ -34,31 +34,30 @@ function formatVersion(version: number) {
   return `${major}.${minor}.${patch}`;
 }
 
-const devicesCommand = createCommand("devices")
-  .description("list devices connected to brain")
-  .alias("lsdev")
-  .action(async () => {
-    const device = await connectV5Device();
+export default function registerDevicesCommand(program: Sade) {
+  program
+    .command("devices", "list devices connected to brain", { alias: "lsdev" })
+    .action(async () => {
+      const device = await connectV5Device();
 
-    const smartDevices = device.devices;
+      const smartDevices = device.devices;
 
-    const table = new Table({ compact: true });
+      const table = new Table({ compact: true });
 
-    table.addColumn("port");
-    table.addColumn("type");
-    table.addColumn("version");
+      table.addColumn("port");
+      table.addColumn("type");
+      table.addColumn("version");
 
-    smartDevices.forEach((d) => {
-      table.addRow([
-        d.port.toString(),
-        SMART_DEVICE_LABELS[d.type],
-        formatVersion(d.version),
-      ]);
+      smartDevices.forEach((d) => {
+        table.addRow([
+          d.port.toString(),
+          SMART_DEVICE_LABELS[d.type],
+          formatVersion(d.version),
+        ]);
+      });
+
+      console.log(table.render());
+
+      await device.dispose();
     });
-
-    console.log(table.render());
-
-    await device.dispose();
-  });
-
-export default devicesCommand;
+}

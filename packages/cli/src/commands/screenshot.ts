@@ -1,4 +1,4 @@
-import { createCommand } from "commander";
+import type { Sade } from "sade";
 import { connectV5Device } from "../device";
 
 function printKittyRGB(bytes: Uint8Array) {
@@ -23,16 +23,17 @@ function printKittyRGB(bytes: Uint8Array) {
   );
 }
 
-const screenshotCommand = createCommand("screenshot")
-  .description("take a screen capture of the brain")
-  .alias("sc")
-  .action(async () => {
-    const device = await connectV5Device();
+export default function registerScreenshotCommand(program: Sade) {
+  program
+    .command("screenshot", "take a screen capture of the brain", {
+      alias: "sc",
+    })
+    .action(async () => {
+      const device = await connectV5Device();
 
-    const data = await device.brain.captureScreen();
-    if (data) printKittyRGB(data);
+      const data = await device.brain.captureScreen();
+      if (data) printKittyRGB(data);
 
-    await device.dispose();
-  });
-
-export default screenshotCommand;
+      await device.dispose();
+    });
+}

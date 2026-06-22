@@ -1,4 +1,4 @@
-import { createCommand } from "commander";
+import type { Sade } from "sade";
 import { connectV5Device } from "../device";
 import { Table } from "cmd-table";
 import { FileVendor } from "@v5x/serial";
@@ -69,52 +69,51 @@ function formatSize(bytes: number) {
   return `${size.toFixed(size < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`;
 }
 
-const dirCommand = createCommand("dir")
-  .description("list files on flash")
-  .alias("ls")
-  .action(async () => {
-    const device = await connectV5Device();
+export default function registerDirCommand(program: Sade) {
+  program
+    .command("dir", "list files on flash", { alias: "ls" })
+    .action(async () => {
+      const device = await connectV5Device();
 
-    const files = [];
+      const files = [];
 
-    for (const vendor of VENDORS) {
-      const vendorFiles = (await device.brain.listFiles(vendor)) ?? [];
+      for (const vendor of VENDORS) {
+        const vendorFiles = (await device.brain.listFiles(vendor)) ?? [];
 
-      files.push(
-        ...vendorFiles.map((file) => ({
-          ...file,
-          vendor,
-        })),
+        files.push(
+          ...vendorFiles.map((file) => ({
+            ...file,
+            vendor,
+          })),
+        );
+      }
+
+      const table = new Table({
+        compact: true,
+      });
+
+      table.addColumn("name");
+      table.addColumn("size");
+      table.addColumn("load address");
+      table.addColumn("timestamp");
+      table.addColumn("crc32");
+
+      files.forEach(
+        ({ vendor, filename, size, loadAddress, timestamp, crc32 }) => {
+          const date = new Date(timestamp * 1000);
+
+          table.addRow([
+            vendorPrefix(vendor) + filename,
+            formatSize(size),
+            `0x${loadAddress.toString(16)}`,
+            formatDate(date),
+            `0x${crc32.toString(16)}`,
+          ]);
+        },
       );
-    }
 
-    const table = new Table({
-      compact: true,
+      console.log(table.render());
+
+      await device.dispose();
     });
-
-    table.addColumn("name");
-    table.addColumn("size");
-    table.addColumn("load address");
-    table.addColumn("timestamp");
-    table.addColumn("crc32");
-
-    files.forEach(
-      ({ vendor, filename, size, loadAddress, timestamp, crc32 }) => {
-        const date = new Date(timestamp * 1000);
-
-        table.addRow([
-          vendorPrefix(vendor) + filename,
-          formatSize(size),
-          `0x${loadAddress.toString(16)}`,
-          formatDate(date),
-          `0x${crc32.toString(16)}`,
-        ]);
-      },
-    );
-
-    console.log(table.render());
-
-    await device.dispose();
-  });
-
-export default dirCommand;
+}

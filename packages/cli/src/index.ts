@@ -1,41 +1,39 @@
 #!/usr/bin/env bun
 
-import { program } from "commander";
+import sade from "sade";
 import pkg from "../package.json" with { type: "json" };
-import kvCommand from "./commands/kv";
-import catCommand from "./commands/cat";
-import buildCommand from "./commands/build";
-import devicesCommand from "./commands/devices";
-import dirCommand from "./commands/dir";
-import uploadCommand from "./commands/upload";
-import runCommand from "./commands/run";
-import newCommand from "./commands/new";
-import initCommand from "./commands/init";
-import rmCommand from "./commands/rm";
-import screenshotCommand from "./commands/screenshot";
-import installCommand from "./commands/install";
-import cleanCommand from "./commands/clean";
+import registerKvCommand from "./commands/kv";
+import registerCatCommand from "./commands/cat";
+import registerBuildCommand from "./commands/build";
+import registerDevicesCommand from "./commands/devices";
+import registerDirCommand from "./commands/dir";
+import registerUploadCommand from "./commands/upload";
+import registerRunCommand from "./commands/run";
+import registerNewCommand from "./commands/new";
+import registerInitCommand from "./commands/init";
+import registerRmCommand from "./commands/rm";
+import registerScreenshotCommand from "./commands/screenshot";
+import registerInstallCommand from "./commands/install";
+import registerCleanCommand from "./commands/clean";
 
-program
-  .name("v5x")
-  .version(pkg.version)
-  .description(pkg.description)
-  .addCommand(buildCommand)
-  .addCommand(cleanCommand)
-  .addCommand(uploadCommand)
-  .addCommand(runCommand)
-  .addCommand(newCommand)
-  .addCommand(initCommand)
-  .addCommand(dirCommand)
-  .addCommand(catCommand)
-  .addCommand(rmCommand)
-  .addCommand(devicesCommand)
-  .addCommand(screenshotCommand)
-  .addCommand(installCommand)
-  .addCommand(kvCommand);
+const program = sade("v5x").version(pkg.version).describe(pkg.description);
+
+registerBuildCommand(program);
+registerCleanCommand(program);
+registerUploadCommand(program);
+registerRunCommand(program);
+registerNewCommand(program);
+registerInitCommand(program);
+registerDirCommand(program);
+registerCatCommand(program);
+registerRmCommand(program);
+registerDevicesCommand(program);
+registerScreenshotCommand(program);
+registerInstallCommand(program);
+registerKvCommand(program);
 
 try {
-  await program.parseAsync();
+  await program.parse(process.argv);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
