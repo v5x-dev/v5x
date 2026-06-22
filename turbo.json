@@ -13,7 +13,9 @@
       "cache": false
     },
     "format:check": {},
-    "lint": {},
+    "lint": {
+      "dependsOn": ["^build"]
+    },
     "test": {
       "dependsOn": ["^build"]
     },
