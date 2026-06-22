@@ -1,0 +1,136 @@
+version: 2
+
+updates:
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    groups:
+      bun-and-types:
+        applies-to: version-updates
+        patterns:
+          - "bun"
+          - "@types/bun"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "bun"
+    commit-message:
+      prefix: "chore(bun)"
+      include: "scope"
+
+  - package-ecosystem: "npm"
+    directory: "/packages/cli"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    groups:
+      cli-runtime:
+        applies-to: version-updates
+        patterns:
+          - "chalk"
+          - "cmd-table"
+          - "fflate"
+          - "sade"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "cli"
+    commit-message:
+      prefix: "chore(cli)"
+      include: "scope"
+
+  - package-ecosystem: "npm"
+    directory: "/packages/serial"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    groups:
+      serial-runtime:
+        applies-to: version-updates
+        patterns:
+          - "unzipit"
+          - "@types/dom-serial"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "serial"
+    commit-message:
+      prefix: "chore(serial)"
+      include: "scope"
+
+  - package-ecosystem: "npm"
+    directory: "/apps/docs"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    groups:
+      docs-deps:
+        applies-to: version-updates
+        patterns:
+          - "mint"
+          - "fflate"
+          - "wrangler"
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "node"
+    labels:
+      - "dependencies"
+      - "docs"
+    commit-message:
+      prefix: "chore(docs)"
+      include: "scope"
+
+  - package-ecosystem: "npm"
+    directory: "/apps/website"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    groups:
+      website-deps:
+        applies-to: version-updates
+        patterns:
+          - "astro"
+          - "@astrojs/check"
+          - "@tailwindcss/vite"
+          - "tailwindcss"
+          - "lucide-astro"
+          - "@fontsource-variable/cascadia-mono"
+          - "wrangler"
+          - "typescript"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "website"
+    commit-message:
+      prefix: "chore(website)"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    groups:
+      github-actions:
+        applies-to: version-updates
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
