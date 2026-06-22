@@ -73,6 +73,7 @@ export class VexSerialConnection extends VexEventTarget {
 
   callbacksQueue: IPacketCallback[] = [];
   private isClosing = false;
+  protected fileTransferTail = Promise.resolve();
 
   get isConnected(): boolean {
     return (
@@ -277,11 +278,27 @@ export class VexSerialConnection extends VexEventTarget {
         cache = await this.readData(cache, 5);
         sliceIdx = 0;
 
-        if (!thePacketEncoder.validateHeader(cache))
-          throw new Error("Invalid header");
+        while (!thePacketEncoder.validateHeader(cache)) {
+          const nextHeader = cache.findIndex(
+            (byte, index) =>
+              index > 0 &&
+              byte === PacketEncoder.HEADER_TO_HOST[0] &&
+              cache[index + 1] === PacketEncoder.HEADER_TO_HOST[1],
+          );
+          if (nextHeader >= 0) {
+            cache = cache.slice(nextHeader);
+          } else {
+            cache = cache.slice(
+              cache.at(-1) === PacketEncoder.HEADER_TO_HOST[0]
+                ? -1
+                : cache.length,
+            );
+          }
+          cache = await this.readData(cache, 5);
+        }
 
         const payloadExpectedSize = thePacketEncoder.getPayloadSize(cache);
-        const n = payloadExpectedSize > 128 ? 5 : 4;
+        const n = thePacketEncoder.getHostHeaderLength(cache);
         const totalSize = n + payloadExpectedSize;
 
         cache = await this.readData(cache, totalSize);
@@ -379,6 +396,23 @@ export class V5SerialConnection extends VexSerialConnection {
     { usbVendorId: 10376, usbProductId: SerialDeviceType.V5_CONTROLLER },
   ];
 
+  private async withFileTransferLock<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.fileTransferTail;
+    let release = () => {};
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.fileTransferTail = previous.then(() => current);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
   async getDeviceStatus(): Promise<GetDeviceStatusReplyD2HPacket | null> {
     const result = await this.writeDataAsync(new GetDeviceStatusH2DPacket());
     return result instanceof GetDeviceStatusReplyD2HPacket ? result : null;
@@ -475,6 +509,20 @@ export class V5SerialConnection extends VexSerialConnection {
     downloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<Uint8Array> {
+    return await this.withFileTransferLock(async () =>
+      this.downloadFileToHostUnlocked(
+        request,
+        downloadTarget,
+        progressCallback,
+      ),
+    );
+  }
+
+  private async downloadFileToHostUnlocked(
+    request: IFileBasicInfo,
+    downloadTarget: FileDownloadTarget,
+    progressCallback?: (current: number, total: number) => void,
+  ): Promise<Uint8Array> {
     // TODO assert that the device is connected
 
     const { filename, vendor, loadAddress, size } = request;
@@ -497,53 +545,68 @@ export class V5SerialConnection extends VexSerialConnection {
     if (!(p1 instanceof InitFileTransferReplyD2HPacket))
       throw new Error("InitFileTransferH2DPacket failed");
 
-    const fileSize = size ?? p1.fileSize;
+    try {
+      const fileSize = size ?? p1.fileSize;
+      const bufferChunkSize =
+        p1.windowSize > 0 && p1.windowSize <= USER_PROG_CHUNK_SIZE
+          ? p1.windowSize
+          : USER_PROG_CHUNK_SIZE;
+      let bufferOffset = 0;
+      const fileBuf = new Uint8Array(fileSize);
 
-    // console.log("size:", fileSize);
+      while (bufferOffset < fileSize) {
+        const requestedSize = Math.min(
+          bufferChunkSize,
+          fileSize - bufferOffset,
+        );
+        const p2 = await this.writeDataAsync(
+          new ReadFileH2DPacket(nextAddress, requestedSize),
+          3000,
+        );
 
-    const bufferChunkSize =
-      p1.windowSize > 0 && p1.windowSize <= USER_PROG_CHUNK_SIZE
-        ? p1.windowSize
-        : USER_PROG_CHUNK_SIZE;
-    let bufferOffset = 0;
-    let fileBuf = new Uint8Array(fileSize + bufferChunkSize);
+        if (!(p2 instanceof ReadFileReplyD2HPacket)) {
+          throw new Error("ReadFileReplyD2HPacket failed");
+        }
+        if (p2.addr !== nextAddress) {
+          throw new Error(
+            `ReadFileReplyD2HPacket returned address ${p2.addr}, expected ${nextAddress}`,
+          );
+        }
+        if (
+          p2.length <= 0 ||
+          p2.length > requestedSize ||
+          p2.buf.byteLength !== p2.length
+        ) {
+          throw new Error(
+            `ReadFileReplyD2HPacket returned invalid length ${p2.length}`,
+          );
+        }
 
-    let lastBlock = false;
-
-    while (!lastBlock) {
-      if (fileSize <= bufferOffset + bufferChunkSize) {
-        lastBlock = true;
+        fileBuf.set(new Uint8Array(p2.buf), bufferOffset);
+        bufferOffset += p2.length;
+        nextAddress += p2.length;
+        progressCallback?.(bufferOffset, fileSize);
       }
 
-      const p2 = await this.writeDataAsync(
-        new ReadFileH2DPacket(nextAddress, bufferChunkSize),
-        3000,
+      return fileBuf;
+    } finally {
+      await this.writeDataAsync(
+        new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+        30000,
       );
-
-      if (!(p2 instanceof ReadFileReplyD2HPacket))
-        throw new Error("ReadFileReplyD2HPacket failed");
-
-      fileBuf.set(new Uint8Array(p2.buf), bufferOffset);
-
-      if (progressCallback != null) progressCallback(bufferOffset, fileSize);
-
-      // next chunk
-      bufferOffset += bufferChunkSize;
-      nextAddress += bufferChunkSize;
     }
-
-    await this.writeDataAsync(
-      new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
-      30000,
-    );
-    // console.log(p3);
-
-    fileBuf = fileBuf.slice(0, fileSize);
-
-    return fileBuf;
   }
 
   async uploadFileToDevice(
+    request: IFileWriteRequest,
+    progressCallback?: (current: number, total: number) => void,
+  ): Promise<boolean> {
+    return await this.withFileTransferLock(async () =>
+      this.uploadFileToDeviceUnlocked(request, progressCallback),
+    );
+  }
+
+  private async uploadFileToDeviceUnlocked(
     request: IFileWriteRequest,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<boolean> {
@@ -599,20 +662,6 @@ export class V5SerialConnection extends VexSerialConnection {
       throw new Error("InitFileTransferH2DPacket failed");
     //console.log(p1);
 
-    if (linkedFile !== undefined) {
-      const p3 = await this.writeDataAsync(
-        new LinkFileH2DPacket(
-          linkedFile.vendor ?? FileVendor.USER,
-          linkedFile.filename,
-          0,
-        ),
-        10000,
-      );
-
-      if (!(p3 instanceof LinkFileReplyD2HPacket))
-        throw new Error("LinkFileH2DPacket failed");
-    }
-
     const bufferChunkSize =
       p1.windowSize > 0 && p1.windowSize <= USER_PROG_CHUNK_SIZE
         ? p1.windowSize
@@ -625,6 +674,21 @@ export class V5SerialConnection extends VexSerialConnection {
     let exitReply: HostBoundPacket | ArrayBuffer | AckType;
 
     try {
+      if (linkedFile !== undefined) {
+        const p3 = await this.writeDataAsync(
+          new LinkFileH2DPacket(
+            linkedFile.vendor ?? FileVendor.USER,
+            linkedFile.filename,
+            0,
+          ),
+          10000,
+        );
+
+        if (!(p3 instanceof LinkFileReplyD2HPacket)) {
+          throw new Error("LinkFileH2DPacket failed");
+        }
+      }
+
       while (!lastBlock) {
         let tmpbuf;
         if (buf.byteLength - bufferOffset > bufferChunkSize) {

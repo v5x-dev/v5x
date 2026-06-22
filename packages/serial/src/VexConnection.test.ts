@@ -1,7 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { AckType } from "./Vex";
+import {
+  AckType,
+  FileDownloadTarget,
+  FileVendor,
+  USER_FLASH_USR_CODE_START,
+} from "./Vex";
 import { V5SerialConnection } from "./VexConnection";
-import { SelectDashReplyD2HPacket } from "./VexPacket";
+import {
+  ExitFileTransferH2DPacket,
+  ExitFileTransferReplyD2HPacket,
+  InitFileTransferH2DPacket,
+  InitFileTransferReplyD2HPacket,
+  LinkFileH2DPacket,
+  ReadFileReplyD2HPacket,
+  SelectDashReplyD2HPacket,
+} from "./VexPacket";
 
 function connectionWithWriter() {
   const connection = new V5SerialConnection({} as Serial);
@@ -84,4 +97,172 @@ test("openScreen accepts its matching reply packet", async () => {
   connection.writeDataAsync = async () => reply;
 
   expect(await connection.openScreen(0, 1)).toBe(reply);
+});
+
+function initReply(windowSize: number, fileSize: number) {
+  const reply = Object.create(
+    InitFileTransferReplyD2HPacket.prototype,
+  ) as InitFileTransferReplyD2HPacket;
+  reply.windowSize = windowSize;
+  reply.fileSize = fileSize;
+  return reply;
+}
+
+function readReply(addr: number, bytes: number[]) {
+  const reply = Object.create(
+    ReadFileReplyD2HPacket.prototype,
+  ) as ReadFileReplyD2HPacket;
+  reply.addr = addr;
+  reply.length = bytes.length;
+  reply.buf = new Uint8Array(bytes).buffer;
+  return reply;
+}
+
+test("downloads accept short chunks, report completion, and exit", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const writes: object[] = [];
+  const replies = [
+    initReply(4, 5),
+    readReply(USER_FLASH_USR_CODE_START, [1, 2]),
+    readReply(USER_FLASH_USR_CODE_START + 2, [3, 4, 5]),
+    Object.create(
+      ExitFileTransferReplyD2HPacket.prototype,
+    ) as ExitFileTransferReplyD2HPacket,
+  ];
+  connection.writeDataAsync = async (packet) => {
+    writes.push(packet);
+    return replies.shift() ?? AckType.CDC2_NACK;
+  };
+  const progress: Array<[number, number]> = [];
+
+  const result = await connection.downloadFileToHost(
+    { filename: "test.bin", vendor: FileVendor.USER },
+    FileDownloadTarget.FILE_TARGET_QSPI,
+    (current, total) => progress.push([current, total]),
+  );
+
+  expect(result).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+  expect(progress).toEqual([
+    [2, 5],
+    [5, 5],
+  ]);
+  expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+});
+
+test("download failures still exit file transfer mode", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const writes: object[] = [];
+  const replies = [
+    initReply(4, 4),
+    readReply(USER_FLASH_USR_CODE_START + 1, [1, 2, 3, 4]),
+    Object.create(
+      ExitFileTransferReplyD2HPacket.prototype,
+    ) as ExitFileTransferReplyD2HPacket,
+  ];
+  connection.writeDataAsync = async (packet) => {
+    writes.push(packet);
+    return replies.shift() ?? AckType.CDC2_NACK;
+  };
+
+  await expect(
+    connection.downloadFileToHost({
+      filename: "test.bin",
+      vendor: FileVendor.USER,
+    }),
+  ).rejects.toThrow("returned address");
+  expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+});
+
+test("linked upload failures still exit file transfer mode", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const writes: object[] = [];
+  const replies = [
+    initReply(4, 4),
+    AckType.CDC2_NACK,
+    Object.create(
+      ExitFileTransferReplyD2HPacket.prototype,
+    ) as ExitFileTransferReplyD2HPacket,
+  ];
+  connection.writeDataAsync = async (packet) => {
+    writes.push(packet);
+    return replies.shift() ?? AckType.CDC2_NACK;
+  };
+
+  await expect(
+    connection.uploadFileToDevice({
+      filename: "test.bin",
+      buf: new Uint8Array([1, 2, 3, 4]),
+      downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+      autoRun: false,
+      linkedFile: {
+        filename: "cold.bin",
+        downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+        autoRun: false,
+      },
+    }),
+  ).rejects.toThrow("LinkFileH2DPacket failed");
+  expect(writes.at(-2)).toBeInstanceOf(LinkFileH2DPacket);
+  expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+});
+
+test("file transfers are serialized", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  let releaseFirstInit = () => {};
+  const firstInit = new Promise<void>((resolve) => {
+    releaseFirstInit = resolve;
+  });
+  let initCount = 0;
+  connection.writeDataAsync = async (packet) => {
+    if (packet instanceof InitFileTransferH2DPacket) {
+      initCount++;
+      if (initCount === 1) await firstInit;
+      return initReply(4, 0);
+    }
+    return Object.create(
+      ExitFileTransferReplyD2HPacket.prototype,
+    ) as ExitFileTransferReplyD2HPacket;
+  };
+
+  const first = connection.downloadFileToHost({
+    filename: "first.bin",
+    vendor: FileVendor.USER,
+  });
+  const second = connection.downloadFileToHost({
+    filename: "second.bin",
+    vendor: FileVendor.USER,
+  });
+  await Bun.sleep(0);
+  expect(initCount).toBe(1);
+
+  releaseFirstInit();
+  await first;
+  await second;
+  expect(initCount).toBe(2);
+});
+
+test("reader resynchronizes after leading garbage", async () => {
+  class ReadableConnection extends V5SerialConnection {
+    start(): Promise<void> {
+      return this.startReader();
+    }
+  }
+
+  const packet = new Uint8Array([0xaa, 0x55, 33, 8, 0, 0, 1, 2, 0, 0, 3, 4]);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array([9, 8, 7, ...packet]));
+    },
+  });
+  const connection = new ReadableConnection({} as Serial);
+  connection.reader = stream.getReader();
+  connection.writer = {
+    write: async () => {},
+    close: async () => {},
+    releaseLock: () => {},
+  } as unknown as WritableStreamDefaultWriter<unknown>;
+  const result = connection.query1();
+  const reading = connection.start();
+  expect(await result).not.toBeNull();
+  await connection.close();
+  await reading;
 });
