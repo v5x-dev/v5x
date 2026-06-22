@@ -120,7 +120,7 @@ export abstract class VexSerialDevice extends VexEventTarget {
 
   abstract connect(conn?: V5SerialConnection): Promise<boolean>;
 
-  abstract disconnect(): void;
+  abstract disconnect(): Promise<void>;
 }
 
 class V5SerialDeviceState {

@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "promise"],
+  "categories": {
+    "correctness": "off"
+  },
+  "rules": {
+    "no-empty": "error",
+    "promise/catch-or-return": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error"
+  },
+  "ignorePatterns": ["**/dist/**", "**/.astro/**"],
+  "env": {
+    "builtin": true
+  }
+}

@@ -107,6 +107,7 @@ export class VexSerialConnection extends VexEventTarget {
     try {
       await writer?.close();
     } catch {
+      // Continue cleanup even when the stream is already closed or errored.
     } finally {
       writer?.releaseLock();
     }
@@ -120,8 +121,11 @@ export class VexSerialConnection extends VexEventTarget {
           const { done } = await reader.read();
           if (done) break;
         }
-      } catch {}
+      } catch {
+        // Cancellation may leave the reader in an errored state.
+      }
     } catch {
+      // Continue cleanup when cancellation itself fails.
     } finally {
       reader?.releaseLock();
     }

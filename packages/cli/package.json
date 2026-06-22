@@ -9,12 +9,13 @@
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts --target bun --outfile ./dist/index.js",
+    "build": "bun build ./src/index.ts --target bun --sourcemap=linked --outdir ./dist --entry-naming=index.js",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit",
+    "lint": "oxlint src --type-aware",
     "test": "bun test",
     "prepack": "bun run build"
   },
@@ -28,5 +29,24 @@
     "cmd-table": "^1.6.0",
     "fflate": "^0.8.3",
     "sade": "^1.8.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/v5x-dev/v5x.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "v5",
+    "vex",
+    "vex-robotics",
+    "vex-v5",
+    "cli",
+    "robotics"
+  ],
+  "author": "qainguin <slimaster14@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/v5x-dev/v5x/issues"
+  },
+  "homepage": "https://docs.v5x.dev/cli/overview"
 }

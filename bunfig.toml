@@ -1,0 +1,4 @@
+[test]
+coverageSkipTestFiles = true
+coveragePathIgnorePatterns = ["**/dist/**"]
+coverageThreshold = { line = 0.55, function = 0.55 }
