@@ -139,12 +139,9 @@ export async function uploadFirmware(
       linkedFile: undefined,
     };
 
-    const result2 = await conn.uploadFileToDevice(
-      bootWriteRequest,
-      (c, t) => {
-        pcb("UPLOAD BOOT", c, t);
-      },
-    );
+    const result2 = await conn.uploadFileToDevice(bootWriteRequest, (c, t) => {
+      pcb("UPLOAD BOOT", c, t);
+    });
     if (!result2) return false;
 
     const bootDeadline = Date.now() + 120000;

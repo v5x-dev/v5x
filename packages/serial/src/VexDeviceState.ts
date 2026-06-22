@@ -16,7 +16,10 @@ import { type V5SerialConnection } from "./VexConnection";
 import { VexEventTarget } from "./VexEvent";
 import { VexFirmwareVersion } from "./VexFirmwareVersion";
 import { type ProgramIniConfig } from "./VexIniConfig";
-import { FileControlH2DPacket, FileControlReplyD2HPacket } from "./VexPacketModels";
+import {
+  FileControlH2DPacket,
+  FileControlReplyD2HPacket,
+} from "./VexPacketModels";
 import type { V5SerialDevice } from "./VexDevice";
 import * as firmware from "./VexFirmware";
 import * as transfers from "./VexTransfers";

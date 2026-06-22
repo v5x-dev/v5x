@@ -38,7 +38,9 @@ export async function getValue(
   const result = await state._instance.connection?.writeDataAsync(
     new ReadKeyValueH2DPacket(key),
   );
-  return result instanceof ReadKeyValueReplyD2HPacket ? result.value : undefined;
+  return result instanceof ReadKeyValueReplyD2HPacket
+    ? result.value
+    : undefined;
 }
 
 export async function setValue(
@@ -237,9 +239,7 @@ export async function uploadProgram(
 
         console.log("Transferring to download channel");
 
-        const p1 = await device.radio.changeChannel(
-          RadioChannelType.DOWNLOAD,
-        );
+        const p1 = await device.radio.changeChannel(RadioChannelType.DOWNLOAD);
         if (!p1) return false;
         switchedToDownload = true;
 

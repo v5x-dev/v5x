@@ -15,11 +15,7 @@ import {
   type SelectDashScreen,
 } from "./Vex";
 import { VexFirmwareVersion } from "./VexFirmwareVersion";
-import {
-  DeviceBoundPacket,
-  HostBoundPacket,
-  Packet,
-} from "./VexPacketBase";
+import { DeviceBoundPacket, HostBoundPacket, Packet } from "./VexPacketBase";
 import { PacketEncoder, encodeFixedText } from "./VexPacketEncoder";
 
 const textEncoder = new TextEncoder();
