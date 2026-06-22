@@ -6,11 +6,11 @@ Read the full documentation at [docs.v5x.dev](https://docs.v5x.dev).
 
 ## Packages
 
-### [@v5x/cli](https://github.com/beanarchystudios/v5x/tree/main/packages/cli)
+### [@v5x/cli](https://github.com/v5x-dev/v5x/tree/main/packages/cli)
 
 The CLI package is the main command-line interface for interacting with the v5x system. It is heavily inspired by [cargo-v5](https://github.com/vexide/cargo-v5) in the vexide ecosystem, but it works for every type of v5 program.
 
-### [@v5x/serial](https://github.com/beanarchystudios/v5x/tree/main/packages/serial)
+### [@v5x/serial](https://github.com/v5x-dev/v5x/tree/main/packages/serial)
 
 This package is the low-level foundation that powers the CLI.
 
