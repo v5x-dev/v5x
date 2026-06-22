@@ -1,4 +1,12 @@
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rename,
+  rm,
+  rmdir,
+  stat,
+} from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { unzipSync } from "fflate";
 
@@ -8,6 +16,17 @@ interface ProsRelease {
   tag: string;
   archiveUrl: string;
 }
+
+interface DestinationReservation {
+  created: boolean;
+  device: bigint;
+  inode: bigint;
+}
+
+const FETCH_TIMEOUT_MS = 30_000;
+const RELEASE_METADATA_LIMIT = 1_000_000;
+const PROS_ARCHIVE_LIMIT = 64 * 1024 * 1024;
+const PROS_EXTRACTED_LIMIT = 256 * 1024 * 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -21,12 +40,96 @@ function validateProjectName(name: string): void {
   }
 }
 
-async function prepareDirectory(path: string): Promise<void> {
-  await mkdir(path, { recursive: true });
-  const entries = await readdir(path);
-  if (entries.length !== 0) {
+function hasErrorCode(error: unknown, code: string): boolean {
+  return isRecord(error) && error.code === code;
+}
+
+async function reserveDestination(
+  path: string,
+): Promise<DestinationReservation> {
+  let created = false;
+  try {
+    await mkdir(path);
+    created = true;
+  } catch (error) {
+    if (!hasErrorCode(error, "EEXIST")) throw error;
+  }
+
+  const destination = await stat(path, { bigint: true }).catch(() => undefined);
+  if (
+    destination === undefined ||
+    !destination.isDirectory() ||
+    (await readdir(path)).length !== 0
+  ) {
     throw new Error(`project directory is not empty: ${path}`);
   }
+  return {
+    created,
+    device: destination.dev,
+    inode: destination.ino,
+  };
+}
+
+async function removeOwnedReservation(
+  path: string,
+  reservation: DestinationReservation,
+): Promise<void> {
+  if (!reservation.created) return;
+  const destination = await stat(path, { bigint: true }).catch(() => undefined);
+  if (
+    destination?.isDirectory() &&
+    destination.dev === reservation.device &&
+    destination.ino === reservation.inode
+  ) {
+    await rmdir(path).catch(() => undefined);
+  }
+}
+
+async function fetchBytes(
+  url: string,
+  description: string,
+  limit: number,
+  init?: RequestInit,
+): Promise<Uint8Array> {
+  const response = await fetch(url, {
+    ...init,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`failed to ${description} (${response.status})`);
+  }
+
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > limit) {
+    throw new Error(`${description} exceeds the ${limit}-byte size limit`);
+  }
+
+  if (response.body === null) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > limit) {
+        await reader.cancel();
+        throw new Error(`${description} exceeds the ${limit}-byte size limit`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 async function writeFiles(
@@ -47,17 +150,13 @@ async function writeFiles(
 }
 
 async function latestProsRelease(): Promise<ProsRelease> {
-  const response = await fetch(
+  const bytes = await fetchBytes(
     "https://api.github.com/repos/purduesigbots/pros/releases/latest",
+    "find the latest PROS kernel",
+    RELEASE_METADATA_LIMIT,
     { headers: { Accept: "application/vnd.github+json" } },
   );
-  if (!response.ok) {
-    throw new Error(
-      `failed to find the latest PROS kernel (${response.status})`,
-    );
-  }
-
-  const release: unknown = await response.json();
+  const release: unknown = JSON.parse(new TextDecoder().decode(bytes));
   if (!isRecord(release) || typeof release.tag_name !== "string") {
     throw new Error("GitHub returned invalid PROS release metadata");
   }
@@ -80,12 +179,23 @@ async function latestProsRelease(): Promise<ProsRelease> {
 
 async function createProsProject(path: string, name: string): Promise<void> {
   const release = await latestProsRelease();
-  const response = await fetch(release.archiveUrl);
-  if (!response.ok) {
-    throw new Error(`failed to download PROS kernel ${release.tag}`);
-  }
-
-  const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
+  const bytes = await fetchBytes(
+    release.archiveUrl,
+    `download PROS kernel ${release.tag}`,
+    PROS_ARCHIVE_LIMIT,
+  );
+  let extractedLength = 0;
+  const archive = unzipSync(bytes, {
+    filter(file) {
+      extractedLength += file.originalSize;
+      if (extractedLength > PROS_EXTRACTED_LIMIT) {
+        throw new Error(
+          `PROS kernel archive exceeds the ${PROS_EXTRACTED_LIMIT}-byte extracted size limit`,
+        );
+      }
+      return true;
+    },
+  });
   const templateBytes = archive["template.pros"];
   if (templateBytes === undefined) {
     throw new Error("the PROS kernel archive does not contain template.pros");
@@ -184,16 +294,43 @@ export async function createProject(
 ): Promise<string> {
   validateProjectName(name);
   const path = resolve(inputPath);
-  const existed =
-    (await stat(path).catch(() => undefined))?.isDirectory() ?? false;
-  await prepareDirectory(path);
+  const parent = dirname(path);
+  await mkdir(parent, { recursive: true });
+  const stagingPath = await mkdtemp(join(parent, `.${basename(path)}.v5x-`));
+  let reservation: DestinationReservation | undefined;
 
   try {
-    if (toolchain === "pros") await createProsProject(path, name);
-    else await createVexideProject(path, name);
+    reservation = await reserveDestination(path);
+    if (toolchain === "pros") await createProsProject(stagingPath, name);
+    else await createVexideProject(stagingPath, name);
+
+    try {
+      await rename(stagingPath, path);
+    } catch (error) {
+      const destination = await stat(path).catch(() => undefined);
+      if (destination?.isDirectory() && (await readdir(path)).length === 0) {
+        // Windows cannot replace an existing empty directory with rename().
+        // rmdir() is atomic and fails if another process populated the directory.
+        await rmdir(path);
+        try {
+          await rename(stagingPath, path);
+        } catch (publishError) {
+          await mkdir(path).catch(() => undefined);
+          throw publishError;
+        }
+      } else if (destination !== undefined) {
+        throw new Error(`project directory is not empty: ${path}`, {
+          cause: error,
+        });
+      } else {
+        throw error;
+      }
+    }
   } catch (error) {
-    await rm(path, { recursive: true, force: true });
-    if (existed) await mkdir(path, { recursive: true });
+    await rm(stagingPath, { recursive: true, force: true });
+    if (reservation !== undefined) {
+      await removeOwnedReservation(path, reservation);
+    }
     throw error;
   }
 
