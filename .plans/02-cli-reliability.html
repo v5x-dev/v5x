@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Plan 02 — CLI reliability</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <a class="back" href="index.html">← All plans</a>
+      <h1>Plan 02 — CLI reliability and UX</h1>
+      <p class="meta">Goal: align the Web Serial adapter with runtime reality and reject unusable inputs before expensive work.</p>
+
+      <article class="work-item">
+        <h2>1. Correct stream lifecycle modeling</h2>
+        <p><strong>File:</strong> <code>packages/cli/src/adapter.ts</code></p>
+        <ol>
+          <li>Make readable and writable streams nullable while a port is closed.</li>
+          <li>Remove casts that turn null into non-null stream types.</li>
+          <li>Update the shared serial interfaces or use the platform Web Serial declarations directly where possible.</li>
+          <li>Move stream nulling and listener removal into <code>finally</code> so native close errors cannot leave an apparently open adapter.</li>
+          <li>Define and test how native data/error events behave after cancellation.</li>
+        </ol>
+        <p><strong>Acceptance:</strong> TypeScript and runtime agree about closed ports; close failures still leave reusable internal state.</p>
+      </article>
+
+      <article class="work-item">
+        <h2>2. Validate upload artifacts early</h2>
+        <p><strong>Files:</strong> <code>utils/upload.ts</code>, <code>utils/project.ts</code></p>
+        <ol>
+          <li>Stat artifacts before reading them.</li>
+          <li>Reject empty files and files above the applicable protocol/target size limit.</li>
+          <li>Validate both hot and cold PROS packages.</li>
+          <li>Report the offending path, actual size, and supported limit.</li>
+          <li>Only connect to hardware after all project inspection and local validation succeeds.</li>
+        </ol>
+        <p><strong>Acceptance:</strong> invalid artifacts fail without opening a serial port or loading the entire file.</p>
+      </article>
+
+      <article class="work-item">
+        <h2>3. Generate valid projects</h2>
+        <p><strong>Files:</strong> <code>utils/scaffold.ts</code>, <code>commands/new.ts</code>, <code>commands/init.ts</code></p>
+        <ol>
+          <li>Separate destination path, display name, Cargo package name, and PROS remote name.</li>
+          <li>Validate names using toolchain-specific rules and return actionable errors.</li>
+          <li>Reject path separators when the argument is documented as a name; use an explicit path option for nested destinations.</li>
+          <li>Keep staging, reservation, and concurrent-write protections intact.</li>
+          <li>Add fixture validation for generated Cargo TOML and PROS metadata.</li>
+        </ol>
+        <p><strong>Acceptance:</strong> every accepted scaffold can be parsed and inspected as its requested project type.</p>
+      </article>
+
+      <article class="work-item">
+        <h2>4. Normalize command output</h2>
+        <p><strong>Files:</strong> <code>commands/devices.ts</code>, <code>commands/dir.ts</code>, upload progress code</p>
+        <ol>
+          <li>Reuse the serial package’s firmware version model instead of duplicating bit decoding.</li>
+          <li>Choose and document UTC or local timestamps; format using an explicit locale and timezone policy.</li>
+          <li>Handle unknown smart-device values with a stable fallback label.</li>
+          <li>Keep machine-readable data on stdout and progress/diagnostics on stderr.</li>
+          <li>Disable terminal control sequences when output is not a TTY where applicable.</li>
+        </ol>
+        <p><strong>Acceptance:</strong> output is deterministic enough for snapshots and piping, with no library-owned logging mixed into it.</p>
+      </article>
+
+      <h2>Required tests</h2>
+      <ul>
+        <li>Closed, open, errored, and reopened adapter stream states.</li>
+        <li>Native close rejection still clears adapter state.</li>
+        <li>Empty and oversized hot/cold artifacts.</li>
+        <li>Invalid Cargo/PROS names and nested-path attempts.</li>
+        <li>Unknown device types and deterministic date/version formatting.</li>
+      </ul>
+    </main>
+  </body>
+</html>

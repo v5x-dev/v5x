@@ -50,20 +50,33 @@ export abstract class VexSerialDevice extends VexEventTarget {
 
 export class V5SerialDeviceState {
   _instance: V5SerialDevice;
-  private fileTransferDepth = 0;
+  /**
+   * Counter used only to pause automatic refresh while a file transfer
+   * is in flight. This is not a mutex: serialisation of transfer
+   * operations lives on the {@link V5SerialConnection} transaction
+   * queue. The counter is exposed via {@link isFileTransferring} so the
+   * refresh loop can skip work during transfers.
+   */
+  private refreshPauseDepth = 0;
 
-  get _isFileTransferring(): boolean {
-    return this.fileTransferDepth > 0;
+  get isFileTransferring(): boolean {
+    return this.refreshPauseDepth > 0;
   }
 
+  /**
+   * Increment the refresh-pause depth, run the operation, and decrement
+   * the depth again. The actual transfer mutex lives on the connection,
+   * so this method does not serialise anything; it only signals the
+   * device that a transfer is in progress so refresh polling is paused.
+   */
   async withFileTransfer<Result>(
     operation: () => Promise<Result>,
   ): Promise<Result> {
-    this.fileTransferDepth++;
+    this.refreshPauseDepth++;
     try {
       return await operation();
     } finally {
-      this.fileTransferDepth--;
+      this.refreshPauseDepth--;
     }
   }
 
@@ -135,6 +148,26 @@ export class V5Brain {
     return this.state.brain.activeProgram;
   }
 
+  /**
+   * @deprecated Setting this property dispatches a fire-and-forget
+   * request that cannot be awaited. Use {@link setActiveProgram}
+   * instead, which returns a promise that resolves to `false` when
+   * the device refuses or is disconnected.
+   */
+  set activeProgram(value) {
+    void this.setActiveProgram(value as SlotNumber | 0).catch(() => {
+      // Preserve the legacy fire-and-forget contract; callers who
+      // need rejection handling should migrate to setActiveProgram().
+    });
+  }
+
+  /**
+   * Load a program slot on the brain, or stop the currently running
+   * program when called with `0`. Returns `true` when the device
+   * acknowledges the command and the local snapshot is updated.
+   * Returns `false` when the device refuses, the request times out,
+   * or no connection is currently open.
+   */
   async setActiveProgram(value: SlotNumber | 0): Promise<boolean> {
     if (this.state.brain.activeProgram === value) return true;
 
@@ -146,6 +179,43 @@ export class V5Brain {
     if (result == null) return false;
 
     this.state.brain.activeProgram = value;
+    return true;
+  }
+
+  /**
+   * Request that the brain start running the program in the given slot.
+   * Returns `true` when the device acknowledges the command and the
+   * local snapshot is updated. Returns `false` when the device refuses,
+   * the request times out, or no connection is currently open.
+   */
+  async runProgram(slot: SlotNumber | string): Promise<boolean> {
+    const conn = this.state._instance.connection;
+    if (conn == null) return false;
+
+    const reply = await conn.runProgram(slot);
+    if (reply == null) return false;
+
+    const slotNumber =
+      typeof slot === "string" ? Number.parseInt(slot, 10) : slot;
+    if (Number.isFinite(slotNumber))
+      this.state.brain.activeProgram = slotNumber;
+    return true;
+  }
+
+  /**
+   * Request that the brain stop the currently running program. Returns
+   * `true` when the device acknowledges the command and the local
+   * snapshot is updated. Returns `false` when the device refuses, the
+   * request times out, or no connection is currently open.
+   */
+  async stopProgram(): Promise<boolean> {
+    const conn = this.state._instance.connection;
+    if (conn == null) return false;
+
+    const reply = await conn.stopProgram();
+    if (reply == null) return false;
+
+    this.state.brain.activeProgram = 0;
     return true;
   }
 

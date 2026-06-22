@@ -7,13 +7,19 @@ import {
 } from "./Vex";
 import { V5SerialConnection } from "./VexConnection";
 import {
+  type HostBoundPacket,
+  EraseFileH2DPacket,
+  EraseFileReplyD2HPacket,
   ExitFileTransferH2DPacket,
   ExitFileTransferReplyD2HPacket,
+  FileClearUpH2DPacket,
+  FileClearUpReplyD2HPacket,
   InitFileTransferH2DPacket,
   InitFileTransferReplyD2HPacket,
   LinkFileH2DPacket,
   LinkFileReplyD2HPacket,
   ReadFileReplyD2HPacket,
+  ScreenCaptureReplyD2HPacket,
   SelectDashReplyD2HPacket,
   WriteFileH2DPacket,
   WriteFileReplyD2HPacket,
@@ -345,4 +351,490 @@ test("reader resynchronizes after leading garbage", async () => {
   expect(await result).not.toBeNull();
   await connection.close();
   await reading;
+});
+
+describe("whole-program upload atomicity", () => {
+  test("INI, cold, and binary uploads share one transaction", async () => {
+    const connection = new V5SerialConnection({} as Serial);
+    const writes: object[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let releaseFirstInit = () => {};
+    const firstInitGate = new Promise<void>((resolve) => {
+      releaseFirstInit = resolve;
+    });
+    let initCount = 0;
+    connection.writeDataAsync = async (packet) => {
+      if (packet instanceof InitFileTransferH2DPacket) {
+        initCount++;
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        if (initCount === 1) {
+          await firstInitGate;
+        }
+        inFlight--;
+        return initReply(4, 0);
+      }
+      if (packet instanceof LinkFileH2DPacket) {
+        return Object.create(
+          LinkFileReplyD2HPacket.prototype,
+        ) as LinkFileReplyD2HPacket;
+      }
+      if (packet instanceof WriteFileH2DPacket) {
+        return Object.create(
+          WriteFileReplyD2HPacket.prototype,
+        ) as WriteFileReplyD2HPacket;
+      }
+      if (packet instanceof ExitFileTransferH2DPacket) {
+        return Object.create(
+          ExitFileTransferReplyD2HPacket.prototype,
+        ) as ExitFileTransferReplyD2HPacket;
+      }
+      writes.push(packet);
+      return Object.create(
+        ExitFileTransferReplyD2HPacket.prototype,
+      ) as ExitFileTransferReplyD2HPacket;
+    };
+
+    const { ProgramIniConfig } = await import("./VexIniConfig");
+    const iniConfig = new ProgramIniConfig();
+    iniConfig.baseName = "robot";
+
+    const upload = connection.uploadProgramToDevice(
+      iniConfig,
+      new Uint8Array([1, 2, 3, 4]),
+      new Uint8Array([9, 9, 9, 9]),
+      () => {},
+    );
+    await Bun.sleep(0);
+    expect(initCount).toBe(1);
+
+    const concurrent = connection.downloadFileToHost({
+      filename: "concurrent.bin",
+      vendor: FileVendor.USER,
+    });
+    await Bun.sleep(0);
+    expect(initCount).toBe(1);
+
+    releaseFirstInit();
+    expect(await upload).toBe(true);
+    expect(await concurrent).toEqual(new Uint8Array(0));
+    expect(initCount).toBe(4);
+    expect(maxInFlight).toBe(1);
+  });
+});
+
+describe("transfer cleanup on every failure point", () => {
+  function buildExitTrackingConnection() {
+    const connection = new V5SerialConnection({} as Serial);
+    const writes: object[] = [];
+    let queue: Array<HostBoundPacket | AckType> = [];
+    connection.writeDataAsync = async (packet) => {
+      writes.push(packet);
+      const next = queue.shift();
+      if (next === undefined) return AckType.CDC2_NACK;
+      return next;
+    };
+    return {
+      connection,
+      writes,
+      pushReplies: (...replies: Array<HostBoundPacket | AckType>) => {
+        queue.push(...replies);
+      },
+    };
+  }
+
+  function nack() {
+    return AckType.CDC2_NACK;
+  }
+
+  function exitReply() {
+    return Object.create(
+      ExitFileTransferReplyD2HPacket.prototype,
+    ) as ExitFileTransferReplyD2HPacket;
+  }
+
+  function writeReply() {
+    return Object.create(
+      WriteFileReplyD2HPacket.prototype,
+    ) as WriteFileReplyD2HPacket;
+  }
+
+  function initReply() {
+    return Object.create(
+      InitFileTransferReplyD2HPacket.prototype,
+    ) as InitFileTransferReplyD2HPacket;
+  }
+
+  test("upload link failure still exits", async () => {
+    const { connection, writes, pushReplies } = buildExitTrackingConnection();
+    pushReplies(initReply(), nack(), exitReply());
+    await expect(
+      connection.uploadFileToDevice({
+        filename: "f.bin",
+        buf: new Uint8Array([1]),
+        downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+        autoRun: false,
+        linkedFile: {
+          filename: "cold.bin",
+          downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+          autoRun: false,
+        },
+      }),
+    ).rejects.toThrow("LinkFileH2DPacket");
+    expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+  });
+
+  test("upload write failure still exits", async () => {
+    const { connection, writes, pushReplies } = buildExitTrackingConnection();
+    pushReplies(initReply(), nack(), exitReply());
+    await expect(
+      connection.uploadFileToDevice({
+        filename: "f.bin",
+        buf: new Uint8Array([1, 2, 3, 4]),
+        downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+        autoRun: false,
+      }),
+    ).rejects.toThrow("WriteFileReplyD2DPacket");
+    expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+  });
+
+  test("download read failure still exits", async () => {
+    const { connection, writes, pushReplies } = buildExitTrackingConnection();
+    pushReplies(
+      Object.assign(Object.create(InitFileTransferReplyD2HPacket.prototype), {
+        windowSize: 4,
+        fileSize: 4,
+        crc32: 0,
+      }) as InitFileTransferReplyD2HPacket,
+      nack(),
+      exitReply(),
+    );
+    await expect(
+      connection.downloadFileToHost({
+        filename: "f.bin",
+        vendor: FileVendor.USER,
+      }),
+    ).rejects.toThrow();
+    expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+  });
+
+  test("remove file failure still exits transfer mode", async () => {
+    const { connection, writes, pushReplies } = buildExitTrackingConnection();
+    pushReplies(nack(), exitReply());
+    const result = await connection.removeFile("user-file.bin");
+    expect(result).toBe(false);
+    expect(writes[0]).toBeInstanceOf(EraseFileH2DPacket);
+    expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+  });
+
+  test("removeAllFiles failure still exits transfer mode", async () => {
+    const { connection, writes, pushReplies } = buildExitTrackingConnection();
+    pushReplies(nack(), exitReply());
+    const result = await connection.removeAllFiles();
+    expect(result).toBe(false);
+    expect(writes[0]).toBeInstanceOf(FileClearUpH2DPacket);
+    expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+  });
+
+  test("init reply is required before transfer mode is entered", async () => {
+    const { connection, writes, pushReplies } = buildExitTrackingConnection();
+    pushReplies(nack() as unknown as HostBoundPacket);
+    await expect(
+      connection.downloadFileToHost({
+        filename: "f.bin",
+        vendor: FileVendor.USER,
+      }),
+    ).rejects.toThrow("InitFileTransferH2DPacket");
+    // The device never acknowledged the init, so no exit is sent.
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toBeInstanceOf(InitFileTransferH2DPacket);
+    // The depth counter must still drop back to zero so refresh resumes.
+    expect(connection.isFileTransferring).toBe(false);
+  });
+
+  test("use existing WriteFileReply reply shape to avoid surprise", () => {
+    expect(writeReply()).toBeInstanceOf(WriteFileReplyD2HPacket);
+  });
+});
+
+test("captureScreenSetup rejects NACK and timeout replies", async () => {
+  const cases: AckType[] = [
+    AckType.CDC2_NACK,
+    AckType.CDC2_NACK_FILE,
+    AckType.CDC2_NACK_FUNC,
+    AckType.CDC2_NACK_INIT,
+    AckType.TIMEOUT,
+  ];
+  for (const reply of cases) {
+    const connection = new V5SerialConnection({} as Serial);
+    connection.writeDataAsync = async () => reply;
+    expect(await connection.captureScreenSetup()).toBeNull();
+  }
+});
+
+test("captureScreenSetup accepts the matching reply packet", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const reply = Object.create(
+    ScreenCaptureReplyD2HPacket.prototype,
+  ) as ScreenCaptureReplyD2HPacket;
+  connection.writeDataAsync = async () => reply;
+  expect(await connection.captureScreenSetup()).toBe(reply);
+});
+
+describe("lifecycle hardening", () => {
+  function buildLifecycleConnection() {
+    const listeners: Record<string, Array<() => void>> = {};
+    let readable: ReadableStream<Uint8Array> | null = null;
+    let writable: WritableStream<Uint8Array> | null = null;
+    const port = {
+      get readable() {
+        return readable;
+      },
+      get writable() {
+        return writable;
+      },
+      getInfo: () => ({ usbVendorId: 10376, usbProductId: 1281 }),
+      open: async () => {
+        readable = new ReadableStream<Uint8Array>();
+        writable = new WritableStream<Uint8Array>();
+      },
+      close: async () => {
+        readable = null;
+        writable = null;
+      },
+      addEventListener: (name: string, cb: () => void) => {
+        (listeners[name] ??= []).push(cb);
+      },
+      removeEventListener: (name: string, cb: () => void) => {
+        const list = listeners[name];
+        if (list === undefined) return;
+        const idx = list.indexOf(cb);
+        if (idx >= 0) list.splice(idx, 1);
+      },
+    } as unknown as SerialPort;
+    const serial = {
+      getPorts: async () => [port],
+    } as unknown as Serial;
+    return { port, serial, listeners };
+  }
+
+  test("retained disconnect listener count is exactly one per open", async () => {
+    const { serial, listeners } = buildLifecycleConnection();
+    const connection = new V5SerialConnection(serial);
+    for (let i = 0; i < 3; i++) {
+      expect(await connection.open(0, false)).toBe(true);
+      expect((listeners["disconnect"] ?? []).length).toBe(1);
+      await connection.close();
+      expect((listeners["disconnect"] ?? []).length).toBe(0);
+    }
+  });
+
+  test("concurrent close calls await one cleanup and emit one event", async () => {
+    const { port, serial: _serial, listeners } = buildLifecycleConnection();
+    let closeCalls = 0;
+    let resolvePortClose = () => {};
+    const portCloseGate = new Promise<void>((resolve) => {
+      resolvePortClose = resolve;
+    });
+    let readable: ReadableStream<Uint8Array> | null = null;
+    let writable: WritableStream<Uint8Array> | null = null;
+    const wrappedPort = {
+      get readable() {
+        return readable;
+      },
+      get writable() {
+        return writable;
+      },
+      getInfo: port.getInfo,
+      open: async () => {
+        readable = new ReadableStream<Uint8Array>();
+        writable = new WritableStream<Uint8Array>();
+      },
+      close: async () => {
+        closeCalls++;
+        await portCloseGate;
+        readable = null;
+        writable = null;
+      },
+      addEventListener: port.addEventListener,
+      removeEventListener: port.removeEventListener,
+    } as unknown as SerialPort;
+    const wrappedSerial = {
+      getPorts: async () => [wrappedPort],
+    } as unknown as Serial;
+
+    const connection = new V5SerialConnection(wrappedSerial);
+    expect(await connection.open(0, false)).toBe(true);
+
+    let disconnects = 0;
+    connection.on("disconnected", () => disconnects++);
+
+    const first = connection.close();
+    const second = connection.close();
+    const third = connection.close();
+    await Bun.sleep(0);
+    expect(closeCalls).toBe(1);
+    resolvePortClose();
+    await Promise.all([first, second, third]);
+    expect(closeCalls).toBe(1);
+    expect(disconnects).toBe(1);
+    expect((listeners["disconnect"] ?? []).length).toBe(0);
+  });
+
+  test("close without an active connection is a no-op and emits no event", async () => {
+    const connection = new V5SerialConnection({} as Serial);
+    let disconnects = 0;
+    connection.on("disconnected", () => disconnects++);
+    await connection.close();
+    expect(disconnects).toBe(0);
+  });
+
+  test("reader, writer, and port are released in deterministic order", async () => {
+    const events: string[] = [];
+    const writer = {
+      write: async () => {},
+      close: async () => {
+        events.push("writer.close");
+      },
+      releaseLock: () => {
+        events.push("writer.releaseLock");
+      },
+    } as unknown as WritableStreamDefaultWriter<unknown>;
+    const reader = {
+      cancel: async () => {
+        events.push("reader.cancel");
+      },
+      read: async () => ({ done: true, value: undefined }),
+      releaseLock: () => {
+        events.push("reader.releaseLock");
+      },
+    } as unknown as ReadableStreamDefaultReader<unknown>;
+    const port = {
+      get readable() {
+        return new ReadableStream<Uint8Array>();
+      },
+      get writable() {
+        return new WritableStream<Uint8Array>();
+      },
+      getInfo: () => ({ usbVendorId: 10376, usbProductId: 1281 }),
+      open: async () => {},
+      close: async () => {
+        events.push("port.close");
+      },
+      addEventListener: () => {},
+    } as unknown as SerialPort;
+    const connection = new V5SerialConnection({
+      getPorts: async () => [port],
+    } as unknown as Serial);
+    connection.writer = writer;
+    connection.reader = reader;
+    connection.port = port;
+    // Bypass the private flag so the deterministic-close test can
+    // assert the disconnect event without going through `open()`.
+    (connection as unknown as { _wasConnected: boolean })._wasConnected = true;
+
+    await connection.close();
+    expect(events).toEqual([
+      "writer.close",
+      "writer.releaseLock",
+      "reader.cancel",
+      "reader.releaseLock",
+      "port.close",
+    ]);
+  });
+});
+
+describe("removeFile and removeAllFiles go through the transaction queue", () => {
+  test("removeFile waits for an in-flight upload", async () => {
+    const connection = new V5SerialConnection({} as Serial);
+    let releaseFirstInit = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseFirstInit = resolve;
+    });
+    let initCount = 0;
+    let eraseSeen = false;
+    connection.writeDataAsync = async (packet) => {
+      if (packet instanceof InitFileTransferH2DPacket) {
+        initCount++;
+        if (initCount === 1) await gate;
+        return initReply(4, 0);
+      }
+      if (packet instanceof EraseFileH2DPacket) {
+        eraseSeen = true;
+        return Object.create(
+          EraseFileReplyD2HPacket.prototype,
+        ) as EraseFileReplyD2HPacket;
+      }
+      if (packet instanceof WriteFileH2DPacket) {
+        return Object.create(
+          WriteFileReplyD2HPacket.prototype,
+        ) as WriteFileReplyD2HPacket;
+      }
+      // Cover the upload's ExitFileTransfer and removeFile's exit.
+      return Object.create(
+        ExitFileTransferReplyD2HPacket.prototype,
+      ) as ExitFileTransferReplyD2HPacket;
+    };
+
+    const upload = connection.uploadFileToDevice({
+      filename: "f.bin",
+      buf: new Uint8Array([1, 2, 3, 4]),
+      downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+      autoRun: false,
+    });
+    await Bun.sleep(0);
+    expect(initCount).toBe(1);
+
+    const removePromise = connection.removeFile("user.bin");
+    await Bun.sleep(0);
+    expect(eraseSeen).toBe(false);
+
+    releaseFirstInit();
+    expect(await upload).toBe(true);
+    expect(await removePromise).toBe(true);
+    expect(eraseSeen).toBe(true);
+  });
+
+  test("removeAllFiles waits for an in-flight download", async () => {
+    const connection = new V5SerialConnection({} as Serial);
+    let releaseFirstInit = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseFirstInit = resolve;
+    });
+    let initCount = 0;
+    let clearSeen = false;
+    connection.writeDataAsync = async (packet) => {
+      if (packet instanceof InitFileTransferH2DPacket) {
+        initCount++;
+        if (initCount === 1) await gate;
+        return initReply(4, 0);
+      }
+      if (packet instanceof FileClearUpH2DPacket) {
+        clearSeen = true;
+        return Object.create(
+          FileClearUpReplyD2HPacket.prototype,
+        ) as FileClearUpReplyD2HPacket;
+      }
+      return Object.create(
+        ExitFileTransferReplyD2HPacket.prototype,
+      ) as ExitFileTransferReplyD2HPacket;
+    };
+
+    const download = connection.downloadFileToHost({
+      filename: "f.bin",
+      vendor: FileVendor.USER,
+    });
+    await Bun.sleep(0);
+    expect(initCount).toBe(1);
+
+    const clearPromise = connection.removeAllFiles();
+    await Bun.sleep(0);
+    expect(clearSeen).toBe(false);
+
+    releaseFirstInit();
+    await download;
+    expect(await clearPromise).toBe(true);
+    expect(clearSeen).toBe(true);
+  });
 });
