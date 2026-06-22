@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Plan 01 — Serial correctness</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <a class="back" href="index.html">← All plans</a>
+      <h1>Plan 01 — Serial correctness and lifecycle</h1>
+      <p class="meta">Goal: make transfers atomic, async behavior observable, refreshes consistent, and connection cleanup deterministic.</p>
+
+      <article class="work-item">
+        <h2>1. Make protocol transfers atomic</h2>
+        <p><strong>Files:</strong> <code>VexConnection.ts</code>, <code>VexDeviceState.ts</code>, <code>VexTransfers.ts</code></p>
+        <ol>
+          <li>Expose one private connection-level transaction primitive that queues an entire operation.</li>
+          <li>Split upload/download implementations into locked public entry points and explicitly named unlocked helpers.</li>
+          <li>Hold one transaction across INI, cold, and binary program uploads.</li>
+          <li>Route erase, clear, screenshot setup/download, and other file-transfer-mode operations through the same queue.</li>
+          <li>Keep device-state transfer depth only for refresh pausing; rename it so it is not mistaken for a mutex.</li>
+          <li>Ensure every entered transfer mode exits from <code>finally</code>, preserving the original error when cleanup also fails.</li>
+        </ol>
+        <p><strong>Acceptance:</strong> concurrent program upload, read, erase, and capture operations execute in request order with no packet interleaving.</p>
+      </article>
+
+      <article class="work-item">
+        <h2>2. Replace fire-and-forget setters</h2>
+        <p><strong>Files:</strong> <code>VexDevice.ts</code>, <code>VexDeviceState.ts</code>, documentation pages referencing program or match state</p>
+        <ol>
+          <li>Add explicit methods such as <code>runProgram</code>, <code>stopProgram</code>, and <code>setMatchMode</code> returning promises.</li>
+          <li>Deprecate property setters for one release if compatibility is required; otherwise remove them in the next breaking version.</li>
+          <li>Update state only after the device acknowledges the command.</li>
+          <li>Document rejection behavior and disconnected-device behavior.</li>
+        </ol>
+        <p><strong>Acceptance:</strong> callers can await success and catch command failures; no rejected promise is detached.</p>
+      </article>
+
+      <article class="work-item">
+        <h2>3. Harden connection lifecycle</h2>
+        <p><strong>Files:</strong> <code>VexConnection.ts</code>, CLI <code>adapter.ts</code></p>
+        <ol>
+          <li>Store the port disconnect callback and remove it during close.</li>
+          <li>Represent in-progress close with a shared promise so concurrent callers await the same cleanup.</li>
+          <li>Clear reader, writer, port, callbacks, listeners, and flags in deterministic <code>finally</code> blocks.</li>
+          <li>Emit one disconnected event per connected lifecycle.</li>
+          <li>Remove the one-millisecond lock-release delay if stream release ordering can be expressed directly; otherwise isolate and document it.</li>
+        </ol>
+        <p><strong>Acceptance:</strong> repeated open/close cycles do not grow listener counts and concurrent closes resolve only after cleanup completes.</p>
+      </article>
+
+      <article class="work-item">
+        <h2>4. Make polling and refresh state safe</h2>
+        <p><strong>Files:</strong> <code>VexFirmware.ts</code>, <code>VexDevice.ts</code></p>
+        <ol>
+          <li>Replace interval-based <code>sleepUntil</code> with a loop that catches predicate errors, clears timers, and rejects.</li>
+          <li>Validate non-negative timeout and positive interval values.</li>
+          <li>Build a complete refresh snapshot before mutating public state.</li>
+          <li>Commit only after all required replies are received; on failure mark availability accurately without mixing refresh generations.</li>
+          <li>Prevent refresh work from continuing after disposal.</li>
+        </ol>
+        <p><strong>Acceptance:</strong> throwing predicates reject promptly and failed mid-refresh requests cannot expose partially updated state.</p>
+      </article>
+
+      <article class="work-item">
+        <h2>5. Bound firmware and screen operations</h2>
+        <p><strong>Files:</strong> <code>VexFirmware.ts</code>, <code>VexTransfers.ts</code></p>
+        <ol>
+          <li>Stream firmware downloads while enforcing compressed byte limits and validating declared content length.</li>
+          <li>Set per-entry and aggregate extracted limits before reading ZIP entry buffers.</li>
+          <li>Reject encrypted, empty, unexpected, or oversized images before upload.</li>
+          <li>Validate the screen-capture command reply before downloading the framebuffer.</li>
+          <li>Move controller channel status output from <code>console.log</code> to progress callbacks or events.</li>
+        </ol>
+        <p><strong>Acceptance:</strong> oversized firmware fails before allocation exceeds configured limits; a rejected screen request performs no download.</p>
+      </article>
+
+      <h2>Required regression tests</h2>
+      <ul>
+        <li>Whole-program upload blocks concurrent transfers until all related files finish.</li>
+        <li>Transfer cleanup runs after every failure point.</li>
+        <li>Predicate exceptions reject without leaked timers.</li>
+        <li>Repeated reconnects retain exactly one active disconnect listener.</li>
+        <li>Concurrent close calls await one cleanup.</li>
+        <li>Partial refresh failure preserves the previous coherent snapshot.</li>
+        <li>Firmware compressed and extracted size limits are enforced.</li>
+        <li>Screen capture rejects NACK and timeout replies.</li>
+      </ul>
+    </main>
+  </body>
+</html>
