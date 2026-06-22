@@ -3,6 +3,13 @@
   "theme": "mint",
   "name": "v5x",
   "description": "Build, upload, and manage VEX V5 programs with the v5x CLI and serial library.",
+  "seo": {
+    "indexing": "all",
+    "metatags": {
+      "robots": "index, follow",
+      "googlebot": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    }
+  },
   "colors": {
     "primary": "#5d5fef",
     "light": "#8587ff",

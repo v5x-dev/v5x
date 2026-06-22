@@ -1,6 +1,23 @@
 ---
 import "../styles/global.css";
 import { Moon, Sun } from "lucide-astro";
+
+const title = "v5x — VEX V5 development tools";
+const description =
+  "Open-source tools for building, uploading, and managing VEX V5 programs from the command line or JavaScript.";
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+const socialImageUrl = new URL("/social-card.png", Astro.site);
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "v5x",
+  description,
+  url: canonicalUrl.href,
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Linux, macOS, Windows",
+  license: "https://opensource.org/license/mit",
+  codeRepository: "https://github.com/v5x-dev/v5x",
+};
 ---
 
 <!doctype html>
@@ -9,9 +26,30 @@ import { Moon, Sun } from "lucide-astro";
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={canonicalUrl} />
     <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#ffffff" />
-    <title>v5x — modern v5 tools</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="v5x" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={socialImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="v5x — VEX V5 development tools" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImageUrl} />
+    <title>{title}</title>
+    <script
+      is:inline
+      type="application/ld+json"
+      set:html={JSON.stringify(structuredData)}
+    />
     <script is:inline>
       const savedTheme = localStorage.getItem("theme");
       const theme =
