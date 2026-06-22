@@ -1,5 +1,5 @@
-import { VexFirmwareVersion } from "./VexFirmwareVersion";
-import { type HostBoundPacket } from "./VexPacket";
+import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
+import { type HostBoundPacket } from "./VexPacket.js";
 
 export class PacketView extends DataView<ArrayBuffer> {
   position = 0;
