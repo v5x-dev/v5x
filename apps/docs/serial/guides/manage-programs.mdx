@@ -41,15 +41,15 @@ if (!uploaded) throw new Error("Upload failed");
 
 ## Start and stop a program
 
-Use the explicit promise-returning methods to start and stop programs.
-Both return a promise that resolves after the device acknowledges the
-command and rejects when the device NACKs, the request times out, or the
-connection is not currently open.
+Use `setActiveProgram` to load a slot or stop the running program. It
+resolves to `true` when the device acknowledges the command and to
+`false` when the device NACKs, the request times out, or the connection
+is not currently open.
 
 ```ts
-await device.brain.runProgram(1); // run the program in slot 1
-await device.brain.stopProgram(); // stop the currently running program
+await device.brain.setActiveProgram(1); // run the program in slot 1
+await device.brain.setActiveProgram(0); // stop the currently running program
 ```
 
 The `device.brain.activeProgram` setter is deprecated and will be removed
-in a future breaking release. Use `runProgram` and `stopProgram` instead.
+in a future breaking release. Use `setActiveProgram` instead.

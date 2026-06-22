@@ -32,6 +32,8 @@ test("file and key-value operations report protocol outcomes", async () => {
   device.connection = {
     isConnected: true,
     writeDataAsync: async () => replies.shift(),
+    removeFile: async () => true,
+    removeAllFiles: async () => true,
     close: async () => {},
   } as unknown as V5SerialConnection;
 
@@ -80,7 +82,7 @@ test("screen capture converts the device framebuffer from BGRA to RGB", async ()
   device.connection = {
     isConnected: true,
     writeData,
-    downloadFileToHost: async () => framebuffer,
+    downloadFileToHostUnlocked: async () => framebuffer,
     close: async () => {},
   } as unknown as V5SerialConnection;
 

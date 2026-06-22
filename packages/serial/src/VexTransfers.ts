@@ -6,23 +6,25 @@ import {
   type IFileWriteRequest,
   FileDownloadTarget,
   RadioChannelType,
+  AckType,
 } from "./Vex";
 import { type ProgramIniConfig } from "./VexIniConfig";
 import type { V5SerialDeviceState } from "./VexDeviceState";
 import { sleep, sleepUntilAsync } from "./VexFirmware";
+import type { HostBoundPacket } from "./VexPacketBase";
 import {
   GetDirectoryEntryH2DPacket,
   GetDirectoryEntryReplyD2HPacket,
   GetDirectoryFileCountH2DPacket,
   GetDirectoryFileCountReplyD2HPacket,
   GetProgramSlotInfoH2DPacket,
-  GetProgramSlotInfoReplyD2DPacket,
+  GetProgramSlotInfoReplyD2HPacket,
   ReadKeyValueH2DPacket,
-  ReadKeyValueReplyD2DPacket,
+  ReadKeyValueReplyD2HPacket,
   ScreenCaptureH2DPacket,
-  ScreenCaptureReplyD2DPacket,
+  ScreenCaptureReplyD2HPacket,
   WriteKeyValueH2DPacket,
-  WriteKeyValueReplyD2DPacket,
+  WriteKeyValueReplyD2HPacket,
 } from "./VexPacketModels";
 
 export async function getValue(

@@ -19,7 +19,7 @@ const MAX_VEXOS_BYTES = 64 * 1024 * 1024;
 /** Maximum size accepted for any single extracted firmware image. */
 const MAX_FIRMWARE_IMAGE_BYTES = 32 * 1024 * 1024;
 /** Maximum total size accepted across all extracted firmware images. */
-const MAX_AGGREGATE_IMAGE_BYTES = 64 * 1024 * 1024;
+const MAX_AGGREGATE_IMAGE_BYTES = 48 * 1024 * 1024;
 
 export interface DownloadFileFromInternetOptions {
   /** Maximum total bytes to read from the response body. */

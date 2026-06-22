@@ -17,7 +17,11 @@ Access this view through `device.brain`.
 - `getValue()` and `setValue()`
 - `listFiles()`, `readFile()`, `writeFile()`, `removeFile()`, and `removeAllFiles()`
 - `listProgram()` and `uploadProgram()`
-- `runProgram(slot)`, `stopProgram()`, and `setMatchMode(mode)` to drive the brain's program and competition state. Each returns a promise that resolves after the device acknowledges the command and rejects on NACK, timeout, or disconnect.
+- `setActiveProgram(slot)`, `setMatchMode(mode)`, and the lower-level
+  `runProgram(slot)`/`stopProgram()` aliases to drive the brain's
+  program and competition state. Each returns a promise that resolves
+  to `true` when the device acknowledges the command and to `false`
+  on NACK, timeout, or disconnect.
 - `captureScreen()`
 - `uploadFirmware()`
 

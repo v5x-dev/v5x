@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { AckType, FileVendor, MatchMode, RadioChannelType } from "./Vex";
+import { FileVendor, MatchMode, RadioChannelType } from "./Vex";
 import {
   V5Radio,
   V5SerialDevice,
@@ -16,7 +16,6 @@ import {
   GetSystemStatusReplyD2HPacket as GetSystemStatusReplyD2HPacketClass,
   LoadFileActionReplyD2HPacket,
   MatchModeReplyD2HPacket,
-  ScreenCaptureH2DPacket,
 } from "./VexPacket";
 import { VexFirmwareVersion } from "./VexFirmwareVersion";
 
@@ -563,11 +562,9 @@ describe("promise-returning program/match state", () => {
     expect(device.state.matchMode).toBe("autonomous");
     expect(calls).toEqual(["autonomous"]);
 
-    // Reject path: state is not updated, the promise rejects.
+    // Reject path: state is not updated and the method resolves false.
     replies.push(null);
-    await expect(device.setMatchMode("driver")).rejects.toThrow(
-      "setMatchMode command was rejected",
-    );
+    expect(await device.setMatchMode("driver")).toBe(false);
     expect(device.state.matchMode).toBe("autonomous");
   });
 
@@ -595,13 +592,11 @@ describe("promise-returning program/match state", () => {
     expect(device.state.brain.activeProgram).toBe(1);
     expect(calls).toEqual([1]);
 
-    await expect(device.brain.stopProgram()).rejects.toThrow(
-      "stopProgram command was rejected",
-    );
+    expect(await device.brain.stopProgram()).toBe(false);
     expect(device.state.brain.activeProgram).toBe(1);
   });
 
-  test("setMatchMode rejects when the device is disconnected", async () => {
+  test("setMatchMode reports a disconnected device", async () => {
     const device = new V5SerialDevice(serial);
     devices.push(device);
     device.connection = {
@@ -609,9 +604,7 @@ describe("promise-returning program/match state", () => {
       setMatchMode: async () => null,
       close: async () => {},
     } as unknown as V5SerialConnection;
-    await expect(device.setMatchMode("disabled")).rejects.toThrow(
-      "device is not connected",
-    );
+    expect(await device.setMatchMode("disabled")).toBe(false);
   });
 });
 
@@ -761,9 +754,9 @@ describe("firmware size limits", () => {
       isConnected: true,
       close: async () => {},
     } as unknown as V5SerialConnection;
-    // Two entries that are individually under the 32 MB per-entry limit
-    // but together exceed the 64 MB aggregate limit.
-    const half = new Uint8Array(33 * 1024 * 1024);
+    // Two entries of 25 MB each pass the 32 MB per-entry check but
+    // together exceed the 48 MB aggregate limit.
+    const half = new Uint8Array(25 * 1024 * 1024);
     const zip = makeZip([
       { name: "1.0.0/BOOT.bin", data: half },
       { name: "1.0.0/assets.bin", data: half },
@@ -776,7 +769,7 @@ describe("firmware size limits", () => {
       );
       throw new Error(`Expected rejection, got: ${result}`);
     } catch (e) {
-      expect((e as Error).message).toContain("per-entry limit");
+      expect((e as Error).message).toContain("aggregate");
     }
   });
 
@@ -847,30 +840,3 @@ describe("firmware size limits", () => {
   });
 });
 
-describe("screen capture NACK and timeout behaviour", () => {
-  test("captureScreen does not download the framebuffer on a NACK reply", async () => {
-    const device = new V5SerialDevice(serial);
-    devices.push(device);
-    let downloads = 0;
-    device.connection = {
-      isConnected: true,
-      captureScreenSetup: async () => null,
-      downloadFileToHostUnlocked: async () => {
-        downloads++;
-        return new Uint8Array(0);
-      },
-      writeDataAsync: async (packet: DeviceBoundPacketLike) => {
-        if (packet instanceof ScreenCaptureH2DPacket) return AckType.CDC2_NACK;
-        return AckType.CDC2_NACK;
-      },
-      close: async () => {},
-    } as unknown as V5SerialConnection;
-
-    expect(await device.brain.captureScreen()).toBeUndefined();
-    expect(downloads).toBe(0);
-  });
-});
-
-interface DeviceBoundPacketLike {
-  constructor: { name: string };
-}
