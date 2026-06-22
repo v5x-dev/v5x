@@ -327,7 +327,7 @@ export class V5Brain {
 
     const programList: IProgramInfo[] = [];
     const iniFiles = files.filter(
-      (file) => file?.filename.search(/.ini$/) > 0 ?? false,
+      (file) => file?.filename?.endsWith(".ini") ?? false,
     );
 
     for (let i = 0; i < iniFiles.length; i++) {

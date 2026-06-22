@@ -1,7 +1,7 @@
 import { VexFirmwareVersion } from "./VexFirmwareVersion";
 import { type HostBoundPacket } from "./VexPacket";
 
-export class PacketView extends DataView {
+export class PacketView extends DataView<ArrayBuffer> {
   position = 0;
   littleEndianDefault = true;
 
@@ -14,7 +14,10 @@ export class PacketView extends DataView {
   }
 
   static fromPacket(packet: HostBoundPacket): PacketView {
-    const view = new PacketView(packet.data.buffer, packet.data.byteOffset);
+    const view = new PacketView(
+      packet.data.buffer as ArrayBuffer,
+      packet.data.byteOffset,
+    );
     view.position = packet.ackIndex + 1;
     return view;
   }
