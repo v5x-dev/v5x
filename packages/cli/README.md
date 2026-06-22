@@ -42,6 +42,9 @@ v5x new robot --type pros
 v5x new robot --type vexide
 ```
 
+The PROS template is pinned by CLI release and verified with SHA-256 before it
+is extracted.
+
 `build`, `clean`, `upload`, and `run` accept an optional project directory.
 Use `v5x <command> --help` for all options.
 

@@ -20,3 +20,5 @@ The compiler toolchain remains responsible for producing the program binary. v5x
 </Warning>
 
 Project creation currently supports PROS and vexide. Existing VEXcode C++ projects can be built and uploaded but cannot be scaffolded by `v5x new` or `v5x init`.
+
+The built-in PROS scaffold uses a version-pinned kernel template whose SHA-256 digest is verified before extraction. Template upgrades therefore ship as explicit CLI changes instead of changing generated projects implicitly.

@@ -25,7 +25,17 @@ jobs:
       - run: bun run test
       - run: bun run build
       - run: bun audit
-      - run: bun pm pack
-        working-directory: packages/serial
-      - run: bun pm pack
-        working-directory: packages/cli
+      - name: Pack and install published packages
+        run: |
+          set -euo pipefail
+          smoke_dir="$(mktemp -d)"
+          cd packages/serial
+          bun pm pack --destination "$smoke_dir"
+          cd ../cli
+          bun pm pack --destination "$smoke_dir"
+          cd "$smoke_dir"
+          bun init -y
+          bun add ./v5x-serial-*.tgz ./v5x-cli-*.tgz
+          bun -e 'import("@v5x/serial").then((module) => { if (typeof module.V5SerialDevice !== "function") throw new Error("missing V5SerialDevice export"); })'
+          node -e 'const module = require("@v5x/serial"); if (typeof module.V5SerialDevice !== "function") throw new Error("missing CommonJS export")'
+          ./node_modules/.bin/v5x --help

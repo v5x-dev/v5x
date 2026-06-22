@@ -774,7 +774,6 @@ export class V5SerialConnection extends VexSerialConnection {
     return result instanceof SendDashTouchReplyD2HPacket ? result : null;
   }
 
-  /** @param port untested */
   async openScreen(
     screen: number | SelectDashScreen,
     port: number,
