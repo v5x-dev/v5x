@@ -1,10 +1,32 @@
 import type { Sade } from "sade";
+import { Table } from "cmd-table";
+import chalk from "chalk";
 import { connectV5Device } from "../device";
+
+const WELL_KNOWN_KEYS = ["teamnumber", "robotname"] as const;
 
 export default function registerKvCommand(program: Sade) {
   program
-    .command("kv", "access a brain's system key/value configuration")
-    .action(() => {});
+    .command("kv", "list well-known system variables on a brain")
+    .action(async () => {
+      const device = await connectV5Device();
+
+      const table = new Table({ compact: true });
+      table.addColumn("key");
+      table.addColumn("value");
+
+      for (const key of WELL_KNOWN_KEYS) {
+        const value = await device.brain.getValue(key);
+        table.addRow([
+          key,
+          value === undefined || value === "" ? chalk.dim("(unset)") : value,
+        ]);
+      }
+
+      console.log(table.render());
+
+      await device.dispose();
+    });
 
   program
     .command("kv get <key>", "get the value of a system variable on a brain")
