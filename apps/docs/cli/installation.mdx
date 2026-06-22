@@ -12,6 +12,11 @@ v5x --version
 
 The CLI runs on Bun and must be available on your shell's `PATH`.
 
+The current CLI release supports Linux. Its native serial dependency does not
+currently provide working device discovery on macOS or Windows. The separate
+`@v5x/serial` browser library is available wherever the browser implements the
+Web Serial API; browser support is independent of CLI operating-system support.
+
 ## Install a toolchain
 
 <Tabs>
