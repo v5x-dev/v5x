@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "v5x",
-  "description": "Build, upload, and manage VEX V5 programs with the v5x CLI and serial library.",
+  "description": "Build, upload, and manage VEX V5 programs with the v5x CLI, serial library, and web bindings.",
   "seo": {
     "indexing": "all",
     "metatags": {
@@ -119,6 +119,20 @@
           {
             "group": "Help",
             "pages": ["serial/troubleshooting"]
+          }
+        ]
+      },
+      {
+        "tab": "Web",
+        "icon": "monitor",
+        "groups": [
+          {
+            "group": "Browser workflow",
+            "pages": ["web/overview", "web/errors"]
+          },
+          {
+            "group": "Framework bindings",
+            "pages": ["web/react", "web/svelte", "web/solid"]
           }
         ]
       }

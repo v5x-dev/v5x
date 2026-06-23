@@ -1,0 +1,24 @@
+---
+title: "Web"
+description: "Framework-neutral browser connection state for VEX V5 Web Serial apps."
+---
+
+`@v5x/web` is the browser workflow layer built on top of `@v5x/serial`. It owns Web Serial support detection, connection lifecycle, snapshot state, subscriptions, explicit refresh, and normalized errors.
+
+```ts
+import { createV5Client } from "@v5x/web";
+
+const client = createV5Client();
+
+client.subscribe(() => {
+  console.log(client.getSnapshot());
+});
+
+await client.connect();
+```
+
+The package has no required React, Svelte, or Solid dependency. Use it directly for vanilla browser code, or import a framework binding from `@v5x/web/react`, `@v5x/web/svelte`, or `@v5x/web/solid` when your app already uses that framework.
+
+Web Serial requires a browser that implements the API and a secure context such as HTTPS or `localhost`. Browser permission prompts must be triggered from a user gesture, so call `connect()` from a click or similar interaction.
+
+`@v5x/web` does not replace `@v5x/serial`; it builds a small application-state contract on top of the serial device API.

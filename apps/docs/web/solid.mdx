@@ -1,0 +1,39 @@
+---
+title: "Solid"
+description: "Use the V5 web client from Solid signals."
+---
+
+`@v5x/web/solid` provides a provider plus signal helpers backed by `@v5x/web`.
+
+```tsx
+import {
+  V5Provider,
+  createV5Connection,
+  createV5Snapshot,
+} from "@v5x/web/solid";
+
+function DeviceButton() {
+  const snapshot = createV5Snapshot();
+  const connection = createV5Connection();
+
+  return (
+    <button
+      onClick={() =>
+        snapshot().connected ? connection.disconnect() : connection.connect()
+      }
+    >
+      {snapshot().connected ? "Disconnect" : "Connect"}
+    </button>
+  );
+}
+
+export function App() {
+  return (
+    <V5Provider>
+      <DeviceButton />
+    </V5Provider>
+  );
+}
+```
+
+`createV5Snapshot()` mirrors the client snapshot into a Solid signal and automatically unsubscribes when its owner is cleaned up.
