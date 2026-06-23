@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { detectProgramType } from "./detect";
@@ -8,6 +8,8 @@ import {
   findProgramArtifact,
   findProgramArtifacts,
   inspectProject,
+  PROGRAM_ARTIFACT_SIZE_LIMIT,
+  validateProgramArtifacts,
 } from "./project";
 
 const temporaryDirectories: string[] = [];
@@ -115,4 +117,43 @@ test("rejects an incomplete PROS package", async () => {
   };
 
   expect(findProgramArtifacts(project)).rejects.toThrow("cold package");
+});
+
+test("rejects empty hot artifacts before reading them", async () => {
+  const path = await temporaryDirectory();
+  const hot = join(path, "program.bin");
+  await writeFile(hot, "");
+
+  await expect(validateProgramArtifacts({ hot })).rejects.toThrow(
+    `program hot artifact is empty: ${hot}`,
+  );
+});
+
+test("rejects oversized hot artifacts with the supported limit", async () => {
+  const path = await temporaryDirectory();
+  const hot = join(path, "program.bin");
+  await writeFile(hot, "x");
+  await truncate(hot, PROGRAM_ARTIFACT_SIZE_LIMIT + 1);
+
+  await expect(validateProgramArtifacts({ hot })).rejects.toThrow(
+    `program hot artifact ${hot} is ${PROGRAM_ARTIFACT_SIZE_LIMIT + 1} bytes; supported limit is ${PROGRAM_ARTIFACT_SIZE_LIMIT} bytes`,
+  );
+});
+
+test("rejects empty and oversized PROS cold artifacts", async () => {
+  const path = await temporaryDirectory();
+  const hot = join(path, "hot.package.bin");
+  const cold = join(path, "cold.package.bin");
+  await writeFile(hot, "hot");
+  await writeFile(cold, "");
+
+  await expect(validateProgramArtifacts({ hot, cold })).rejects.toThrow(
+    `program cold artifact is empty: ${cold}`,
+  );
+
+  await writeFile(cold, "x");
+  await truncate(cold, PROGRAM_ARTIFACT_SIZE_LIMIT + 1);
+  await expect(validateProgramArtifacts({ hot, cold })).rejects.toThrow(
+    `program cold artifact ${cold} is ${PROGRAM_ARTIFACT_SIZE_LIMIT + 1} bytes; supported limit is ${PROGRAM_ARTIFACT_SIZE_LIMIT} bytes`,
+  );
 });

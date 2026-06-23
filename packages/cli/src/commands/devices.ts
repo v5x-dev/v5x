@@ -1,7 +1,7 @@
 import type { Sade } from "sade";
 import { connectV5Device } from "../device";
 import { Table } from "cmd-table";
-import { SmartDeviceType } from "@v5x/serial";
+import { SmartDeviceType, VexFirmwareVersion } from "@v5x/serial";
 
 export const SMART_DEVICE_LABELS: Record<number, string> = {
   [SmartDeviceType.EMPTY]: "empty",
@@ -26,12 +26,25 @@ export const SMART_DEVICE_LABELS: Record<number, string> = {
   [SmartDeviceType.UNDEFINED_SENSOR]: "undefined sensor",
 };
 
-function formatVersion(version: number) {
+export function formatSmartDeviceType(type: number): string {
+  return SMART_DEVICE_LABELS[type] ?? `unknown (${type})`;
+}
+
+export function formatSmartDeviceVersion(version: number): string {
   const major = (version >>> 14) & 0xff;
   const minor = (version >>> 8) & 0x3f;
   const patch = version & 0xff;
+  return new VexFirmwareVersion(major, minor, patch, 0).toUserString();
+}
 
-  return `${major}.${minor}.${patch}`;
+export function formatDeviceRows(
+  smartDevices: Array<{ port: number; type: number; version: number }>,
+): string[][] {
+  return smartDevices.map((device) => [
+    device.port.toString(),
+    formatSmartDeviceType(device.type),
+    formatSmartDeviceVersion(device.version),
+  ]);
 }
 
 export default function registerDevicesCommand(program: Sade) {
@@ -45,13 +58,7 @@ export default function registerDevicesCommand(program: Sade) {
         table.addColumn("port");
         table.addColumn("type");
         table.addColumn("version");
-        smartDevices.forEach((d) => {
-          table.addRow([
-            d.port.toString(),
-            SMART_DEVICE_LABELS[d.type],
-            formatVersion(d.version),
-          ]);
-        });
+        formatDeviceRows(smartDevices).forEach((row) => table.addRow(row));
         console.log(table.render());
       } finally {
         await device.dispose();

@@ -24,6 +24,18 @@ interface DestinationReservation {
   inode: bigint;
 }
 
+interface ProjectNames {
+  displayName: string;
+  cargoPackageName: string;
+  prosRemoteName: string;
+}
+
+export interface CreateProjectOptions {
+  displayName?: string;
+  cargoPackageName?: string;
+  prosRemoteName?: string;
+}
+
 const FETCH_TIMEOUT_MS = 30_000;
 const PROS_ARCHIVE_LIMIT = 64 * 1024 * 1024;
 const PROS_EXTRACTED_LIMIT = 256 * 1024 * 1024;
@@ -38,12 +50,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function validateProjectName(name: string): void {
+function validateDisplayName(name: string): void {
   if (name.length === 0 || /[\u0000-\u001f]/.test(name)) {
     throw new Error(
       "project name cannot be empty or contain control characters",
     );
   }
+}
+
+function validateCargoPackageName(name: string): void {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) {
+    throw new Error(
+      "Cargo package name must start with a letter or number and contain only letters, numbers, hyphens, or underscores",
+    );
+  }
+}
+
+function validateProsRemoteName(name: string): void {
+  validateDisplayName(name);
+  if (/[\\/]/.test(name)) {
+    throw new Error("PROS remote name cannot contain path separators");
+  }
+}
+
+function createProjectNames(
+  toolchain: ProjectToolchain,
+  fallbackName: string,
+  options: CreateProjectOptions = {},
+): ProjectNames {
+  const displayName = options.displayName ?? fallbackName;
+  const cargoPackageName = options.cargoPackageName ?? displayName;
+  const prosRemoteName = options.prosRemoteName ?? displayName;
+
+  validateDisplayName(displayName);
+  if (toolchain === "vexide") validateCargoPackageName(cargoPackageName);
+  else validateProsRemoteName(prosRemoteName);
+
+  return { displayName, cargoPackageName, prosRemoteName };
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {
@@ -157,7 +200,7 @@ async function writeFiles(
 
 async function createProsProject(
   path: string,
-  name: string,
+  names: ProjectNames,
   source: ProsTemplateSource,
 ): Promise<void> {
   const bytes = await fetchBytes(
@@ -198,13 +241,13 @@ async function createProsProject(
     {
       "py/object": "pros.conductor.project.Project",
       "py/state": {
-        project_name: name,
+        project_name: names.displayName,
         target: "v5",
         templates: { kernel: template },
         upload_options: {
           compress_bin: true,
           description: "",
-          remote_name: name,
+          remote_name: names.prosRemoteName,
           slot: 1,
         },
         use_early_access: false,
@@ -216,8 +259,11 @@ async function createProsProject(
   await writeFiles(path, files);
 }
 
-async function createVexideProject(path: string, name: string): Promise<void> {
-  const cargoName = JSON.stringify(name);
+async function createVexideProject(
+  path: string,
+  names: ProjectNames,
+): Promise<void> {
+  const cargoName = JSON.stringify(names.cargoPackageName);
   await writeFiles(path, {
     ".gitignore": "/target\n",
     ".cargo/config.toml": `[target.'cfg(target_os = "vexos")']
@@ -268,18 +314,22 @@ async fn main(_peripherals: Peripherals) {
     Robot {}.compete().await;
 }
 `,
-    "README.md": `# ${name}\n\nA vexide project created with @v5x/cli.\n`,
+    "README.md": `# ${names.displayName}\n\nA vexide project created with @v5x/cli.\n`,
   });
 }
 
 export async function createProject(
   inputPath: string,
   toolchain: ProjectToolchain,
-  name = basename(resolve(inputPath)),
+  nameOrOptions: string | CreateProjectOptions = basename(resolve(inputPath)),
   prosTemplate = DEFAULT_PROS_TEMPLATE,
 ): Promise<string> {
-  validateProjectName(name);
   const path = resolve(inputPath);
+  const nameOptions =
+    typeof nameOrOptions === "string"
+      ? { displayName: nameOrOptions }
+      : nameOrOptions;
+  const names = createProjectNames(toolchain, basename(path), nameOptions);
   const parent = dirname(path);
   await mkdir(parent, { recursive: true });
   const stagingPath = await mkdtemp(join(parent, `.${basename(path)}.v5x-`));
@@ -288,8 +338,8 @@ export async function createProject(
   try {
     reservation = await reserveDestination(path);
     if (toolchain === "pros")
-      await createProsProject(stagingPath, name, prosTemplate);
-    else await createVexideProject(stagingPath, name);
+      await createProsProject(stagingPath, names, prosTemplate);
+    else await createVexideProject(stagingPath, names);
 
     try {
       await rename(stagingPath, path);

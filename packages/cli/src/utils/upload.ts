@@ -4,6 +4,7 @@ import {
   createProgramConfig,
   findProgramArtifacts,
   inspectProject,
+  validateProgramArtifacts,
 } from "./project";
 
 export interface UploadOptions {
@@ -29,9 +30,12 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
     type: project.type,
     run: options.run,
   });
-  const bytes = new Uint8Array(await Bun.file(artifacts.hot).arrayBuffer());
-  const coldBytes = artifacts.cold
-    ? new Uint8Array(await Bun.file(artifacts.cold).arrayBuffer())
+  const validatedArtifacts = await validateProgramArtifacts(artifacts);
+  const bytes = new Uint8Array(
+    await Bun.file(validatedArtifacts.hot.path).arrayBuffer(),
+  );
+  const coldBytes = validatedArtifacts.cold
+    ? new Uint8Array(await Bun.file(validatedArtifacts.cold.path).arrayBuffer())
     : undefined;
   const device = await connectV5Device();
 
@@ -47,7 +51,10 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
           previousState = state;
         }
         const percent = total === 0 ? 0 : Math.floor((current / total) * 100);
-        process.stderr.write(`\r${state.toLowerCase().padEnd(5)} ${percent}%`);
+        const message = `${state.toLowerCase().padEnd(5)} ${percent}%`;
+        process.stderr.write(
+          process.stderr.isTTY ? `\r${message}` : `${message}\n`,
+        );
       },
     );
     if (previousState !== "") process.stderr.write("\n");
