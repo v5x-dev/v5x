@@ -44,19 +44,20 @@ function vendorPrefix(vid: FileVendor): string {
   }
 }
 
-function formatDate(date: Date) {
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const year = date.getFullYear();
-
-  const hour = date.getHours();
-  const minute = date.getMinutes();
-  const second = date.getSeconds();
-
-  return `${month}/${day}/${year} ${hour}:${minute}:${second}`;
+export function formatFileTimestamp(timestamp: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(timestamp * 1000));
 }
 
-function formatSize(bytes: number) {
+export function formatFileSize(bytes: number): string {
   const units = ["B", "KB", "MB", "GB"];
   let size = bytes;
   let unit = 0;
@@ -67,6 +68,27 @@ function formatSize(bytes: number) {
   }
 
   return `${size.toFixed(size < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`;
+}
+
+export function formatFileRows(
+  files: Array<{
+    vendor: FileVendor;
+    filename: string;
+    size: number;
+    loadAddress: number;
+    timestamp: number;
+    crc32: number;
+  }>,
+): string[][] {
+  return files.map(
+    ({ vendor, filename, size, loadAddress, timestamp, crc32 }) => [
+      vendorPrefix(vendor) + filename,
+      formatFileSize(size),
+      `0x${loadAddress.toString(16)}`,
+      formatFileTimestamp(timestamp),
+      `0x${crc32.toString(16)}`,
+    ],
+  );
 }
 
 export default function registerDirCommand(program: Sade) {
@@ -91,18 +113,7 @@ export default function registerDirCommand(program: Sade) {
         table.addColumn("load address");
         table.addColumn("timestamp");
         table.addColumn("crc32");
-        files.forEach(
-          ({ vendor, filename, size, loadAddress, timestamp, crc32 }) => {
-            const date = new Date(timestamp * 1000);
-            table.addRow([
-              vendorPrefix(vendor) + filename,
-              formatSize(size),
-              `0x${loadAddress.toString(16)}`,
-              formatDate(date),
-              `0x${crc32.toString(16)}`,
-            ]);
-          },
-        );
+        formatFileRows(files).forEach((row) => table.addRow(row));
         console.log(table.render());
       } finally {
         await device.dispose();

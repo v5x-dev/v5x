@@ -33,12 +33,81 @@ test("writes a vexide project without invoking cargo-v5", async () => {
 
   await createProject(path, "vexide", "test-robot");
 
-  expect(await readFile(join(path, "Cargo.toml"), "utf8")).toContain(
-    'name = "test-robot"',
-  );
+  const cargoToml = await readFile(join(path, "Cargo.toml"), "utf8");
+  expect(cargoToml).toContain('name = "test-robot"');
+  expect(Bun.TOML.parse(cargoToml)).toMatchObject({
+    package: { name: "test-robot" },
+  });
   expect(await readFile(join(path, "src/main.rs"), "utf8")).toContain(
     "#[vexide::main]",
   );
+});
+
+test("separates display and toolchain names in generated projects", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "v5x-scaffold-"));
+  temporaryDirectories.push(parent);
+
+  const vexidePath = join(parent, "vexide-project");
+  await createProject(vexidePath, "vexide", {
+    displayName: "Friendly Robot",
+    cargoPackageName: "friendly_robot",
+  });
+  const cargoToml = await readFile(join(vexidePath, "Cargo.toml"), "utf8");
+  expect(Bun.TOML.parse(cargoToml)).toMatchObject({
+    package: { name: "friendly_robot" },
+  });
+  expect(
+    (await readFile(join(vexidePath, "README.md"), "utf8")).startsWith(
+      "# Friendly Robot",
+    ),
+  ).toBe(true);
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(async () => archiveResponse(), {
+    preconnect: originalFetch.preconnect,
+  });
+  try {
+    const prosPath = join(parent, "pros-project");
+    await createProject(
+      prosPath,
+      "pros",
+      {
+        displayName: "Friendly Robot",
+        prosRemoteName: "friendly_remote",
+      },
+      prosTemplate,
+    );
+    const metadata: unknown = JSON.parse(
+      await readFile(join(prosPath, "project.pros"), "utf8"),
+    );
+    expect(metadata).toMatchObject({
+      "py/state": {
+        project_name: "Friendly Robot",
+        upload_options: { remote_name: "friendly_remote" },
+      },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects invalid Cargo and PROS names", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "v5x-scaffold-"));
+  temporaryDirectories.push(parent);
+
+  await expect(
+    createProject(join(parent, "bad-cargo"), "vexide", {
+      displayName: "Friendly Robot",
+      cargoPackageName: "bad cargo",
+    }),
+  ).rejects.toThrow("Cargo package name");
+
+  await expect(
+    createProject(join(parent, "bad-pros"), "pros", {
+      displayName: "Friendly Robot",
+      prosRemoteName: "nested/robot",
+    }),
+  ).rejects.toThrow("PROS remote name");
 });
 
 test("replaces an existing empty directory", async () => {

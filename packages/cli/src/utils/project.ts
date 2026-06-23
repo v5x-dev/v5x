@@ -1,6 +1,10 @@
 import { basename, dirname, join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
-import { ProgramIniConfig, type ZerobaseSlotNumber } from "@v5x/serial";
+import {
+  ProgramIniConfig,
+  USER_FLASH_MAX_FILE_SIZE,
+  type ZerobaseSlotNumber,
+} from "@v5x/serial";
 import { detectProgramType, type ProgramType } from "./detect";
 import { runProcess } from "./process";
 
@@ -186,6 +190,49 @@ export async function findProgramArtifact(
 export interface ProgramArtifacts {
   hot: string;
   cold?: string;
+}
+
+export const PROGRAM_ARTIFACT_SIZE_LIMIT = USER_FLASH_MAX_FILE_SIZE;
+
+export interface ValidatedProgramArtifact {
+  path: string;
+  size: number;
+}
+
+export interface ValidatedProgramArtifacts {
+  hot: ValidatedProgramArtifact;
+  cold?: ValidatedProgramArtifact;
+}
+
+async function validateProgramArtifact(
+  path: string,
+  role: "hot" | "cold",
+): Promise<ValidatedProgramArtifact> {
+  const info = await stat(path).catch(() => undefined);
+  if (info === undefined || !info.isFile()) {
+    throw new Error(`program ${role} artifact does not exist: ${path}`);
+  }
+  if (info.size === 0) {
+    throw new Error(`program ${role} artifact is empty: ${path}`);
+  }
+  if (info.size > PROGRAM_ARTIFACT_SIZE_LIMIT) {
+    throw new Error(
+      `program ${role} artifact ${path} is ${info.size} bytes; supported limit is ${PROGRAM_ARTIFACT_SIZE_LIMIT} bytes`,
+    );
+  }
+  return { path, size: info.size };
+}
+
+export async function validateProgramArtifacts(
+  artifacts: ProgramArtifacts,
+): Promise<ValidatedProgramArtifacts> {
+  return {
+    hot: await validateProgramArtifact(artifacts.hot, "hot"),
+    cold:
+      artifacts.cold === undefined
+        ? undefined
+        : await validateProgramArtifact(artifacts.cold, "cold"),
+  };
 }
 
 export async function findProgramArtifacts(

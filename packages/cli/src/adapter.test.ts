@@ -37,6 +37,10 @@ class FakeNativePort {
     for (const listener of this.listeners.get(event) ?? []) listener(value);
   }
 
+  listenerCount(event: string): number {
+    return this.listeners.get(event)?.size ?? 0;
+  }
+
   removeAllListeners(): void {
     this.listeners.clear();
   }
@@ -128,6 +132,30 @@ describe("WebSerialAdapter", () => {
     await expect(port.close()).rejects.toThrow("native close failed");
     expect(port.readable).toBeNull();
     expect(port.writable).toBeNull();
+    await port.open({ baudRate: 115200 });
+    await port.close();
+  });
+
+  test("native data and error events are ignored after cancellation", async () => {
+    const adapter = new WebSerialAdapter("darwin", async () => [
+      { path: "/dev/cu.cancel" },
+    ]);
+    const port = (await adapter.getPorts())[0]!;
+    await port.open({ baudRate: 115200 });
+    const nativePort = FakeNativePort.instances.at(-1)!;
+
+    expect(nativePort.listenerCount("data")).toBe(1);
+    expect(nativePort.listenerCount("error")).toBe(1);
+    await port.readable!.cancel();
+
+    expect(port.readable).toBeNull();
+    expect(port.writable).toBeNull();
+    expect(nativePort.listenerCount("data")).toBe(0);
+    expect(nativePort.listenerCount("error")).toBe(0);
+
+    nativePort.emit("data", new Uint8Array([9]));
+    nativePort.emit("error", new Error("late native error"));
+
     await port.open({ baudRate: 115200 });
     await port.close();
   });
