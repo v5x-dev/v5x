@@ -30,3 +30,5 @@ apps/website/.wrangler
 .DS_Store
 .idea
 .vscode
+
+improvements.html
