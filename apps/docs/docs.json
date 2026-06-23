@@ -121,6 +121,20 @@
             "pages": ["serial/troubleshooting"]
           }
         ]
+      },
+      {
+        "tab": "Web",
+        "icon": "monitor",
+        "groups": [
+          {
+            "group": "Browser workflow",
+            "pages": ["web/overview", "web/errors"]
+          },
+          {
+            "group": "Framework bindings",
+            "pages": ["web/react", "web/svelte", "web/solid"]
+          }
+        ]
       }
     ]
   },

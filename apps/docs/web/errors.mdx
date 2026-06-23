@@ -1,0 +1,21 @@
+---
+title: "Errors"
+description: "Understand normalized @v5x/web errors."
+---
+
+`@v5x/web` normalizes thrown values into `V5WebError`.
+
+```ts
+import { createV5Client } from "@v5x/web";
+
+const client = createV5Client();
+
+if (!(await client.connect())) {
+  const { error } = client.getSnapshot();
+  console.log(error?.code);
+}
+```
+
+Each error has a stable `code`, a message, and an optional `cause`. The first milestone reports support, connect, disconnect, and refresh errors. Higher-level workflow errors for files, programs, screenshots, and key-value settings will be added with those workflows.
+
+When Web Serial is unavailable, the snapshot status is `unsupported` and `unavailableReason` is `web-serial-unavailable`.

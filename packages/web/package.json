@@ -1,0 +1,93 @@
+{
+  "name": "@v5x/web",
+  "version": "0.1.0",
+  "description": "Browser workflow layer for VEX V5 Web Serial applications",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    },
+    "./svelte": {
+      "types": "./dist/svelte/index.d.ts",
+      "import": "./dist/svelte/index.js"
+    },
+    "./solid": {
+      "types": "./dist/solid/index.d.ts",
+      "import": "./dist/solid/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun run clean && bun run build:dts && bun run build:esm",
+    "build:esm": "bun run build:esm:core && bun run build:esm:react && bun run build:esm:svelte && bun run build:esm:solid",
+    "build:esm:core": "bun build ./src/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external @v5x/serial",
+    "build:esm:react": "bun build ./src/react/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist/react --entry-naming=index.js --external @v5x/serial --external react",
+    "build:esm:svelte": "bun build ./src/svelte/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist/svelte --entry-naming=index.js --external @v5x/serial --external svelte --external svelte/reactivity",
+    "build:esm:solid": "bun build ./src/solid/index.tsx --target browser --format esm --sourcemap=linked --outdir ./dist/solid --entry-naming=index.js --external @v5x/serial --external solid-js --external solid-js/web --jsx-import-source solid-js --jsx-runtime automatic",
+    "build:dts": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src --type-aware",
+    "test": "bun test",
+    "prepack": "bun run build",
+    "clean": "rm -rf dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/v5x-dev/v5x.git",
+    "directory": "packages/web"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "vex",
+    "vex-v5",
+    "web-serial",
+    "robotics"
+  ],
+  "author": "qainguin <slimaster14@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/v5x-dev/v5x/issues"
+  },
+  "homepage": "https://docs.v5x.dev/web/overview",
+  "dependencies": {
+    "@v5x/serial": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "solid-js": ">=1.8",
+    "svelte": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/dom-serial": "^1.0.2",
+    "@types/react": "^19.2.7",
+    "@types/react-test-renderer": "^19.1.0",
+    "react": "^19.2.3",
+    "react-test-renderer": "^19.2.3",
+    "solid-js": "^1.9.10",
+    "svelte": "^5.46.0"
+  }
+}

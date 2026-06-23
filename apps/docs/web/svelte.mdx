@@ -1,0 +1,22 @@
+---
+title: "Svelte"
+description: "Use the V5 web client from Svelte 5 runes."
+---
+
+`@v5x/web/svelte` exposes a rune-friendly state object backed by `@v5x/web`.
+
+```svelte
+<script lang="ts">
+  import { createV5State } from "@v5x/web/svelte";
+
+  const v5 = createV5State();
+</script>
+
+{#if v5.snapshot.connected}
+  <button onclick={() => v5.disconnect()}>Disconnect</button>
+{:else}
+  <button onclick={() => v5.connect()}>Connect</button>
+{/if}
+```
+
+The returned object includes the underlying client, reactive `snapshot` and `status` getters, and connection methods that forward to the shared client. The getters use Svelte 5 reactivity through `createSubscriber`; no `svelte/store` API is involved.

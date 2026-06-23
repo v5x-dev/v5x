@@ -1,0 +1,31 @@
+---
+title: "React"
+description: "Use the V5 web client from React."
+---
+
+`@v5x/web/react` provides a provider and hooks backed by `@v5x/web`.
+
+```tsx
+import { V5Provider, useV5Connection, useV5Snapshot } from "@v5x/web/react";
+
+function DeviceButton() {
+  const snapshot = useV5Snapshot();
+  const { connect, disconnect } = useV5Connection();
+
+  return snapshot.connected ? (
+    <button onClick={disconnect}>Disconnect</button>
+  ) : (
+    <button onClick={connect}>Connect</button>
+  );
+}
+
+export function App() {
+  return (
+    <V5Provider>
+      <DeviceButton />
+    </V5Provider>
+  );
+}
+```
+
+`useV5Snapshot()` uses React's external-store API, so components update when the shared client snapshot changes. `V5Provider` creates one client by default, or you can pass an existing client for tests and advanced app composition.
