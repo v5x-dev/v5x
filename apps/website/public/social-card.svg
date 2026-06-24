@@ -1,7 +1,52 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow" cx="78%" cy="22%" r="55%">
+      <stop offset="0%" stop-color="#b8baff" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#b8baff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b8baff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#b8baff" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
   <rect width="1200" height="630" fill="#111114"/>
-  <path d="M115 170h165l320 360 300-360h165L670 630H520Z" fill="#3730a3" opacity=".18"/>
-  <text x="96" y="300" fill="#3730a3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="132" font-weight="700" letter-spacing="-10">v5x</text>
-  <text x="104" y="386" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="42">VEX V5 development tools</text>
-  <text x="104" y="448" fill="#a1a1aa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28">build · upload · manage</text>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- faint grid -->
+  <g stroke="#ffffff" stroke-width="1" opacity="0.035">
+    <line x1="0" y1="90" x2="1200" y2="90"/>
+    <line x1="0" y1="180" x2="1200" y2="180"/>
+    <line x1="0" y1="270" x2="1200" y2="270"/>
+    <line x1="0" y1="360" x2="1200" y2="360"/>
+    <line x1="0" y1="450" x2="1200" y2="450"/>
+    <line x1="0" y1="540" x2="1200" y2="540"/>
+    <line x1="150" y1="0" x2="150" y2="630"/>
+    <line x1="300" y1="0" x2="300" y2="630"/>
+    <line x1="450" y1="0" x2="450" y2="630"/>
+    <line x1="600" y1="0" x2="600" y2="630"/>
+    <line x1="750" y1="0" x2="750" y2="630"/>
+    <line x1="900" y1="0" x2="900" y2="630"/>
+    <line x1="1050" y1="0" x2="1050" y2="630"/>
+  </g>
+
+  <!-- watermark V -->
+  <path d="M760 640 1050 180 1200 180 910 640Z" fill="#b8baff" opacity="0.025"/>
+
+  <!-- accent rule -->
+  <rect x="0" y="0" width="6" height="630" fill="url(#bar)"/>
+
+  <!-- logo -->
+  <text x="110" y="300" fill="#b8baff" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="152" font-weight="700" letter-spacing="-8">v5x</text>
+
+  <!-- tagline -->
+  <text x="116" y="380" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="44" font-weight="500" letter-spacing="-0.5">modern tools for modern v5 teams</text>
+
+  <!-- description -->
+  <text x="116" y="430" fill="#a1a1aa" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="24">Open-source CLI, serial protocol, and web bindings.</text>
+
+  <!-- footer -->
+  <text x="116" y="566" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="22">CLI · Serial · Web</text>
+  <text x="1084" y="566" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="22" text-anchor="end">v5x.dev</text>
 </svg>
