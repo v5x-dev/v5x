@@ -85,8 +85,8 @@
     "@types/dom-serial": "^1.0.2",
     "@types/react": "^19.2.7",
     "@types/react-test-renderer": "^19.1.0",
-    "react": "^19.2.3",
-    "react-test-renderer": "^19.2.3",
+    "react": "19.2.7",
+    "react-test-renderer": "19.2.7",
     "solid-js": "^1.9.10",
     "svelte": "^5.46.0"
   }

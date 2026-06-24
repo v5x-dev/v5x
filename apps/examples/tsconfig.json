@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ESNext", "DOM"],
+    "types": ["dom-serial", "vite/client"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "noEmit": true,
+    "paths": {
+      "@v5x/serial": ["../../packages/serial/src/index.ts"],
+      "@v5x/web": ["../../packages/web/src/index.ts"],
+      "@v5x/web/client-internal": ["../../packages/web/src/client.ts"],
+      "@v5x/web/react": ["../../packages/web/src/react/index.ts"],
+      "@v5x/web/solid": ["../../packages/web/src/solid/index.tsx"],
+      "@v5x/web/svelte": ["../../packages/web/src/svelte/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "*.ts"],
+  "exclude": ["dist", "node_modules"]
+}
