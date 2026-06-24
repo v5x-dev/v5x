@@ -20,6 +20,12 @@ Instead of shelling out to external binaries, this package talks directly to the
 
 This is a fork of [v5-serial-protocol](https://github.com/LemLib/v5-serial-protocol) with extra features and fixes, major props to [jerrylum](https://github.com/Jerrylum) and the [LemLib](https://github.com/LemLib) team for making this whole project possible.
 
+### [@v5x/web](https://github.com/v5x-dev/v5x/tree/main/packages/web)
+
+This package is a browser workflow layer for VEX V5 Web Serial applications.
+
+It wraps `@v5x/serial` with a small subscription-based client that tracks connection status, Web Serial support, and normalized errors, and ships framework bindings for React, Svelte, and Solid via subpath exports.
+
 ## Documentation development
 
 ```sh
