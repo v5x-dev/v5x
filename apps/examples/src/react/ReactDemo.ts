@@ -151,23 +151,20 @@ export function ReactDemo() {
     [supported],
   );
 
-  return h(
-    V5Provider,
-    {
-      client: environment.client,
-      children: [
-        h(Panel, { key: "panel", controls: environment.controls }),
-        h(
-          "button",
-          {
-            key: "support-toggle",
-            className: "button support-toggle",
-            type: "button",
-            onClick: () => setSupported((value) => !value),
-          },
-          `Toggle support: ${supported ? "supported" : "unsupported"}`,
-        ),
-      ],
-    },
-  );
+  return h(V5Provider, {
+    client: environment.client,
+    children: [
+      h(Panel, { key: "panel", controls: environment.controls }),
+      h(
+        "button",
+        {
+          key: "support-toggle",
+          className: "button support-toggle",
+          type: "button",
+          onClick: () => setSupported((value) => !value),
+        },
+        `Toggle support: ${supported ? "supported" : "unsupported"}`,
+      ),
+    ],
+  });
 }
