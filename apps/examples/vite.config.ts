@@ -10,7 +10,9 @@ const reactRoot = packageRoot("react");
 const reactDomRoot = packageRoot("react-dom");
 
 function packageRoot(name: string): string {
-  return fileURLToPath(new URL(".", import.meta.resolve(`${name}/package.json`)));
+  return fileURLToPath(
+    new URL(".", import.meta.resolve(`${name}/package.json`)),
+  );
 }
 
 export default defineConfig({
