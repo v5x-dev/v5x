@@ -1,5 +1,3 @@
-# AGENTS.md instructions
-
 ## Never Do These
 
 - Never run dev servers. The user can run them.
