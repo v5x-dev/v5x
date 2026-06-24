@@ -68,7 +68,7 @@ const workflows = [
 ];
 ---
 
-<main class="relative isolate min-h-screen overflow-hidden bg-[#08080a] font-sans text-white">
+<main class="relative isolate min-h-screen overflow-hidden bg-zinc-50 font-sans text-zinc-900 dark:bg-[#08080a] dark:text-white">
   <div class="robot-field fixed inset-0 z-0" aria-hidden="true">
     <span class="robot robot-a" data-robot-slot>
       <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
@@ -93,9 +93,9 @@ const workflows = [
   </div>
 
   <div class="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-4 sm:px-8 lg:px-10">
-    <header class="flex min-h-12 items-center justify-between gap-4 border-b border-white/10 pr-12">
+    <header class="flex min-h-12 items-center justify-between gap-4 border-b border-zinc-200 pr-12 dark:border-white/10">
       <a
-        class="flex items-center gap-2 text-[0.95rem] font-semibold text-[#b8baff] no-underline"
+        class="flex items-center gap-2 text-[0.95rem] font-semibold text-indigo-600 no-underline dark:text-[#b8baff]"
         href="/"
         aria-label="v5x home"
       >
@@ -117,21 +117,21 @@ const workflows = [
       </a>
       <nav class="flex items-center gap-1 text-[0.86rem]" aria-label="Primary navigation">
         <a
-          class="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-zinc-400 no-underline hover:bg-white/10 hover:text-white focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff] sm:flex"
+          class="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-zinc-500 no-underline hover:bg-black/5 hover:text-zinc-900 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:outline-[#b8baff] sm:flex"
           href="https://www.npmjs.com/org/v5x"
         >
           <Package size={15} stroke-width={1.8} aria-hidden="true" />
           npm
         </a>
         <a
-          class="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-zinc-400 no-underline hover:bg-white/10 hover:text-white focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff] sm:flex"
+          class="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-zinc-500 no-underline hover:bg-black/5 hover:text-zinc-900 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:outline-[#b8baff] sm:flex"
           href="https://github.com/v5x-dev/v5x"
         >
           <Github size={15} stroke-width={1.8} aria-hidden="true" />
           github
         </a>
         <a
-          class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 font-medium text-zinc-950 no-underline hover:bg-zinc-200 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+          class="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-2 font-medium text-white no-underline hover:bg-zinc-700 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:focus-visible:outline-[#b8baff]"
           href={docsBase}
         >
           <BookOpen size={15} stroke-width={1.8} aria-hidden="true" />
@@ -143,7 +143,7 @@ const workflows = [
     <section class="flex min-h-[100svh] flex-col items-center justify-center py-14 text-center sm:py-20" aria-labelledby="site-title">
       <div class="relative z-10 flex w-full max-w-5xl flex-col items-center">
         <a
-          class="mb-5 inline-flex items-center justify-center rounded-full p-2 text-zinc-500 no-underline hover:bg-white/[0.07] hover:text-zinc-300 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+          class="mb-5 inline-flex items-center justify-center rounded-full p-2 text-zinc-500 no-underline hover:bg-black/5 hover:text-zinc-700 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-500 dark:hover:bg-white/[0.07] dark:hover:text-zinc-300 dark:focus-visible:outline-[#b8baff]"
           href="https://github.com/v5x-dev/v5x"
           aria-label="v5x on GitHub"
         >
@@ -152,24 +152,24 @@ const workflows = [
 
         <h1
           id="site-title"
-          class="m-0 max-w-5xl text-[clamp(3.3rem,8.5vw,7rem)] leading-[0.9] font-semibold tracking-normal text-white"
+          class="m-0 max-w-5xl text-[clamp(3.3rem,8.5vw,7rem)] leading-[0.9] font-semibold tracking-normal text-zinc-900 dark:text-white"
         >
           modern tools for modern v5 teams
         </h1>
-        <p class="mt-6 max-w-2xl text-[1.05rem] leading-7 text-zinc-400 sm:text-[1.18rem]">
+        <p class="mt-6 max-w-2xl text-[1.05rem] leading-7 text-zinc-500 dark:text-zinc-400 sm:text-[1.18rem]">
           build from the terminal, talk to the brain from the browser, and ship team workflows on top of one small toolkit.
         </p>
 
         <div class="mt-8 flex w-full max-w-xl flex-col gap-3 sm:flex-row sm:justify-center">
           <a
-            class="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-white px-5 font-semibold text-zinc-950 no-underline hover:bg-zinc-200 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+            class="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-5 font-semibold text-white no-underline hover:bg-zinc-700 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:focus-visible:outline-[#b8baff]"
             href={`${docsBase}/quickstart`}
           >
             bun add --global @v5x/cli
             <ArrowRight size={17} stroke-width={1.9} aria-hidden="true" />
           </a>
           <a
-            class="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-white/12 bg-white/[0.04] px-5 font-semibold text-white no-underline hover:border-white/22 hover:bg-white/[0.08] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+            class="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-black/[0.04] px-5 font-semibold text-zinc-900 no-underline hover:border-zinc-300 hover:bg-black/[0.08] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:border-white/12 dark:bg-white/[0.04] dark:text-white dark:hover:border-white/22 dark:hover:bg-white/[0.08] dark:focus-visible:outline-[#b8baff]"
             href={docsBase}
           >
             read the docs
@@ -179,27 +179,18 @@ const workflows = [
     </section>
 
     <section class="pb-10" aria-label="product surfaces">
-      <div class="w-full rounded-2xl border border-white/12 bg-[#111116] p-2 shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
-        <div class="rounded-xl bg-[#0c0c0f] text-left">
-          <div class="flex min-h-11 items-center justify-between border-b border-white/10 px-4">
-            <div class="flex items-center gap-2">
-              <span class="size-2.5 rounded-full bg-[#ff5f57]"></span>
-              <span class="size-2.5 rounded-full bg-[#ffbd2e]"></span>
-              <span class="size-2.5 rounded-full bg-[#28c840]"></span>
-            </div>
-            <p class="m-0 font-mono text-[0.72rem] text-zinc-500">v5x workspace</p>
-          </div>
-
-          <div class="grid gap-px bg-white/10 md:grid-cols-3">
+      <div class="w-full rounded-2xl border border-zinc-200 bg-white p-2 shadow-[0_30px_90px_rgba(0,0,0,0.12)] dark:border-white/12 dark:bg-[#111116] dark:shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+        <div class="rounded-xl bg-zinc-100 text-left dark:bg-[#0c0c0f]">
+          <div class="grid gap-px bg-black/10 dark:bg-white/10 md:grid-cols-3">
             {
               surfaces.map(({ name, packageName, href, Icon, command, description }) => (
                 <a
-                  class="group block bg-[#111116] p-5 text-white no-underline hover:bg-[#15151b] focus-visible:outline-3 focus-visible:outline-offset-[-3px] focus-visible:outline-[#b8baff]"
+                  class="group block bg-white p-5 text-zinc-900 no-underline hover:bg-zinc-50 focus-visible:outline-3 focus-visible:outline-offset-[-3px] focus-visible:outline-indigo-500 dark:bg-[#111116] dark:text-white dark:hover:bg-[#15151b] dark:focus-visible:outline-[#b8baff]"
                   href={href}
                 >
                   <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-3">
-                      <span class="grid size-9 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-[#b8baff]">
+                      <span class="grid size-9 place-items-center rounded-md border border-zinc-200 bg-black/[0.05] text-indigo-600 dark:border-white/10 dark:bg-white/[0.05] dark:text-[#b8baff]">
                         <Icon size={18} stroke-width={1.8} aria-hidden="true" />
                       </span>
                       <div>
@@ -207,12 +198,12 @@ const workflows = [
                         <p class="m-0 font-mono text-[0.76rem] text-zinc-500">{packageName}</p>
                       </div>
                     </div>
-                    <ArrowRight class="text-zinc-600 group-hover:text-[#b8baff]" size={16} stroke-width={1.9} aria-hidden="true" />
+                    <ArrowRight class="text-zinc-400 group-hover:text-indigo-600 dark:text-zinc-600 dark:group-hover:text-[#b8baff]" size={16} stroke-width={1.9} aria-hidden="true" />
                   </div>
-                  <p class="mt-4 min-h-12 text-[0.92rem] leading-6 text-zinc-400">
+                  <p class="mt-4 min-h-12 text-[0.92rem] leading-6 text-zinc-500 dark:text-zinc-400">
                     {description}
                   </p>
-                  <p class="mt-5 overflow-hidden text-ellipsis whitespace-nowrap rounded-md border border-white/10 bg-black/35 px-3 py-2 font-mono text-[0.78rem] text-zinc-300">
+                  <p class="mt-5 overflow-hidden text-ellipsis whitespace-nowrap rounded-md border border-zinc-200 bg-white px-3 py-2 font-mono text-[0.78rem] text-zinc-700 dark:border-white/10 dark:bg-black/35 dark:text-zinc-300">
                     {command}
                   </p>
                 </a>
@@ -227,14 +218,14 @@ const workflows = [
       {
         workflows.map(({ name, href, Icon }) => (
           <a
-            class="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2.5 text-[0.88rem] font-medium text-zinc-300 no-underline hover:border-white/20 hover:bg-white/[0.07] hover:text-white focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+            class="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-black/[0.03] px-3 py-2.5 text-[0.88rem] font-medium text-zinc-600 no-underline hover:border-zinc-300 hover:bg-black/[0.06] hover:text-zinc-900 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:border-white/10 dark:bg-white/[0.035] dark:text-zinc-300 dark:hover:border-white/20 dark:hover:bg-white/[0.07] dark:hover:text-white dark:focus-visible:outline-[#b8baff]"
             href={href}
           >
             <span class="flex items-center gap-2.5">
-              <Icon class="shrink-0 text-zinc-500" size={16} stroke-width={1.8} aria-hidden="true" />
+              <Icon class="shrink-0 text-zinc-400 dark:text-zinc-500" size={16} stroke-width={1.8} aria-hidden="true" />
               {name}
             </span>
-            <ArrowRight class="shrink-0 text-zinc-600" size={14} stroke-width={1.9} aria-hidden="true" />
+            <ArrowRight class="shrink-0 text-zinc-400 dark:text-zinc-600" size={14} stroke-width={1.9} aria-hidden="true" />
           </a>
         ))
       }
@@ -252,15 +243,24 @@ const workflows = [
 
 <style>
   .robot-field {
+    color: #4f46e5;
+    opacity: 0.12;
+    pointer-events: none;
+  }
+
+  [data-theme="dark"] .robot-field {
     color: #b8baff;
     opacity: 0.18;
-    pointer-events: none;
   }
 
   .robot {
     position: absolute;
     width: clamp(4.5rem, 8vw, 8rem);
     height: auto;
+    filter: drop-shadow(0 0 24px rgb(79 70 229 / 0.18));
+  }
+
+  [data-theme="dark"] .robot {
     filter: drop-shadow(0 0 24px rgb(184 186 255 / 0.24));
   }
 
