@@ -1,42 +1,492 @@
-<main class="grid min-h-screen place-items-center">
-  <section
-    class="w-[min(260px,calc(100%-48px))] translate-y-[-5vh] max-[480px]:translate-y-[-3vh]"
-    aria-labelledby="site-title"
-  >
-    <h1
-      id="site-title"
-      class="m-0 text-[clamp(2rem,4vw,2.35rem)] leading-none font-semibold tracking-[-0.06em] text-[#3730a3] dark:text-[#b8baff]"
-    >
-      v5x
-    </h1>
-    <p
-      class="mt-1.5 mb-3 text-[1.08rem] leading-[1.45] font-normal tracking-[0.01em] text-zinc-500 dark:text-zinc-400"
-    >
-      modern v5 tools
-    </p>
-    <p class="sr-only">
-      Open-source tools for building, uploading, and managing VEX V5 programs.
-    </p>
+---
+import {
+  ArrowRight,
+  Bot,
+  BookOpen,
+  Camera,
+  Cpu,
+  Github,
+  Monitor,
+  Package,
+  Terminal,
+  Upload,
+  Usb,
+  Wrench,
+} from "lucide-astro";
+import Drone from "lucide-astro/Drone";
 
-    <nav class="flex flex-col items-start gap-0.5" aria-label="Primary navigation">
+const docsBase = "https://docs.v5x.dev";
+
+const surfaces = [
+  {
+    name: "cli",
+    packageName: "@v5x/cli",
+    href: `${docsBase}/cli/overview`,
+    Icon: Terminal,
+    command: "v5x run --slot 1",
+    description: "create, build, upload, and run vex v5 projects from bun.",
+  },
+  {
+    name: "serial",
+    packageName: "@v5x/serial",
+    href: `${docsBase}/serial/overview`,
+    Icon: Usb,
+    command: "new V5SerialDevice(navigator.serial)",
+    description: "use the v5 serial protocol from secure browser apps.",
+  },
+  {
+    name: "web",
+    packageName: "@v5x/web",
+    href: `${docsBase}/web/overview`,
+    Icon: Monitor,
+    command: "createV5Client().connect()",
+    description: "keep web serial connection state predictable in app ui.",
+  },
+];
+
+const workflows = [
+  {
+    name: "project setup",
+    href: `${docsBase}/cli/project-workflows`,
+    Icon: Wrench,
+  },
+  {
+    name: "build and upload",
+    href: `${docsBase}/cli/commands/upload`,
+    Icon: Upload,
+  },
+  {
+    name: "brain inspection",
+    href: `${docsBase}/cli/commands/devices`,
+    Icon: Cpu,
+  },
+  {
+    name: "files and screenshots",
+    href: `${docsBase}/serial/guides/manage-files`,
+    Icon: Camera,
+  },
+];
+---
+
+<main class="relative isolate min-h-screen overflow-hidden bg-[#08080a] font-sans text-white">
+  <div class="robot-field fixed inset-0 z-0" aria-hidden="true">
+    <span class="robot robot-a" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+    <span class="robot robot-b" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+    <span class="robot robot-c" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+    <span class="robot robot-d" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+    <span class="robot robot-e" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+  </div>
+
+  <div class="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-4 sm:px-8 lg:px-10">
+    <header class="flex min-h-12 items-center justify-between gap-4 border-b border-white/10 pr-12">
       <a
-        class="relative py-1.5 text-[1.05rem] text-zinc-900 no-underline after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-[#3730a3] after:content-[''] hover:text-[#3730a3] hover:after:w-full focus-visible:text-[#3730a3] focus-visible:outline-none focus-visible:after:w-full dark:text-zinc-100 dark:after:bg-[#b8baff] dark:hover:text-[#b8baff] dark:focus-visible:text-[#b8baff] motion-safe:transition-colors motion-safe:after:transition-[width]"
-        href="https://www.npmjs.com/org/v5x"
+        class="flex items-center gap-2 text-[0.95rem] font-semibold text-[#b8baff] no-underline"
+        href="/"
+        aria-label="v5x home"
       >
-        packages
+        <svg
+          class="size-6"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          stroke="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            d="M1 4.5h2.5L8 9.75 12.25 4.5h2.5L9 11.5h-2.25Z"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        v5x
       </a>
-      <a
-        class="relative py-1.5 text-[1.05rem] text-zinc-900 no-underline after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-[#3730a3] after:content-[''] hover:text-[#3730a3] hover:after:w-full focus-visible:text-[#3730a3] focus-visible:outline-none focus-visible:after:w-full dark:text-zinc-100 dark:after:bg-[#b8baff] dark:hover:text-[#b8baff] dark:focus-visible:text-[#b8baff] motion-safe:transition-colors motion-safe:after:transition-[width]"
-        href="https://github.com/v5x-dev/v5x"
-      >
-        github
-      </a>
-      <a
-        class="relative py-1.5 text-[1.05rem] text-zinc-900 no-underline after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-[#3730a3] after:content-[''] hover:text-[#3730a3] hover:after:w-full focus-visible:text-[#3730a3] focus-visible:outline-none focus-visible:after:w-full dark:text-zinc-100 dark:after:bg-[#b8baff] dark:hover:text-[#b8baff] dark:focus-visible:text-[#b8baff] motion-safe:transition-colors motion-safe:after:transition-[width]"
-        href="https://docs.v5x.dev"
-      >
-        docs
-      </a>
-    </nav>
-  </section>
+      <nav class="flex items-center gap-1 text-[0.86rem]" aria-label="Primary navigation">
+        <a
+          class="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-zinc-400 no-underline hover:bg-white/10 hover:text-white focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff] sm:flex"
+          href="https://www.npmjs.com/org/v5x"
+        >
+          <Package size={15} stroke-width={1.8} aria-hidden="true" />
+          npm
+        </a>
+        <a
+          class="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-zinc-400 no-underline hover:bg-white/10 hover:text-white focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff] sm:flex"
+          href="https://github.com/v5x-dev/v5x"
+        >
+          <Github size={15} stroke-width={1.8} aria-hidden="true" />
+          github
+        </a>
+        <a
+          class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 font-medium text-zinc-950 no-underline hover:bg-zinc-200 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+          href={docsBase}
+        >
+          <BookOpen size={15} stroke-width={1.8} aria-hidden="true" />
+          docs
+        </a>
+      </nav>
+    </header>
+
+    <section class="flex min-h-[100svh] flex-col items-center justify-center py-14 text-center sm:py-20" aria-labelledby="site-title">
+      <div class="relative z-10 flex w-full max-w-5xl flex-col items-center">
+        <a
+          class="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[0.78rem] font-medium text-zinc-300 no-underline hover:border-white/20 hover:bg-white/[0.07] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+          href="https://github.com/v5x-dev/v5x"
+        >
+          open source vex v5 tooling
+          <ArrowRight size={13} stroke-width={1.9} aria-hidden="true" />
+        </a>
+
+        <h1
+          id="site-title"
+          class="m-0 max-w-5xl text-[clamp(3.3rem,8.5vw,7rem)] leading-[0.9] font-semibold tracking-normal text-white"
+        >
+          modern tools for modern v5 teams
+        </h1>
+        <p class="mt-6 max-w-2xl text-[1.05rem] leading-7 text-zinc-400 sm:text-[1.18rem]">
+          build from the terminal, talk to the brain from the browser, and ship team workflows on top of one small toolkit.
+        </p>
+
+        <div class="mt-8 flex w-full max-w-xl flex-col gap-3 sm:flex-row sm:justify-center">
+          <a
+            class="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-white px-5 font-semibold text-zinc-950 no-underline hover:bg-zinc-200 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+            href={`${docsBase}/quickstart`}
+          >
+            bun add --global @v5x/cli
+            <ArrowRight size={17} stroke-width={1.9} aria-hidden="true" />
+          </a>
+          <a
+            class="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-white/12 bg-white/[0.04] px-5 font-semibold text-white no-underline hover:border-white/22 hover:bg-white/[0.08] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+            href={docsBase}
+          >
+            read the docs
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="pb-10" aria-label="product surfaces">
+      <div class="w-full rounded-2xl border border-white/12 bg-[#111116] p-2 shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+        <div class="rounded-xl bg-[#0c0c0f] text-left">
+          <div class="flex min-h-11 items-center justify-between border-b border-white/10 px-4">
+            <div class="flex items-center gap-2">
+              <span class="size-2.5 rounded-full bg-[#ff5f57]"></span>
+              <span class="size-2.5 rounded-full bg-[#ffbd2e]"></span>
+              <span class="size-2.5 rounded-full bg-[#28c840]"></span>
+            </div>
+            <p class="m-0 font-mono text-[0.72rem] text-zinc-500">v5x workspace</p>
+          </div>
+
+          <div class="grid gap-px bg-white/10 md:grid-cols-3">
+            {
+              surfaces.map(({ name, packageName, href, Icon, command, description }) => (
+                <a
+                  class="group block bg-[#111116] p-5 text-white no-underline hover:bg-[#15151b] focus-visible:outline-3 focus-visible:outline-offset-[-3px] focus-visible:outline-[#b8baff]"
+                  href={href}
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="grid size-9 place-items-center rounded-md border border-white/10 bg-white/[0.05] text-[#b8baff]">
+                        <Icon size={18} stroke-width={1.8} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <h2 class="m-0 text-[1rem] leading-6 font-semibold">{name}</h2>
+                        <p class="m-0 font-mono text-[0.76rem] text-zinc-500">{packageName}</p>
+                      </div>
+                    </div>
+                    <ArrowRight class="text-zinc-600 group-hover:text-[#b8baff]" size={16} stroke-width={1.9} aria-hidden="true" />
+                  </div>
+                  <p class="mt-4 min-h-12 text-[0.92rem] leading-6 text-zinc-400">
+                    {description}
+                  </p>
+                  <p class="mt-5 overflow-hidden text-ellipsis whitespace-nowrap rounded-md border border-white/10 bg-black/35 px-3 py-2 font-mono text-[0.78rem] text-zinc-300">
+                    {command}
+                  </p>
+                </a>
+              ))
+            }
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid gap-3 pb-8 sm:grid-cols-2 lg:grid-cols-4" aria-label="Supported workflows">
+      {
+        workflows.map(({ name, href, Icon }) => (
+          <a
+            class="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2.5 text-[0.88rem] font-medium text-zinc-300 no-underline hover:border-white/20 hover:bg-white/[0.07] hover:text-white focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#b8baff]"
+            href={href}
+          >
+            <span class="flex items-center gap-2.5">
+              <Icon class="shrink-0 text-zinc-500" size={16} stroke-width={1.8} aria-hidden="true" />
+              {name}
+            </span>
+            <ArrowRight class="shrink-0 text-zinc-600" size={14} stroke-width={1.9} aria-hidden="true" />
+          </a>
+        ))
+      }
+    </section>
+  </div>
 </main>
+
+<script is:inline>
+  document.querySelectorAll("[data-robot-slot]").forEach((slot) => {
+    if (Math.random() < 0.2) {
+      slot.dataset.kind = "drone";
+    }
+  });
+</script>
+
+<style>
+  .robot-field {
+    color: #b8baff;
+    opacity: 0.18;
+    pointer-events: none;
+  }
+
+  .robot {
+    position: absolute;
+    width: clamp(4.5rem, 8vw, 8rem);
+    height: auto;
+    filter: drop-shadow(0 0 24px rgb(184 186 255 / 0.24));
+  }
+
+  .robot-icon {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .drone-icon {
+    display: none;
+  }
+
+  .robot[data-kind="drone"] .bot-icon {
+    display: none;
+  }
+
+  .robot[data-kind="drone"] .drone-icon {
+    display: block;
+  }
+
+  .robot-a {
+    top: 12%;
+    left: -10%;
+    animation: robot-a-run 18s cubic-bezier(0.35, 0, 0.2, 1) infinite;
+  }
+
+  .robot-b {
+    right: -10%;
+    bottom: 20%;
+    animation: robot-b-run 21s cubic-bezier(0.28, 0, 0.18, 1) infinite;
+  }
+
+  .robot-c {
+    top: 72%;
+    left: 4%;
+    animation: robot-c-run 23s cubic-bezier(0.32, 0, 0.24, 1) infinite;
+  }
+
+  .robot-d {
+    top: 38%;
+    left: -14%;
+    animation: robot-d-run 19s cubic-bezier(0.36, 0, 0.22, 1) infinite;
+  }
+
+  .robot-e {
+    right: -12%;
+    top: 58%;
+    animation: robot-e-run 25s cubic-bezier(0.3, 0, 0.2, 1) infinite;
+  }
+
+  @keyframes robot-a-run {
+    0%,
+    9% {
+      transform: translate3d(0, 0, 0) rotate(5deg);
+    }
+    18% {
+      transform: translate3d(24vw, 6vh, 0) rotate(34deg);
+    }
+    25%,
+    31% {
+      transform: translate3d(18vw, 17vh, 0) rotate(-18deg);
+    }
+    45% {
+      transform: translate3d(48vw, 8vh, 0) rotate(8deg);
+    }
+    55% {
+      transform: translate3d(43vw, -5vh, 0) rotate(-42deg);
+    }
+    70% {
+      transform: translate3d(78vw, 14vh, 0) rotate(26deg);
+    }
+    82%,
+    88% {
+      transform: translate3d(84vw, 2vh, 0) rotate(0deg);
+    }
+    100% {
+      transform: translate3d(118vw, -10vh, 0) rotate(18deg);
+    }
+  }
+
+  @keyframes robot-d-run {
+    0%,
+    7% {
+      transform: translate3d(0, 0, 0) rotate(-10deg);
+    }
+    16% {
+      transform: translate3d(22vw, -9vh, 0) rotate(18deg);
+    }
+    28% {
+      transform: translate3d(30vw, 10vh, 0) rotate(-34deg);
+    }
+    42% {
+      transform: translate3d(48vw, -16vh, 0) rotate(12deg);
+    }
+    49%,
+    56% {
+      transform: translate3d(44vw, -12vh, 0) rotate(7deg);
+    }
+    66% {
+      transform: translate3d(66vw, 9vh, 0) rotate(38deg);
+    }
+    79% {
+      transform: translate3d(76vw, -3vh, 0) rotate(-16deg);
+    }
+    100% {
+      transform: translate3d(112vw, 18vh, 0) rotate(12deg);
+    }
+  }
+
+  @keyframes robot-e-run {
+    0%,
+    10% {
+      transform: translate3d(0, 0, 0) rotate(14deg);
+    }
+    20% {
+      transform: translate3d(-20vw, 12vh, 0) rotate(-28deg);
+    }
+    33%,
+    39% {
+      transform: translate3d(-28vw, 4vh, 0) rotate(22deg);
+    }
+    46% {
+      transform: translate3d(-48vw, 24vh, 0) rotate(-8deg);
+    }
+    58% {
+      transform: translate3d(-42vw, 6vh, 0) rotate(34deg);
+    }
+    73% {
+      transform: translate3d(-78vw, 18vh, 0) rotate(-18deg);
+    }
+    84%,
+    90% {
+      transform: translate3d(-86vw, 10vh, 0) rotate(-6deg);
+    }
+    100% {
+      transform: translate3d(-116vw, -16vh, 0) rotate(28deg);
+    }
+  }
+
+  @keyframes robot-b-run {
+    0%,
+    8% {
+      transform: translate3d(0, 0, 0) rotate(-16deg);
+    }
+    19% {
+      transform: translate3d(-26vw, -8vh, 0) rotate(20deg);
+    }
+    29% {
+      transform: translate3d(-18vw, -20vh, 0) rotate(-38deg);
+    }
+    37%,
+    43% {
+      transform: translate3d(-34vw, -17vh, 0) rotate(-10deg);
+    }
+    50% {
+      transform: translate3d(-54vw, -22vh, 0) rotate(-4deg);
+    }
+    63% {
+      transform: translate3d(-58vw, -4vh, 0) rotate(30deg);
+    }
+    75% {
+      transform: translate3d(-78vw, 2vh, 0) rotate(-22deg);
+    }
+    86%,
+    92% {
+      transform: translate3d(-92vw, -8vh, 0) rotate(-16deg);
+    }
+    100% {
+      transform: translate3d(-118vw, 8vh, 0) rotate(10deg);
+    }
+  }
+
+  @keyframes robot-c-run {
+    0%,
+    6% {
+      transform: translate3d(-18vw, 10vh, 0) rotate(28deg);
+    }
+    16% {
+      transform: translate3d(2vw, -8vh, 0) rotate(-22deg);
+    }
+    26%,
+    32% {
+      transform: translate3d(10vw, -4vh, 0) rotate(8deg);
+    }
+    48% {
+      transform: translate3d(32vw, -34vh, 0) rotate(-12deg);
+    }
+    57% {
+      transform: translate3d(24vw, -24vh, 0) rotate(36deg);
+    }
+    70% {
+      transform: translate3d(52vw, -18vh, 0) rotate(-26deg);
+    }
+    83%,
+    89% {
+      transform: translate3d(62vw, -30vh, 0) rotate(5deg);
+    }
+    100% {
+      transform: translate3d(88vw, 6vh, 0) rotate(-18deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .robot {
+      animation: none;
+    }
+
+    .robot-a {
+      transform: translate3d(8vw, 3vh, 0) rotate(8deg);
+    }
+
+    .robot-b {
+      transform: translate3d(-10vw, -3vh, 0) rotate(-16deg);
+    }
+
+    .robot-c {
+      transform: translate3d(28vw, -18vh, 0) rotate(18deg);
+    }
+
+    .robot-d {
+      transform: translate3d(18vw, -8vh, 0) rotate(-6deg);
+    }
+
+    .robot-e {
+      transform: translate3d(-22vw, 14vh, 0) rotate(14deg);
+    }
+  }
+</style>

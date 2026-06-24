@@ -2,9 +2,9 @@
 import "../styles/global.css";
 import { Moon, Sun } from "lucide-astro";
 
-const title = "v5x | modern v5 tools";
+const title = "v5x | modern tools for modern v5 teams";
 const description =
-  "Open-source tools for building, uploading, and managing VEX V5 programs from the command line or JavaScript.";
+  "open-source cli, serial protocol, and web app tools for building, uploading, and managing vex v5 programs.";
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
 const socialImageUrl = new URL("/social-card.png", Astro.site);
 const structuredData = {
@@ -14,8 +14,8 @@ const structuredData = {
   description,
   url: canonicalUrl.href,
   applicationCategory: "DeveloperApplication",
-  operatingSystem: "Linux",
-  softwareRequirements: "Bun 1.3.14 or newer",
+  operatingSystem: "linux, browser",
+  softwareRequirements: "bun 1.3.14 or newer",
   license: "https://opensource.org/license/mit",
   codeRepository: "https://github.com/v5x-dev/v5x",
 };
@@ -27,6 +27,7 @@ const structuredData = {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="any" />
     <link rel="canonical" href={canonicalUrl} />
     <meta name="generator" content={Astro.generator} />
     <meta name="description" content={description} />
@@ -40,7 +41,7 @@ const structuredData = {
     <meta property="og:image" content={socialImageUrl} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="v5x — VEX V5 development tools" />
+    <meta property="og:image:alt" content="v5x - modern tools for modern v5 teams" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />

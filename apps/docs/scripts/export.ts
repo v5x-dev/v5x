@@ -5,6 +5,7 @@ import { resolveArchiveDestination } from "./archive-path";
 
 const outputDirectory = join(import.meta.dir, "..", ".wrangler", "site");
 const archivePath = join(import.meta.dir, "..", ".wrangler", "export.zip");
+const faviconIcoPath = join(import.meta.dir, "..", "assets", "favicon.ico");
 const siteUrl = "https://docs.v5x.dev";
 const excludedFiles = new Set([
   "serve.js",
@@ -39,12 +40,14 @@ for (const archivePath of paths) {
         ? "/"
         : `/${relativePath.replace(/\/index\.html$/, "")}`;
     const canonicalUrl = `${siteUrl}${pathname}`;
-    const html = new TextDecoder()
-      .decode(file)
-      .replace(
-        "</head>",
-        `<link rel="canonical" href="${canonicalUrl}"/><meta property="og:url" content="${canonicalUrl}"/></head>`,
-      );
+    let html = new TextDecoder().decode(file);
+    if (relativePath === "index.html") {
+      html = html.replace(/<title>.*?<\/title>/, "<title>v5x docs</title>");
+    }
+    html = html.replace(
+      "</head>",
+      `<link rel="alternate icon" href="/favicon.ico" sizes="any"/><link rel="canonical" href="${canonicalUrl}"/><meta property="og:url" content="${canonicalUrl}"/></head>`,
+    );
     await writeFile(destination, html);
     continue;
   }
@@ -89,5 +92,10 @@ await writeFile(
   join(outputDirectory, "robots.txt"),
   `User-agent: *\nAllow: /\n\nSitemap: ${siteUrl}/sitemap.xml\n`,
 );
+
+const faviconIco = await readFile(faviconIcoPath);
+await mkdir(join(outputDirectory, "assets"), { recursive: true });
+await writeFile(join(outputDirectory, "favicon.ico"), faviconIco);
+await writeFile(join(outputDirectory, "assets", "favicon.ico"), faviconIco);
 
 console.log(`prepared ${paths.length} files for Cloudflare Workers`);

@@ -16,7 +16,7 @@
     "dark": "#6668cc"
   },
   "logo": "/assets/favicon.svg",
-  "favicon": "/assets/favicon.svg",
+  "favicon": "/assets/favicon.ico",
   "icons": {
     "library": "lucide"
   },
