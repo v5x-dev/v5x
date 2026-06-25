@@ -56,14 +56,7 @@ describe("command output formatting", () => {
         },
       ]),
     ).toEqual([
-      [
-        "2",
-        "2",
-        "driver",
-        "2.0 KB",
-        "01/02/2024, 03:04:05",
-        "driver.bin",
-      ],
+      ["2", "2", "driver", "2.0 KB", "01/02/2024, 03:04:05", "driver.bin"],
     ]);
   });
 });

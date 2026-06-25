@@ -56,41 +56,43 @@ export function formatProgramRows(programs: IProgramInfo[]): string[][] {
 }
 
 export default function registerProgramsCommand(program: Sade) {
-  program.command("programs", "list programs on the V5 brain").action(async () => {
-    await withV5Device(async (device) => {
-      const result = await device.brain.listProgram();
-      if (result.isErr()) throw new Error("failed to list programs");
+  program
+    .command("programs", "list programs on the V5 brain")
+    .action(async () => {
+      await withV5Device(async (device) => {
+        const result = await device.brain.listProgram();
+        if (result.isErr()) throw new Error("failed to list programs");
 
-      const table = new Table({ compact: true });
-      table.addColumn("slot");
-      table.addColumn("requested");
-      table.addColumn("name");
-      table.addColumn("size");
-      table.addColumn("timestamp");
-      table.addColumn("file");
-      formatProgramRows(result.value).forEach((row) => table.addRow(row));
-      console.log(table.render());
+        const table = new Table({ compact: true });
+        table.addColumn("slot");
+        table.addColumn("requested");
+        table.addColumn("name");
+        table.addColumn("size");
+        table.addColumn("timestamp");
+        table.addColumn("file");
+        formatProgramRows(result.value).forEach((row) => table.addRow(row));
+        console.log(table.render());
+      });
     });
-  });
 
-  program.command("start <slot>", "start a program slot on the V5 brain").action(
-    async (slot: string) => {
+  program
+    .command("start <slot>", "start a program slot on the V5 brain")
+    .action(async (slot: string) => {
       const slotNumber = parseSlotArgument(slot);
       await withV5Device(async (device) => {
         const result = await device.brain.runProgram(slotNumber);
         if (result.isErr()) throw new Error(`failed to start slot ${slot}`);
         console.log(`started slot ${slot}`);
       });
-    },
-  );
+    });
 
-  program.command("stop", "stop the running program on the V5 brain").action(
-    async () => {
+  program
+    .command("stop", "stop the running program on the V5 brain")
+    .action(async () => {
       await withV5Device(async (device) => {
         const result = await device.brain.stopProgram();
         if (result.isErr()) throw new Error("failed to stop program");
         console.log("stopped program");
       });
-    },
-  );
+    });
 }
