@@ -65,5 +65,5 @@ test("public state views expose one coherent device snapshot", async () => {
   expect(device.radio.isVexNet).toBe(true);
   expect(device.radio.isRadioData).toBe(false);
   expect(device.radio.latency).toBe(4);
-  expect(await device.radio.changeChannel(1)).toBe(true);
+  expect((await device.radio.changeChannel(1)).isOk()).toBe(true);
 });

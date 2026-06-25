@@ -16,8 +16,16 @@ import {
   USER_PROG_CHUNK_SIZE,
   type SelectDashScreen,
 } from "./Vex.js";
+import {
+  VexIoError,
+  VexProtocolError,
+  VexSerialError,
+  VexTransferError,
+  toVexSerialError,
+} from "./VexError.js";
 import { VexEventTarget } from "./VexEvent.js";
 import { type ProgramIniConfig } from "./VexIniConfig.js";
+import { err, ok, Result, ResultAsync } from "neverthrow";
 import {
   MatchStatusReplyD2HPacket,
   DeviceBoundPacket,
@@ -214,12 +222,26 @@ export class VexSerialConnection extends VexEventTarget {
     }
   }
 
-  async open(
+  /**
+   * Open a port. The result is `Err` only when a connection is already
+   * open (programmer error); otherwise the underlying `boolean |
+   * undefined` semantics are preserved: `true` = opened, `false` =
+   * the port was busy, `undefined` = no matching port was selected.
+   */
+  open(
     use: number | undefined = 0,
     askUser: boolean = true,
-  ): Promise<boolean | undefined> {
-    if (this.port !== undefined) throw new Error("Already connected.");
+  ): ResultAsync<boolean | undefined, VexSerialError> {
+    if (this.port !== undefined) {
+      return errAsyncVex(new VexIoError("Already connected."));
+    }
+    return new ResultAsync(this._open(use, askUser));
+  }
 
+  private async _open(
+    use: number | undefined,
+    askUser: boolean,
+  ): Promise<Result<boolean | undefined, VexSerialError>> {
     let port: SerialPort | undefined;
 
     if (use !== undefined) {
@@ -247,9 +269,9 @@ export class VexSerialConnection extends VexEventTarget {
       }
     }
 
-    if (port == null) return undefined;
+    if (port == null) return ok(undefined);
 
-    if (port.readable != null) return false;
+    if (port.readable != null) return ok(false);
 
     try {
       this.port = port;
@@ -266,10 +288,10 @@ export class VexSerialConnection extends VexEventTarget {
       this._wasConnected = true;
       this.emit("connected", undefined);
 
-      return true;
+      return ok(true);
     } catch {
       await this.close();
-      return false;
+      return ok(false);
     }
   }
 
@@ -442,16 +464,27 @@ export class VexSerialConnection extends VexEventTarget {
       }
   }
 
-  async query1(): Promise<Query1ReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(new Query1H2DPacket(), 100);
-    return result instanceof Query1ReplyD2HPacket ? result : null;
+  query1(): ResultAsync<Query1ReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new Query1H2DPacket(), 100);
+        return result instanceof Query1ReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("query1 was not acknowledged"));
+      })(),
+    );
   }
 
-  async getSystemVersion(): Promise<VexFirmwareVersion | null> {
-    const result = await this.writeDataAsync(new SystemVersionH2DPacket());
-    return result instanceof SystemVersionReplyD2HPacket
-      ? result.version
-      : null;
+  getSystemVersion(): ResultAsync<VexFirmwareVersion, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new SystemVersionH2DPacket());
+        if (result instanceof SystemVersionReplyD2HPacket) {
+          return ok(result.version);
+        }
+        return err(new VexProtocolError("system version was not acknowledged"));
+      })(),
+    );
   }
 }
 
@@ -468,7 +501,7 @@ export class V5SerialConnection extends VexSerialConnection {
    * tail and chains after it, so transfers always execute in request
    * order without packet interleaving.
    */
-  protected async withFileTransfer<T>(operation: () => Promise<T>): Promise<T> {
+  async withFileTransfer<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.fileTransferTail;
     let release = (): void => {};
     const current = new Promise<void>((resolve) => {
@@ -485,34 +518,69 @@ export class V5SerialConnection extends VexSerialConnection {
     }
   }
 
-  async getDeviceStatus(): Promise<GetDeviceStatusReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(new GetDeviceStatusH2DPacket());
-    return result instanceof GetDeviceStatusReplyD2HPacket ? result : null;
-  }
-
-  async getRadioStatus(): Promise<GetRadioStatusReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(new GetRadioStatusH2DPacket());
-    return result instanceof GetRadioStatusReplyD2HPacket ? result : null;
-  }
-
-  async getSystemFlags(): Promise<GetSystemFlagsReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(new GetSystemFlagsH2DPacket());
-    return result instanceof GetSystemFlagsReplyD2HPacket ? result : null;
-  }
-
-  async getSystemStatus(
-    timeout = 1000,
-  ): Promise<GetSystemStatusReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(
-      new GetSystemStatusH2DPacket(),
-      timeout,
+  getDeviceStatus(): ResultAsync<
+    GetDeviceStatusReplyD2HPacket,
+    VexSerialError
+  > {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new GetDeviceStatusH2DPacket(),
+        );
+        return result instanceof GetDeviceStatusReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("device status was not acknowledged"));
+      })(),
     );
-    return result instanceof GetSystemStatusReplyD2HPacket ? result : null;
   }
 
-  async getMatchStatus(): Promise<MatchStatusReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(new GetMatchStatusH2DPacket());
-    return result instanceof MatchStatusReplyD2HPacket ? result : null;
+  getRadioStatus(): ResultAsync<GetRadioStatusReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new GetRadioStatusH2DPacket());
+        return result instanceof GetRadioStatusReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("radio status was not acknowledged"));
+      })(),
+    );
+  }
+
+  getSystemFlags(): ResultAsync<GetSystemFlagsReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new GetSystemFlagsH2DPacket());
+        return result instanceof GetSystemFlagsReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("system flags were not acknowledged"));
+      })(),
+    );
+  }
+
+  getSystemStatus(
+    timeout = 1000,
+  ): ResultAsync<GetSystemStatusReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new GetSystemStatusH2DPacket(),
+          timeout,
+        );
+        return result instanceof GetSystemStatusReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("system status was not acknowledged"));
+      })(),
+    );
+  }
+
+  getMatchStatus(): ResultAsync<MatchStatusReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new GetMatchStatusH2DPacket());
+        return result instanceof MatchStatusReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("match status was not acknowledged"));
+      })(),
+    );
   }
 
   /**
@@ -520,78 +588,94 @@ export class V5SerialConnection extends VexSerialConnection {
    * binary) under a single connection-level transaction so that no other
    * file-transfer request can interleave with the multi-file write.
    */
-  async uploadProgramToDevice(
+  uploadProgramToDevice(
     iniConfig: ProgramIniConfig,
     binFileBuf: Uint8Array,
     coldFileBuf: Uint8Array | undefined,
     progressCallback: (state: string, current: number, total: number) => void,
-  ): Promise<boolean | undefined> {
-    return this.withFileTransfer(async () => {
-      const iniFileBuffer = new TextEncoder().encode(iniConfig.createIni());
-
-      const basename = iniConfig.baseName;
-
-      const iniRequest = {
-        filename: basename + ".ini",
-        buf: iniFileBuffer,
-        downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-        vendor: FileVendor.USER,
-        autoRun: false,
-      };
-      const r1 = await this.uploadFileToDeviceUnlocked(
-        iniRequest,
-        (current, total) => {
-          progressCallback("INI", current, total);
-        },
-      );
-      if (!r1) return false;
-
-      const coldRequest =
-        coldFileBuf !== undefined
-          ? {
-              filename: basename + "_lib.bin",
-              buf: coldFileBuf,
-              downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-              vendor: FileVendor.DEV2, // PROS vendor id
-              autoRun: false,
-            }
-          : undefined;
-      if (coldRequest != null) {
-        const r2 = await this.uploadFileToDeviceUnlocked(
-          coldRequest,
-          (current, total) => {
-            progressCallback("COLD", current, total);
-          },
-        );
-        if (!r2) return;
-      }
-
-      const binRequest = {
-        filename: basename + ".bin",
-        buf: binFileBuf,
-        downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-        vendor: FileVendor.USER,
-        loadAddress: coldFileBuf != null ? 0x07800000 : undefined,
-        autoRun: iniConfig.autorun,
-        linkedFile: coldRequest,
-      };
-      const r3 = await this.uploadFileToDeviceUnlocked(
-        binRequest,
-        (current, total) => {
-          progressCallback("BIN", current, total);
-        },
-      );
-
-      return r3;
-    });
+  ): ResultAsync<boolean, VexSerialError> {
+    return wrapTransfer(this, () =>
+      this._uploadProgramToDevice(
+        iniConfig,
+        binFileBuf,
+        coldFileBuf,
+        progressCallback,
+      ),
+    );
   }
 
-  async downloadFileToHost(
+  private async _uploadProgramToDevice(
+    iniConfig: ProgramIniConfig,
+    binFileBuf: Uint8Array,
+    coldFileBuf: Uint8Array | undefined,
+    progressCallback: (state: string, current: number, total: number) => void,
+  ): Promise<Result<boolean, VexSerialError>> {
+    const iniFileBuffer = new TextEncoder().encode(iniConfig.createIni());
+
+    const basename = iniConfig.baseName;
+
+    const iniRequest = {
+      filename: basename + ".ini",
+      buf: iniFileBuffer,
+      downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+      vendor: FileVendor.USER,
+      autoRun: false,
+    };
+    const r1 = await this.uploadFileToDeviceUnlocked(
+      iniRequest,
+      (current, total) => {
+        progressCallback("INI", current, total);
+      },
+    );
+    if (r1.isErr()) return err(r1.error);
+    if (!r1.value) return ok(false);
+
+    const coldRequest =
+      coldFileBuf !== undefined
+        ? {
+            filename: basename + "_lib.bin",
+            buf: coldFileBuf,
+            downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+            vendor: FileVendor.DEV2, // PROS vendor id
+            autoRun: false,
+          }
+        : undefined;
+    if (coldRequest != null) {
+      const r2 = await this.uploadFileToDeviceUnlocked(
+        coldRequest,
+        (current, total) => {
+          progressCallback("COLD", current, total);
+        },
+      );
+      if (r2.isErr()) return err(r2.error);
+      if (!r2.value) return ok(false);
+    }
+
+    const binRequest = {
+      filename: basename + ".bin",
+      buf: binFileBuf,
+      downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+      vendor: FileVendor.USER,
+      loadAddress: coldFileBuf != null ? 0x07800000 : undefined,
+      autoRun: iniConfig.autorun,
+      linkedFile: coldRequest,
+    };
+    const r3 = await this.uploadFileToDeviceUnlocked(
+      binRequest,
+      (current, total) => {
+        progressCallback("BIN", current, total);
+      },
+    );
+
+    return r3;
+  }
+
+  downloadFileToHost(
     request: IFileBasicInfo,
     downloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
-  ): Promise<Uint8Array> {
-    return this.withFileTransfer(() =>
+  ): ResultAsync<Uint8Array, VexSerialError> {
+    return wrapTransfer(this, () =>
       this.downloadFileToHostUnlocked(
         request,
         downloadTarget,
@@ -606,11 +690,25 @@ export class V5SerialConnection extends VexSerialConnection {
    * `captureScreen`) and need to issue the download within a larger
    * queued operation.
    */
-  async downloadFileToHostUnlocked(
+  downloadFileToHostUnlocked(
     request: IFileBasicInfo,
     downloadTarget: FileDownloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
-  ): Promise<Uint8Array> {
+  ): ResultAsync<Uint8Array, VexSerialError> {
+    return new ResultAsync(
+      this._downloadFileToHostUnlocked(
+        request,
+        downloadTarget,
+        progressCallback,
+      ),
+    );
+  }
+
+  private async _downloadFileToHostUnlocked(
+    request: IFileBasicInfo,
+    downloadTarget: FileDownloadTarget,
+    progressCallback?: (current: number, total: number) => void,
+  ): Promise<Result<Uint8Array, VexSerialError>> {
     const { filename, vendor, loadAddress, size } = request;
 
     let nextAddress = loadAddress ?? USER_FLASH_USR_CODE_START;
@@ -628,11 +726,12 @@ export class V5SerialConnection extends VexSerialConnection {
       ),
     );
 
-    if (!(p1 instanceof InitFileTransferReplyD2HPacket))
-      throw new Error("InitFileTransferH2DPacket failed");
+    if (!(p1 instanceof InitFileTransferReplyD2HPacket)) {
+      return err(new VexTransferError("InitFileTransferH2DPacket failed"));
+    }
 
     let transferFailed = true;
-
+    let result: Result<Uint8Array, VexSerialError> = ok(new Uint8Array());
     try {
       const fileSize = size ?? p1.fileSize;
       const bufferChunkSize = getTransferChunkSize(p1.windowSize);
@@ -650,10 +749,10 @@ export class V5SerialConnection extends VexSerialConnection {
         );
 
         if (!(p2 instanceof ReadFileReplyD2HPacket)) {
-          throw new Error("ReadFileReplyD2HPacket failed");
+          throw new VexTransferError("ReadFileReplyD2HPacket failed");
         }
         if (p2.addr !== nextAddress) {
-          throw new Error(
+          throw new VexTransferError(
             `ReadFileReplyD2HPacket returned address ${p2.addr}, expected ${nextAddress}`,
           );
         }
@@ -662,7 +761,7 @@ export class V5SerialConnection extends VexSerialConnection {
           p2.length > requestedSize ||
           p2.buf.byteLength !== p2.length
         ) {
-          throw new Error(
+          throw new VexTransferError(
             `ReadFileReplyD2HPacket returned invalid length ${p2.length}`,
           );
         }
@@ -674,7 +773,11 @@ export class V5SerialConnection extends VexSerialConnection {
       }
 
       transferFailed = false;
-      return fileBuf;
+      result = ok(fileBuf);
+    } catch (e) {
+      result = err(
+        e instanceof VexSerialError ? e : toVexSerialError(e, "transfer"),
+      );
     } finally {
       // Always exit file-transfer mode even if reading or writing the
       // reply throws. If the original transfer also failed we keep its
@@ -686,24 +789,27 @@ export class V5SerialConnection extends VexSerialConnection {
           30000,
         );
       } catch (cleanupError) {
-        if (!transferFailed) throw cleanupError;
+        if (!transferFailed) {
+          result = err(toVexSerialError(cleanupError, "io"));
+        }
       }
     }
+    return result;
   }
 
-  async uploadFileToDevice(
+  uploadFileToDevice(
     request: IFileWriteRequest,
     progressCallback?: (current: number, total: number) => void,
-  ): Promise<boolean> {
-    return this.withFileTransfer(() =>
+  ): ResultAsync<boolean, VexSerialError> {
+    return wrapTransfer(this, () =>
       this.uploadFileToDeviceUnlocked(request, progressCallback),
     );
   }
 
-  private async uploadFileToDeviceUnlocked(
+  async uploadFileToDeviceUnlocked(
     request: IFileWriteRequest,
     progressCallback?: (current: number, total: number) => void,
-  ): Promise<boolean> {
+  ): Promise<Result<boolean, VexSerialError>> {
     let {
       filename,
       buf,
@@ -716,7 +822,7 @@ export class V5SerialConnection extends VexSerialConnection {
     } = request;
 
     if (buf === undefined) {
-      return false;
+      return err(new VexTransferError("no buffer provided for upload"));
     }
 
     downloadTarget = downloadTarget ?? FileDownloadTarget.FILE_TARGET_QSPI;
@@ -737,8 +843,9 @@ export class V5SerialConnection extends VexSerialConnection {
       ),
     );
 
-    if (!(p1 instanceof InitFileTransferReplyD2HPacket))
-      throw new Error("InitFileTransferH2DPacket failed");
+    if (!(p1 instanceof InitFileTransferReplyD2HPacket)) {
+      return err(new VexTransferError("InitFileTransferH2DPacket failed"));
+    }
 
     const bufferChunkSize = getTransferChunkSize(p1.windowSize);
     let bufferOffset = 0;
@@ -747,6 +854,7 @@ export class V5SerialConnection extends VexSerialConnection {
 
     let transferFailed = true;
     let exitReply: HostBoundPacket | ArrayBuffer | AckType | undefined;
+    let result: Result<boolean, VexSerialError> = ok(false);
 
     try {
       if (linkedFile !== undefined) {
@@ -760,7 +868,7 @@ export class V5SerialConnection extends VexSerialConnection {
         );
 
         if (!(p3 instanceof LinkFileReplyD2HPacket)) {
-          throw new Error("LinkFileH2DPacket failed");
+          throw new VexTransferError("LinkFileH2DPacket failed");
         }
       }
 
@@ -783,7 +891,7 @@ export class V5SerialConnection extends VexSerialConnection {
         );
 
         if (!(p2 instanceof WriteFileReplyD2HPacket))
-          throw new Error("WriteFileReplyD2DPacket failed");
+          throw new VexTransferError("WriteFileReplyD2DPacket failed");
 
         if (progressCallback != null)
           progressCallback(bufferOffset, buf.byteLength);
@@ -795,6 +903,10 @@ export class V5SerialConnection extends VexSerialConnection {
 
       progressCallback?.(buf.byteLength, buf.byteLength);
       transferFailed = false;
+    } catch (e) {
+      result = err(
+        e instanceof VexSerialError ? e : toVexSerialError(e, "transfer"),
+      );
     } finally {
       // Always exit file-transfer mode even if writing or cleanup throws.
       // If the original transfer failed, keep its error so callers see
@@ -810,17 +922,19 @@ export class V5SerialConnection extends VexSerialConnection {
           ),
           30000,
         );
+        if (!transferFailed) {
+          result = ok(
+            exitReply !== undefined &&
+              exitReply instanceof ExitFileTransferReplyD2HPacket,
+          );
+        }
       } catch (cleanupError) {
-        if (!transferFailed) throw cleanupError;
-        // Swallow the cleanup error so the original transfer error
-        // propagates to the caller.
+        if (!transferFailed) {
+          result = err(toVexSerialError(cleanupError, "io"));
+        }
       }
     }
-
-    return (
-      exitReply !== undefined &&
-      exitReply instanceof ExitFileTransferReplyD2HPacket
-    );
+    return result;
   }
 
   /**
@@ -828,145 +942,216 @@ export class V5SerialConnection extends VexSerialConnection {
    * file-transfer mode in a `finally` block regardless of how the
    * operation completes.
    */
-  async removeFile(request: IFileBasicInfo | string): Promise<boolean> {
-    return this.withFileTransfer(async () => {
-      let vendor: FileVendor, filename: string;
-      if (typeof request === "string") {
-        vendor = FileVendor.USER;
-        filename = request;
-      } else {
-        vendor = request.vendor;
-        filename = request.filename;
-      }
-
-      try {
-        const result = await this.writeDataAsync(
-          new EraseFileH2DPacket(vendor, filename),
-        );
-        if (!(result instanceof EraseFileReplyD2HPacket)) return false;
-        return true;
-      } finally {
-        try {
-          await this.writeDataAsync(
-            new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
-          );
-        } catch {
-          // Preserve the original error.
+  removeFile(
+    request: IFileBasicInfo | string,
+  ): ResultAsync<void, VexSerialError> {
+    return new ResultAsync(
+      this.withFileTransfer(async () => {
+        let vendor: FileVendor, filename: string;
+        if (typeof request === "string") {
+          vendor = FileVendor.USER;
+          filename = request;
+        } else {
+          vendor = request.vendor;
+          filename = request.filename;
         }
-      }
-    });
+
+        let result: Result<void, VexSerialError>;
+        try {
+          const ack = await this.writeDataAsync(
+            new EraseFileH2DPacket(vendor, filename),
+          );
+          result =
+            ack instanceof EraseFileReplyD2HPacket
+              ? ok(undefined)
+              : err(new VexProtocolError("removeFile was not acknowledged"));
+        } catch (e) {
+          result = err(toVexSerialError(e, "io"));
+        } finally {
+          try {
+            await this.writeDataAsync(
+              new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+            );
+          } catch {
+            // Preserve the original error.
+          }
+        }
+        return result;
+      }),
+    );
   }
 
   /**
    * Erase every file in the user vendor namespace under a single
    * transfer-mode session.
    */
-  async removeAllFiles(): Promise<boolean> {
-    return this.withFileTransfer(async () => {
-      try {
-        const result = await this.writeDataAsync(
-          new FileClearUpH2DPacket(FileVendor.USER),
-          30000,
-        );
-        return result instanceof FileClearUpReplyD2HPacket;
-      } finally {
+  removeAllFiles(): ResultAsync<void, VexSerialError> {
+    return new ResultAsync(
+      this.withFileTransfer(async () => {
+        let result: Result<void, VexSerialError>;
         try {
-          await this.writeDataAsync(
-            new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+          const ack = await this.writeDataAsync(
+            new FileClearUpH2DPacket(FileVendor.USER),
+            30000,
           );
-        } catch {
-          // Preserve the original error.
+          result =
+            ack instanceof FileClearUpReplyD2HPacket
+              ? ok(undefined)
+              : err(
+                  new VexProtocolError("removeAllFiles was not acknowledged"),
+                );
+        } catch (e) {
+          result = err(toVexSerialError(e, "io"));
+        } finally {
+          try {
+            await this.writeDataAsync(
+              new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+            );
+          } catch {
+            // Preserve the original error.
+          }
         }
-      }
-    });
+        return result;
+      }),
+    );
   }
 
   /**
    * Issue the screen-capture command and validate that the device
-   * acknowledged it. Callers must inspect the returned packet (or
-   * `null` on NACK) before downloading the framebuffer so that a
+   * acknowledged it. Callers must inspect the returned packet (or the
+   * error result on NACK) before downloading the framebuffer so that a
    * rejected request performs no download.
    */
-  async captureScreenSetup(): Promise<ScreenCaptureReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(new ScreenCaptureH2DPacket(0));
-    return result instanceof ScreenCaptureReplyD2HPacket ? result : null;
-  }
-
-  async captureScreen(
-    progressCallback?: (current: number, total: number) => void,
-  ): Promise<Uint8Array> {
-    return this.withFileTransfer(async () => {
-      const response = await this.captureScreenSetup();
-      if (response === null) {
-        throw new Error("screen capture request was rejected");
-      }
-
-      const framebuffer = await this.downloadFileToHostUnlocked(
-        {
-          filename: "screen",
-          vendor: FileVendor.SYS,
-          loadAddress: 0,
-          size:
-            SCREEN_CAPTURE_MESSAGE_WIDTH *
-            SCREEN_CAPTURE_HEIGHT *
-            SCREEN_CAPTURE_MESSAGE_CHANNELS,
-        },
-        FileDownloadTarget.FILE_TARGET_CBUF,
-        progressCallback,
-      );
-
-      return convertScreenCapture(framebuffer);
-    });
-  }
-
-  async setMatchMode(mode: MatchMode): Promise<MatchModeReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(
-      new UpdateMatchModeH2DPacket(mode, 0),
+  captureScreenSetup(): ResultAsync<
+    ScreenCaptureReplyD2HPacket,
+    VexSerialError
+  > {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new ScreenCaptureH2DPacket(0));
+        return result instanceof ScreenCaptureReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("screen capture was rejected"));
+      })(),
     );
-    return result instanceof MatchModeReplyD2HPacket ? result : null;
   }
 
-  async runProgram(
+  captureScreen(
+    progressCallback?: (current: number, total: number) => void,
+  ): ResultAsync<Uint8Array, VexSerialError> {
+    return wrapTransfer(this, () => this._captureScreen(progressCallback));
+  }
+
+  private async _captureScreen(
+    progressCallback?: (current: number, total: number) => void,
+  ): Promise<Result<Uint8Array, VexSerialError>> {
+    const response = await this.captureScreenSetup();
+    if (response.isErr()) {
+      return err(response.error);
+    }
+
+    const framebuffer = await this.downloadFileToHostUnlocked(
+      {
+        filename: "screen",
+        vendor: FileVendor.SYS,
+        loadAddress: 0,
+        size:
+          SCREEN_CAPTURE_MESSAGE_WIDTH *
+          SCREEN_CAPTURE_HEIGHT *
+          SCREEN_CAPTURE_MESSAGE_CHANNELS,
+      },
+      FileDownloadTarget.FILE_TARGET_CBUF,
+      progressCallback,
+    );
+    if (framebuffer.isErr()) return err(framebuffer.error);
+
+    return ok(convertScreenCapture(framebuffer.value));
+  }
+
+  setMatchMode(
+    mode: MatchMode,
+  ): ResultAsync<MatchModeReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new UpdateMatchModeH2DPacket(mode, 0),
+        );
+        return result instanceof MatchModeReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("setMatchMode was not acknowledged"));
+      })(),
+    );
+  }
+
+  runProgram(
     value: SlotNumber | string,
-  ): Promise<LoadFileActionReplyD2HPacket | null> {
+  ): ResultAsync<LoadFileActionReplyD2HPacket, VexSerialError> {
     return this.loadProgram(value);
   }
 
-  async loadProgram(
+  loadProgram(
     value: SlotNumber | string,
-  ): Promise<LoadFileActionReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(
-      new LoadFileActionH2DPacket(FileVendor.USER, FileLoadAction.RUN, value),
+  ): ResultAsync<LoadFileActionReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new LoadFileActionH2DPacket(
+            FileVendor.USER,
+            FileLoadAction.RUN,
+            value,
+          ),
+        );
+        return result instanceof LoadFileActionReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("loadProgram was not acknowledged"));
+      })(),
     );
-    return result instanceof LoadFileActionReplyD2HPacket ? result : null;
   }
 
-  async stopProgram(): Promise<LoadFileActionReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(
-      new LoadFileActionH2DPacket(FileVendor.USER, FileLoadAction.STOP, ""),
+  stopProgram(): ResultAsync<LoadFileActionReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new LoadFileActionH2DPacket(FileVendor.USER, FileLoadAction.STOP, ""),
+        );
+        return result instanceof LoadFileActionReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("stopProgram was not acknowledged"));
+      })(),
     );
-    return result instanceof LoadFileActionReplyD2HPacket ? result : null;
   }
 
-  async mockTouch(
+  mockTouch(
     x: number,
     y: number,
     press: boolean,
-  ): Promise<SendDashTouchReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(
-      new SendDashTouchH2DPacket(x, y, press),
+  ): ResultAsync<SendDashTouchReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new SendDashTouchH2DPacket(x, y, press),
+        );
+        return result instanceof SendDashTouchReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("mockTouch was not acknowledged"));
+      })(),
     );
-    return result instanceof SendDashTouchReplyD2HPacket ? result : null;
   }
 
-  async openScreen(
+  openScreen(
     screen: number | SelectDashScreen,
     port: number,
-  ): Promise<SelectDashReplyD2HPacket | null> {
-    const result = await this.writeDataAsync(
-      new SelectDashH2DPacket(screen, port),
+  ): ResultAsync<SelectDashReplyD2HPacket, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new SelectDashH2DPacket(screen, port),
+        );
+        return result instanceof SelectDashReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("openScreen was not acknowledged"));
+      })(),
     );
-    return result instanceof SelectDashReplyD2HPacket ? result : null;
   }
 }
 
@@ -1009,4 +1194,34 @@ function convertScreenCapture(framebuffer: Uint8Array): Uint8Array {
   }
 
   return pixels;
+}
+
+/**
+ * Run an operation inside the per-connection transfer queue and lift its
+ * `Promise<Result<T, VexSerialError>>` into a `ResultAsync`. Throwables
+ * escaping `withFileTransfer` are coerced into a {@link VexSerialError}.
+ */
+function wrapTransfer<T>(
+  conn: V5SerialConnection,
+  operation: () =>
+    | Promise<Result<T, VexSerialError>>
+    | ResultAsync<T, VexSerialError>,
+): ResultAsync<T, VexSerialError> {
+  return new ResultAsync(
+    conn.withFileTransfer<Result<T, VexSerialError>>(async () => {
+      try {
+        return (await operation()) as Result<T, VexSerialError>;
+      } catch (e) {
+        if (e instanceof VexSerialError) return err(e);
+        return err(toVexSerialError(e, "io"));
+      }
+    }),
+  );
+}
+
+// Eager async-rejection helper used by synchronous entry points.
+function errAsyncVex<E extends VexSerialError>(
+  error: E,
+): ResultAsync<never, VexSerialError> {
+  return new ResultAsync<never, VexSerialError>(Promise.resolve(err(error)));
 }

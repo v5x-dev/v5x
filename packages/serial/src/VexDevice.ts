@@ -14,6 +14,14 @@ import {
 } from "./VexDeviceState.js";
 import { sleepUntil, sleepUntilAsync } from "./VexFirmware.js";
 import {
+  VexInvalidArgumentError,
+  VexIoError,
+  VexNotConnectedError,
+  VexSerialError,
+  toVexSerialError,
+} from "./VexError.js";
+import { err, ok, Result, ResultAsync } from "neverthrow";
+import {
   GetDeviceStatusReplyD2HPacket,
   GetRadioStatusReplyD2HPacket,
   GetSystemFlagsReplyD2HPacket,
@@ -69,9 +77,16 @@ export class V5SerialDevice extends VexSerialDevice {
           !this.state.isFileTransferring
         ) {
           isLastRefreshComplete = false;
-          void this.refresh()
-            .catch((error: unknown) => this.emit("error", error))
-            .finally(() => (isLastRefreshComplete = true));
+          void (async () => {
+            try {
+              const r = await this.refresh();
+              if (r.isErr()) this.emit("error", r.error);
+            } catch (error: unknown) {
+              this.emit("error", error);
+            } finally {
+              isLastRefreshComplete = true;
+            }
+          })();
         }
       }
     }, 200);
@@ -109,11 +124,11 @@ export class V5SerialDevice extends VexSerialDevice {
   /**
    * @deprecated Setting this property dispatches a fire-and-forget
    * request whose result cannot be observed. Use {@link setMatchMode}
-   * instead, which returns a promise that resolves to `false` when
-   * the device refuses or is disconnected.
+   * instead, which returns a {@link ResultAsync} that resolves to an
+   * error result when the device refuses or is disconnected.
    */
   set matchMode(value) {
-    void this.setMatchMode(value).catch(() => {
+    void this.setMatchMode(value).mapErr(() => {
       // Preserve the legacy fire-and-forget contract: callers who
       // need rejection handling should migrate to setMatchMode().
     });
@@ -121,33 +136,60 @@ export class V5SerialDevice extends VexSerialDevice {
 
   /**
    * Update the match mode and resolve only after the device
-   * acknowledges the command. Returns `true` when the new value is
-   * committed to the observed state. Returns `false` when the device
-   * NACKs, the request times out, or no connection is currently open.
+   * acknowledges the command. Resolves to an error result when the
+   * device NACKs, the request times out, or no connection is open.
    */
-  async setMatchMode(mode: MatchMode): Promise<boolean> {
-    const reply = await this.connection?.setMatchMode(mode);
-    if (reply == null) return false;
-    this.state.matchMode = mode;
-    return true;
+  setMatchMode(mode: MatchMode): ResultAsync<void, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const reply = await this.connection?.setMatchMode(mode);
+        if (reply === undefined) return err(new VexNotConnectedError());
+        if (reply.isErr()) return err(reply.error);
+        this.state.matchMode = mode;
+        return ok(undefined);
+      })(),
+    );
   }
 
   get radio(): V5Radio {
     return new V5Radio(this.state);
   }
 
-  async mockTouch(x: number, y: number, press: boolean): Promise<boolean> {
-    return !((await this.connection?.mockTouch(x, y, press)) == null);
+  mockTouch(
+    x: number,
+    y: number,
+    press: boolean,
+  ): ResultAsync<void, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const reply = await this.connection?.mockTouch(x, y, press);
+        if (reply === undefined) return err(new VexNotConnectedError());
+        if (reply.isErr()) return err(reply.error);
+        return ok(undefined);
+      })(),
+    );
   }
 
-  async connect(conn?: V5SerialConnection): Promise<boolean> {
-    if (this.isConnected) return true;
+  connect(conn?: V5SerialConnection): ResultAsync<void, VexSerialError> {
+    return new ResultAsync(this._connect(conn));
+  }
+
+  private async _connect(
+    conn?: V5SerialConnection,
+  ): Promise<Result<void, VexSerialError>> {
+    if (this.isConnected) return ok(undefined);
 
     if (conn != null) {
-      if (!conn.isConnected && !(await conn.open())) return false;
-      if ((await conn.query1()) === null) {
+      if (!conn.isConnected) {
+        const opened = await conn.open();
+        if (opened.isErr() || opened.value !== true) {
+          return err(new VexIoError("failed to open the supplied connection"));
+        }
+      }
+      const q = await conn.query1();
+      if (q.isErr()) {
         await conn.close();
-        return false;
+        return err(q.error);
       }
       this.connection = conn;
     } else {
@@ -156,14 +198,21 @@ export class V5SerialDevice extends VexSerialDevice {
         const c = new V5SerialConnection(this.defaultSerial);
 
         const result = await c.open(tryIdx++, true);
-        if (result === undefined) return false; // no port left
-        if (!result) {
-          // has been opened
+        if (result.isErr()) {
+          await c.close();
+          return err(result.error);
+        }
+        if (result.value === undefined) {
+          return err(new VexNotConnectedError("no V5 device was found"));
+        }
+        if (!result.value) {
+          // The port was already in use elsewhere; try the next index.
           await c.close();
           continue;
         }
 
-        if ((await c.query1()) === null) {
+        const q = await c.query1();
+        if (q.isErr()) {
           // no response
           await c.close();
           continue;
@@ -174,11 +223,11 @@ export class V5SerialDevice extends VexSerialDevice {
       }
     }
 
-    if (!this.isConnected) return false;
+    if (!this.isConnected) return err(new VexNotConnectedError());
 
     await this.doAfterConnect();
 
-    return true;
+    return ok(undefined);
   }
 
   async disconnect(): Promise<void> {
@@ -204,23 +253,33 @@ export class V5SerialDevice extends VexSerialDevice {
   }
 
   /**
-   * @param timeout defaults to 0. If timeout is 0, then it will attempt to reconnect forever
-   * @returns
+   * @param timeout defaults to 0. If timeout is 0, then it will attempt to reconnect forever.
    */
-  async reconnect(timeout: number = 0): Promise<boolean> {
-    if (this.isConnected) return true;
-    if (timeout < 0) return false;
+  reconnect(timeout: number = 0): ResultAsync<void, VexSerialError> {
+    return new ResultAsync(this._reconnect(timeout));
+  }
+
+  private async _reconnect(
+    timeout: number,
+  ): Promise<Result<void, VexSerialError>> {
+    if (this.isConnected) return ok(undefined);
+    if (timeout < 0) {
+      return err(new VexInvalidArgumentError("timeout must be non-negative"));
+    }
 
     const endTime = Date.now() + timeout;
 
     if (this._isReconnecting) {
       if (timeout === 0) {
         await this.waitForReconnectToFinish();
-      } else if (!(await sleepUntil(() => !this._isReconnecting, timeout))) {
-        return false;
+      } else {
+        const waited = await sleepUntil(() => !this._isReconnecting, timeout);
+        if (waited.isErr() || !waited.value) {
+          return err(new VexNotConnectedError());
+        }
       }
 
-      if (this.isConnected) return true;
+      if (this.isConnected) return ok(undefined);
     }
 
     this._isReconnecting = true;
@@ -232,15 +291,19 @@ export class V5SerialDevice extends VexSerialDevice {
 
           const result = await c.open(tryIdx++, false);
 
-          if (result === undefined) break; // no port left
-          if (!result) {
+          if (result.isErr()) {
+            await c.close();
+            return err(result.error);
+          }
+          if (result.value === undefined) break; // no port left
+          if (!result.value) {
             // has been opened
             await c.close();
             continue;
           }
 
-          const result2 = await c.getSystemStatus(200);
-          if (result2 === null) {
+          const status = await c.getSystemStatus(200);
+          if (status.isErr()) {
             // no response
             await c.close();
             continue;
@@ -248,7 +311,7 @@ export class V5SerialDevice extends VexSerialDevice {
 
           if (
             this.brain.uniqueId !== 0 &&
-            result2.uniqueId !== this.brain.uniqueId
+            status.value.uniqueId !== this.brain.uniqueId
           ) {
             // uuid not match
             await c.close();
@@ -270,20 +333,23 @@ export class V5SerialDevice extends VexSerialDevice {
           1000,
         );
       }
+    } catch (e) {
+      return err(toVexSerialError(e));
     } finally {
       this._isReconnecting = false;
     }
 
-    if (!this.isConnected) return false;
+    if (!this.isConnected) return err(new VexNotConnectedError());
 
     await this.doAfterConnect();
 
-    return true;
+    return ok(undefined);
   }
 
   private async waitForReconnectToFinish(): Promise<void> {
     while (this._isReconnecting) {
-      if (await sleepUntil(() => !this._isReconnecting, 1000)) return;
+      const r = await sleepUntil(() => !this._isReconnecting, 1000);
+      if (r.isOk() && r.value) return;
     }
   }
 
@@ -291,7 +357,9 @@ export class V5SerialDevice extends VexSerialDevice {
     if (this.connection == null) return;
 
     this.connection.on("disconnected", (_data) => {
-      if (this.autoReconnect && !this._isDisconnecting) void this.reconnect();
+      if (this.autoReconnect && !this._isDisconnecting) {
+        void this.reconnect().mapErr((e) => this.emit("error", e));
+      }
     });
 
     await this.refresh();
@@ -300,55 +368,64 @@ export class V5SerialDevice extends VexSerialDevice {
   /**
    * Refresh the high-level device snapshot. All required replies are
    * collected before any public state is mutated, so callers never see
-   * a half-updated view. If any required reply fails the previous
-   * snapshot is preserved and only the `isAvailable` flag is updated to
-   * reflect the loss of communication.
+   * a half-updated view. A failed or missing reply resolves to an `Ok`
+   * of `false` (the previous snapshot is preserved and only the
+   * `isAvailable` flag is updated) so transient communication loss does
+   * not surface as a hard error result.
    */
-  async refresh(): Promise<boolean> {
-    if (this._disposed) return false;
+  refresh(): ResultAsync<boolean, VexSerialError> {
+    return new ResultAsync(this._refresh());
+  }
+
+  private async _refresh(): Promise<Result<boolean, VexSerialError>> {
+    if (this._disposed) return ok(false);
 
     const generation = ++this._refreshGeneration;
     const conn = this.connection;
     if (conn == null || !conn.isConnected) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return false;
+      return ok(false);
     }
 
     const ssPacket = await conn.getSystemStatus();
-    if (generation !== this._refreshGeneration || this._disposed) return false;
-    if (ssPacket == null) {
+    if (generation !== this._refreshGeneration || this._disposed)
+      return ok(false);
+    if (ssPacket.isErr()) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return false;
+      return ok(false);
     }
 
     const sfPacket = await conn.getSystemFlags();
-    if (generation !== this._refreshGeneration || this._disposed) return false;
-    if (sfPacket == null) {
+    if (generation !== this._refreshGeneration || this._disposed)
+      return ok(false);
+    if (sfPacket.isErr()) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return false;
+      return ok(false);
     }
 
     const rdPacket = await conn.getRadioStatus();
-    if (generation !== this._refreshGeneration || this._disposed) return false;
-    if (rdPacket == null) {
+    if (generation !== this._refreshGeneration || this._disposed)
+      return ok(false);
+    if (rdPacket.isErr()) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return false;
+      return ok(false);
     }
 
     const dsPacket = await conn.getDeviceStatus();
-    if (generation !== this._refreshGeneration || this._disposed) return false;
-    if (dsPacket == null) {
+    if (generation !== this._refreshGeneration || this._disposed)
+      return ok(false);
+    if (dsPacket.isErr()) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return false;
+      return ok(false);
     }
 
     const snapshot = this._buildSnapshot(
-      ssPacket,
-      sfPacket,
-      rdPacket,
-      dsPacket,
+      ssPacket.value,
+      sfPacket.value,
+      rdPacket.value,
+      dsPacket.value,
     );
-    return this._applySnapshotIfCurrent(generation, snapshot);
+    return ok(this._applySnapshotIfCurrent(generation, snapshot));
   }
 
   private _buildSnapshot(

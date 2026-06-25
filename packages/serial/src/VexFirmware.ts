@@ -6,6 +6,16 @@ import {
 } from "./Vex.js";
 import type { V5SerialDeviceState } from "./VexDeviceState.js";
 import {
+  VexDownloadError,
+  VexFirmwareError,
+  VexInvalidArgumentError,
+  VexNotConnectedError,
+  VexProtocolError,
+  VexSerialError,
+  toVexSerialError,
+} from "./VexError.js";
+import { err, errAsync, ok, Result, ResultAsync } from "neverthrow";
+import {
   FactoryEnableH2DPacket,
   FactoryEnableReplyD2HPacket,
   FactoryStatusH2DPacket,
@@ -29,43 +39,79 @@ export interface DownloadFileFromInternetOptions {
 }
 
 /**
+ * Lift an async function that returns `Promise<Result<T, VexSerialError>>`
+ * into a {@link ResultAsync}. Used by the public exports so they read as
+ * synchronous Result-returning APIs while keeping the implementation in
+ * plain async helpers.
+ */
+function fromAsyncFn<T>(
+  fn: () => Promise<Result<T, VexSerialError>>,
+): ResultAsync<T, VexSerialError> {
+  return new ResultAsync(fn());
+}
+
+/**
  * Download a remote resource while enforcing a maximum body size. The
  * declared `Content-Length` header is validated up front, and the body
  * is streamed so an oversized payload is rejected before it is fully
- * read into memory.
+ * read into memory. Failures are returned as a {@link VexDownloadError}
+ * (or {@link VexInvalidArgumentError} for bad options) instead of
+ * thrown.
  */
-export async function downloadFileFromInternet(
+export function downloadFileFromInternet(
   link: string,
   options: DownloadFileFromInternetOptions = {},
-): Promise<ArrayBuffer> {
+): ResultAsync<ArrayBuffer, VexSerialError> {
   const { maxBytes = Number.POSITIVE_INFINITY, timeout = 30000 } = options;
   if (maxBytes <= 0) {
-    throw new RangeError("maxBytes must be positive");
+    return errAsync(new VexInvalidArgumentError("maxBytes must be positive"));
   }
   if (timeout < 0) {
-    throw new RangeError("timeout must be non-negative");
+    return errAsync(
+      new VexInvalidArgumentError("timeout must be non-negative"),
+    );
   }
+  return fromAsyncFn(() => runDownload(link, maxBytes, timeout));
+}
 
+async function runDownload(
+  link: string,
+  maxBytes: number,
+  timeout: number,
+): Promise<Result<ArrayBuffer, VexSerialError>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const response = await fetch(link, { signal: controller.signal });
+    let response: Response;
+    try {
+      response = await fetch(link, { signal: controller.signal });
+    } catch (e) {
+      return err(
+        new VexDownloadError(
+          `failed to download ${link} (${e instanceof Error ? e.message : String(e)})`,
+        ),
+      );
+    }
     if (!response.ok) {
-      throw new Error(`failed to download ${link} (${response.status})`);
+      return err(
+        new VexDownloadError(`failed to download ${link} (${response.status})`),
+      );
     }
 
     const declaredLength = response.headers.get("content-length");
     if (declaredLength !== null) {
       const declared = Number.parseInt(declaredLength, 10);
       if (!Number.isNaN(declared) && declared > 0 && declared > maxBytes) {
-        throw new RangeError(
-          `declared content length ${declared} exceeds limit ${maxBytes} for ${link}`,
+        return err(
+          new VexDownloadError(
+            `declared content length ${declared} exceeds limit ${maxBytes} for ${link}`,
+          ),
         );
       }
     }
 
     if (response.body == null) {
-      throw new Error(`no response body for ${link}`);
+      return err(new VexDownloadError(`no response body for ${link}`));
     }
 
     const reader = response.body.getReader();
@@ -83,8 +129,10 @@ export async function downloadFileFromInternet(
           } catch {
             // The reader may already be in a terminal state.
           }
-          throw new RangeError(
-            `downloaded body exceeded limit ${maxBytes} for ${link}`,
+          return err(
+            new VexDownloadError(
+              `downloaded body exceeds limit ${maxBytes} for ${link}`,
+            ),
           );
         }
         chunks.push(value);
@@ -103,7 +151,7 @@ export async function downloadFileFromInternet(
       result.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    return result.buffer;
+    return ok(result.buffer);
   } finally {
     clearTimeout(timer);
   }
@@ -111,29 +159,43 @@ export async function downloadFileFromInternet(
 
 /**
  * Poll an async predicate until it returns true or the timeout elapses.
- * Throws if the predicate throws; rejects with `RangeError` if the
- * arguments are invalid.
+ * Argument errors are returned as {@link VexInvalidArgumentError}; a
+ * throwing predicate surfaces its error through the {@link Result}
+ * error channel.
  */
-export async function sleepUntilAsync(
+export function sleepUntilAsync(
   f: () => Promise<boolean>,
   timeout: number,
   interval = 20,
-): Promise<boolean> {
+): ResultAsync<boolean, VexSerialError> {
   if (timeout < 0) {
-    throw new RangeError("timeout must be non-negative");
+    return errAsync(
+      new VexInvalidArgumentError("timeout must be non-negative"),
+    );
   }
   if (interval <= 0) {
-    throw new RangeError("interval must be positive");
+    return errAsync(new VexInvalidArgumentError("interval must be positive"));
   }
+  return fromAsyncFn(() => runSleepUntilAsync(f, timeout, interval));
+}
+
+async function runSleepUntilAsync(
+  f: () => Promise<boolean>,
+  timeout: number,
+  interval: number,
+): Promise<Result<boolean, VexSerialError>> {
   const deadline = Date.now() + timeout;
   while (Date.now() <= deadline) {
-    // Propagate predicate failures immediately; do not swallow them.
-    if (await f()) return true;
+    try {
+      if (await f()) return ok(true);
+    } catch (e) {
+      return err(toVexSerialError(e, "io"));
+    }
     const remaining = deadline - Date.now();
     if (remaining <= 0) break;
-    await sleep(Math.min(interval, remaining));
+    await sleepInner(Math.min(interval, remaining));
   }
-  return false;
+  return ok(false);
 }
 
 /**
@@ -143,31 +205,53 @@ export async function sleepUntilAsync(
  * resolves, and so predicate exceptions are surfaced without leaving a
  * pending interval behind.
  */
-export async function sleepUntil(
+export function sleepUntil(
   f: () => boolean,
   timeout: number,
   interval = 20,
-): Promise<boolean> {
+): ResultAsync<boolean, VexSerialError> {
   if (timeout < 0) {
-    throw new RangeError("timeout must be non-negative");
+    return errAsync(
+      new VexInvalidArgumentError("timeout must be non-negative"),
+    );
   }
   if (interval <= 0) {
-    throw new RangeError("interval must be positive");
+    return errAsync(new VexInvalidArgumentError("interval must be positive"));
   }
-  const deadline = Date.now() + timeout;
-  while (Date.now() <= deadline) {
-    if (f()) return true;
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) break;
-    await sleep(Math.min(interval, remaining));
-  }
-  return false;
+  return fromAsyncFn(() => runSleepUntil(f, timeout, interval));
 }
 
-export async function sleep(ms: number): Promise<void> {
-  if (ms < 0) {
-    throw new RangeError("ms must be non-negative");
+async function runSleepUntil(
+  f: () => boolean,
+  timeout: number,
+  interval: number,
+): Promise<Result<boolean, VexSerialError>> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() <= deadline) {
+    try {
+      if (f()) return ok(true);
+    } catch (e) {
+      return err(toVexSerialError(e, "io"));
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await sleepInner(Math.min(interval, remaining));
   }
+  return ok(false);
+}
+
+/**
+ * Resolve after `ms` milliseconds. Returns a {@link VexInvalidArgumentError}
+ * when `ms` is negative.
+ */
+export function sleep(ms: number): ResultAsync<void, VexSerialError> {
+  if (ms < 0) {
+    return errAsync(new VexInvalidArgumentError("ms must be non-negative"));
+  }
+  return ResultAsync.fromSafePromise<void>(sleepInner(ms));
+}
+
+async function sleepInner(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -176,6 +260,8 @@ interface FirmwareImage {
   buf: Uint8Array;
 }
 
+// Internal helper: stays throwing. The public `uploadFirmware` boundary
+// converts thrown errors into the {@link VexSerialError} hierarchy.
 async function extractFirmwareImages(
   usingVersion: string,
   vexos: ArrayBuffer,
@@ -192,7 +278,7 @@ async function extractFirmwareImages(
     if (!expectedPaths.has(name)) unexpected.push(name);
   }
   if (unexpected.length > 0) {
-    throw new Error(
+    throw new VexFirmwareError(
       `VEXos archive contains unexpected entries: ${unexpected.join(", ")}`,
     );
   }
@@ -202,31 +288,31 @@ async function extractFirmwareImages(
   for (const name of expectedPaths) {
     const entry = entries[name];
     if (entry === undefined) {
-      throw new Error(`VEXos archive is missing ${name}`);
+      throw new VexFirmwareError(`VEXos archive is missing ${name}`);
     }
     if (entry.encrypted) {
-      throw new Error(`VEXos entry ${name} is encrypted`);
+      throw new VexFirmwareError(`VEXos entry ${name} is encrypted`);
     }
     if (entry.size <= 0) {
-      throw new Error(`VEXos entry ${name} is empty`);
+      throw new VexFirmwareError(`VEXos entry ${name} is empty`);
     }
     if (entry.size > MAX_FIRMWARE_IMAGE_BYTES) {
-      throw new RangeError(
+      throw new VexFirmwareError(
         `VEXos entry ${name} (${entry.size} bytes) exceeds per-entry limit ${MAX_FIRMWARE_IMAGE_BYTES}`,
       );
     }
     aggregate += entry.size;
     if (aggregate > MAX_AGGREGATE_IMAGE_BYTES) {
-      throw new RangeError(
+      throw new VexFirmwareError(
         `VEXos aggregate extracted size exceeds limit ${MAX_AGGREGATE_IMAGE_BYTES}`,
       );
     }
     const buf = new Uint8Array(await entry.arrayBuffer());
     if (buf.byteLength === 0) {
-      throw new Error(`VEXos entry ${name} is empty`);
+      throw new VexFirmwareError(`VEXos entry ${name} is empty`);
     }
     if (buf.byteLength !== entry.size) {
-      throw new Error(
+      throw new VexFirmwareError(
         `VEXos entry ${name} size does not match its metadata (${buf.byteLength} vs ${entry.size})`,
       );
     }
@@ -236,58 +322,91 @@ async function extractFirmwareImages(
   return ordered;
 }
 
-export async function uploadFirmware(
+/**
+ * Upload a VEXos firmware archive to a connected brain. Network and
+ * archive validation failures are returned as {@link VexSerialError}
+ * values rather than thrown; a device that refuses a step or a missing
+ * connection surfaces as {@link VexProtocolError} / {@link VexNotConnectedError}.
+ */
+export function uploadFirmware(
   state: V5SerialDeviceState,
   publicUrl = "https://content.vexrobotics.com/vexos/public/V5/",
   usingVersion?: string,
   progressCallback?: (state: string, current: number, total: number) => void,
-): Promise<boolean | undefined> {
+): ResultAsync<boolean, VexSerialError> {
+  return fromAsyncFn(() =>
+    runUploadFirmware(state, publicUrl, usingVersion, progressCallback),
+  );
+}
+
+async function runUploadFirmware(
+  state: V5SerialDeviceState,
+  publicUrl: string,
+  usingVersion: string | undefined,
+  progressCallback?: (state: string, current: number, total: number) => void,
+): Promise<Result<boolean, VexSerialError>> {
   const device = state._instance;
   const conn = device.connection;
-  if (conn == null || !conn.isConnected) return;
+  if (conn == null || !conn.isConnected) {
+    return err(new VexNotConnectedError());
+  }
 
   const pcb = progressCallback ?? (() => {});
+  let version = usingVersion;
 
-  if (usingVersion === undefined) {
+  if (version === undefined) {
     pcb("FETCH CATALOG", 0, 1);
     const catalog = await downloadFileFromInternet(publicUrl + "catalog.txt", {
       maxBytes: MAX_CATALOG_BYTES,
     });
-    usingVersion = new TextDecoder().decode(catalog).trim();
+    if (catalog.isErr()) return err(catalog.error);
+    version = new TextDecoder().decode(catalog.value).trim();
     pcb("FETCH CATALOG", 1, 1);
   }
 
-  if (!/^[A-Za-z0-9._-]+$/.test(usingVersion)) {
-    throw new Error(`invalid VEXos version: ${usingVersion}`);
+  if (!/^[A-Za-z0-9._-]+$/.test(version)) {
+    return err(new VexFirmwareError(`invalid VEXos version: ${version}`));
   }
 
   pcb("FETCH VEXOS", 0, 1);
-  const vexos = await downloadFileFromInternet(
-    publicUrl + usingVersion + ".vexos",
+  const vexosResult = await downloadFileFromInternet(
+    publicUrl + version + ".vexos",
     { maxBytes: MAX_VEXOS_BYTES },
   );
-  if (vexos.byteLength === 0) throw new Error("VEXos archive is empty");
+  if (vexosResult.isErr()) return err(vexosResult.error);
+  const vexos = vexosResult.value;
+  if (vexos.byteLength === 0) {
+    return err(new VexFirmwareError("VEXos archive is empty"));
+  }
   pcb("FETCH VEXOS", 1, 1);
   pcb("UNZIP VEXOS", 0, 1);
 
-  const images = await extractFirmwareImages(usingVersion, vexos);
+  let images: FirmwareImage[];
+  try {
+    images = await extractFirmwareImages(version, vexos);
+  } catch (e) {
+    if (e instanceof VexSerialError) return err(e);
+    return err(toVexSerialError(e, "firmware"));
+  }
   pcb("UNZIP VEXOS", 1, 1);
 
   return state.withFileTransfer(async () => {
     pcb("FACTORY ENB BOOT", 0, 0);
 
     const result = await conn.writeDataAsync(new FactoryEnableH2DPacket());
-    if (!(result instanceof FactoryEnableReplyD2HPacket)) return false;
+    if (!(result instanceof FactoryEnableReplyD2HPacket)) {
+      return err(new VexProtocolError("FactoryEnableH2DPacket failed"));
+    }
 
     const boot = images.find((image) => image.name.endsWith("BOOT.bin"));
     if (boot === undefined) {
-      throw new Error("VEXos archive is missing BOOT.bin");
+      return err(new VexFirmwareError("VEXos archive is missing BOOT.bin"));
     }
     const assertImage = images.find((image) =>
       image.name.endsWith("assets.bin"),
     );
     if (assertImage === undefined) {
-      throw new Error("VEXos archive is missing assets.bin");
+      return err(new VexFirmwareError("VEXos archive is missing assets.bin"));
     }
 
     const bootWriteRequest: IFileWriteRequest = {
@@ -301,10 +420,14 @@ export async function uploadFirmware(
       linkedFile: undefined,
     };
 
-    const result2 = await conn.uploadFileToDevice(bootWriteRequest, (c, t) => {
-      pcb("UPLOAD BOOT", c, t);
-    });
-    if (!result2) return false;
+    const bootUpload = await conn.uploadFileToDevice(
+      bootWriteRequest,
+      (c, t) => {
+        pcb("UPLOAD BOOT", c, t);
+      },
+    );
+    if (bootUpload.isErr()) return err(bootUpload.error);
+    if (!bootUpload.value) return ok(false);
 
     const bootDeadline = Date.now() + 120000;
     let bootComplete = false;
@@ -333,16 +456,18 @@ export async function uploadFirmware(
           break;
         }
       } else {
-        return false;
+        return ok(false);
       }
-      await sleep(500);
+      await sleepInner(500);
     }
-    if (!bootComplete) return false;
+    if (!bootComplete) return ok(false);
 
     pcb("FACTORY ENB ASSERT", 0, 0);
 
     const result5 = await conn.writeDataAsync(new FactoryEnableH2DPacket());
-    if (!(result5 instanceof FactoryEnableReplyD2HPacket)) return false;
+    if (!(result5 instanceof FactoryEnableReplyD2HPacket)) {
+      return err(new VexProtocolError("FactoryEnableH2DPacket failed"));
+    }
 
     const assertWriteRequest: IFileWriteRequest = {
       filename: "null.bin",
@@ -355,13 +480,14 @@ export async function uploadFirmware(
       linkedFile: undefined,
     };
 
-    const result6 = await conn.uploadFileToDevice(
+    const assertUpload = await conn.uploadFileToDevice(
       assertWriteRequest,
       (c, t) => {
         pcb("UPLOAD ASSERT", c, t);
       },
     );
-    if (!result6) return false;
+    if (assertUpload.isErr()) return err(assertUpload.error);
+    if (!assertUpload.value) return ok(false);
 
     const assertDeadline = Date.now() + 120000;
     let assertComplete = false;
@@ -391,11 +517,11 @@ export async function uploadFirmware(
           break;
         }
       } else {
-        return false;
+        return ok(false);
       }
-      await sleep(500);
+      await sleepInner(500);
     }
-    if (!assertComplete) return false;
-    return true;
+    if (!assertComplete) return ok(false);
+    return ok(true);
   });
 }

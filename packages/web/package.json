@@ -62,7 +62,8 @@
   },
   "homepage": "https://docs.v5x.dev/web/overview",
   "dependencies": {
-    "@v5x/serial": "workspace:*"
+    "@v5x/serial": "workspace:*",
+    "neverthrow": "^8.2.0"
   },
   "peerDependencies": {
     "react": ">=18",

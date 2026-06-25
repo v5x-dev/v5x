@@ -15,7 +15,8 @@ export default function registerKvCommand(program: Sade) {
         table.addColumn("value");
 
         for (const key of WELL_KNOWN_KEYS) {
-          const value = await device.brain.getValue(key);
+          const result = await device.brain.getValue(key);
+          const value = result.isOk() ? result.value : undefined;
           table.addRow([
             key,
             value === undefined || value === "" ? chalk.dim("(unset)") : value,
@@ -30,8 +31,8 @@ export default function registerKvCommand(program: Sade) {
     .command("kv get <key>", "get the value of a system variable on a brain")
     .action(async (key) => {
       await withV5Device(async (device) => {
-        const value = await device.brain.getValue(key);
-        console.log(value);
+        const result = await device.brain.getValue(key);
+        console.log(result.isOk() ? result.value : undefined);
       });
     });
 
@@ -39,8 +40,8 @@ export default function registerKvCommand(program: Sade) {
     .command("kv set <key> <value>", "set a system variable on a brain")
     .action(async (key, value) => {
       await withV5Device(async (device) => {
-        const ok = await device.brain.setValue(key, value);
-        if (!ok) throw new Error(`failed to set ${key} to ${value}`);
+        const result = await device.brain.setValue(key, value);
+        if (result.isErr()) throw new Error(`failed to set ${key} to ${value}`);
         console.log(`set ${key} to ${value}`);
       });
     });

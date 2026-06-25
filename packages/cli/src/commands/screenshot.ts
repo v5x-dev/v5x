@@ -30,9 +30,9 @@ export default function registerScreenshotCommand(program: Sade) {
     })
     .action(async () => {
       await withV5Device(async (device) => {
-        const data = await device.brain.captureScreen();
-        if (data === undefined) throw new Error("failed to capture screenshot");
-        printKittyRGB(data);
+        const result = await device.brain.captureScreen();
+        if (result.isErr()) throw new Error("failed to capture screenshot");
+        printKittyRGB(result.value);
       });
     });
 }

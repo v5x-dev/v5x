@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { okAsync } from "neverthrow";
 import {
   AckType,
   FileDownloadTarget,
@@ -97,7 +98,7 @@ test("open discovers unopened authorized ports and emits connected when ready", 
     connectedState = connection.isConnected;
   });
 
-  expect(await connection.open(0, false)).toBe(true);
+  expect((await connection.open(0, false))._unsafeUnwrap()).toBe(true);
   expect(connectedState).toBe(true);
   await connection.close();
 });
@@ -109,7 +110,7 @@ test("openScreen accepts its matching reply packet", async () => {
   ) as SelectDashReplyD2HPacket;
   connection.writeDataAsync = async () => reply;
 
-  expect(await connection.openScreen(0, 1)).toBe(reply);
+  expect((await connection.openScreen(0, 1))._unsafeUnwrap()).toBe(reply);
 });
 
 function initReply(windowSize: number, fileSize: number) {
@@ -154,7 +155,7 @@ test("downloads accept short chunks, report completion, and exit", async () => {
     (current, total) => progress.push([current, total]),
   );
 
-  expect(result).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+  expect(result._unsafeUnwrap()).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
   expect(progress).toEqual([
     [2, 5],
     [5, 5],
@@ -177,12 +178,14 @@ test("download failures still exit file transfer mode", async () => {
     return replies.shift() ?? AckType.CDC2_NACK;
   };
 
-  await expect(
-    connection.downloadFileToHost({
-      filename: "test.bin",
-      vendor: FileVendor.USER,
-    }),
-  ).rejects.toThrow("returned address");
+  const downloadResult = await connection.downloadFileToHost({
+    filename: "test.bin",
+    vendor: FileVendor.USER,
+  });
+  expect(downloadResult.isErr()).toBe(true);
+  expect(downloadResult._unsafeUnwrapErr().message).toContain(
+    "returned address",
+  );
   expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
 });
 
@@ -201,19 +204,21 @@ test("linked upload failures still exit file transfer mode", async () => {
     return replies.shift() ?? AckType.CDC2_NACK;
   };
 
-  await expect(
-    connection.uploadFileToDevice({
-      filename: "test.bin",
-      buf: new Uint8Array([1, 2, 3, 4]),
+  const uploadResult = await connection.uploadFileToDevice({
+    filename: "test.bin",
+    buf: new Uint8Array([1, 2, 3, 4]),
+    downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+    autoRun: false,
+    linkedFile: {
+      filename: "cold.bin",
       downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
       autoRun: false,
-      linkedFile: {
-        filename: "cold.bin",
-        downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-        autoRun: false,
-      },
-    }),
-  ).rejects.toThrow("LinkFileH2DPacket failed");
+    },
+  });
+  expect(uploadResult.isErr()).toBe(true);
+  expect(uploadResult._unsafeUnwrapErr().message).toContain(
+    "LinkFileH2DPacket failed",
+  );
   expect(writes.at(-2)).toBeInstanceOf(LinkFileH2DPacket);
   expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
 });
@@ -294,7 +299,7 @@ test("whole-program uploads block concurrent transfers until every file finishes
   while (initCount < 3) await Bun.sleep(0);
   expect(initCount).toBe(3);
   finalProgramExit.resolve();
-  expect(await upload).toBe(true);
+  expect((await upload)._unsafeUnwrap()).toBe(true);
   await download;
   expect(initCount).toBe(4);
 });
@@ -349,7 +354,7 @@ test("reader resynchronizes after leading garbage", async () => {
   } as unknown as WritableStreamDefaultWriter<unknown>;
   const result = connection.query1();
   const reading = connection.start();
-  expect(await result).not.toBeNull();
+  expect((await result).isOk()).toBe(true);
   await connection.close();
   await reading;
 });
@@ -418,8 +423,8 @@ describe("whole-program upload atomicity", () => {
     expect(initCount).toBe(1);
 
     releaseFirstInit();
-    expect(await upload).toBe(true);
-    expect(await concurrent).toEqual(new Uint8Array(0));
+    expect((await upload)._unsafeUnwrap()).toBe(true);
+    expect((await concurrent)._unsafeUnwrap()).toEqual(new Uint8Array(0));
     expect(initCount).toBe(4);
     expect(maxInFlight).toBe(1);
   });
@@ -470,33 +475,35 @@ describe("transfer cleanup on every failure point", () => {
   test("upload link failure still exits", async () => {
     const { connection, writes, pushReplies } = buildExitTrackingConnection();
     pushReplies(initReply(), nack(), exitReply());
-    await expect(
-      connection.uploadFileToDevice({
-        filename: "f.bin",
-        buf: new Uint8Array([1]),
+    const result = await connection.uploadFileToDevice({
+      filename: "f.bin",
+      buf: new Uint8Array([1]),
+      downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+      autoRun: false,
+      linkedFile: {
+        filename: "cold.bin",
         downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
         autoRun: false,
-        linkedFile: {
-          filename: "cold.bin",
-          downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-          autoRun: false,
-        },
-      }),
-    ).rejects.toThrow("LinkFileH2DPacket");
+      },
+    });
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain("LinkFileH2DPacket");
     expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
   });
 
   test("upload write failure still exits", async () => {
     const { connection, writes, pushReplies } = buildExitTrackingConnection();
     pushReplies(initReply(), nack(), exitReply());
-    await expect(
-      connection.uploadFileToDevice({
-        filename: "f.bin",
-        buf: new Uint8Array([1, 2, 3, 4]),
-        downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
-        autoRun: false,
-      }),
-    ).rejects.toThrow("WriteFileReplyD2DPacket");
+    const result = await connection.uploadFileToDevice({
+      filename: "f.bin",
+      buf: new Uint8Array([1, 2, 3, 4]),
+      downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+      autoRun: false,
+    });
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain(
+      "WriteFileReplyD2DPacket",
+    );
     expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
   });
 
@@ -511,12 +518,11 @@ describe("transfer cleanup on every failure point", () => {
       nack(),
       exitReply(),
     );
-    await expect(
-      connection.downloadFileToHost({
-        filename: "f.bin",
-        vendor: FileVendor.USER,
-      }),
-    ).rejects.toThrow();
+    const result = await connection.downloadFileToHost({
+      filename: "f.bin",
+      vendor: FileVendor.USER,
+    });
+    expect(result.isErr()).toBe(true);
     expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
   });
 
@@ -541,12 +547,14 @@ describe("transfer cleanup on every failure point", () => {
       return AckType.CDC2_NACK;
     };
 
-    await expect(
-      connection.downloadFileToHost({
-        filename: "f.bin",
-        vendor: FileVendor.USER,
-      }),
-    ).rejects.toThrow("ReadFileReplyD2HPacket failed");
+    const result = await connection.downloadFileToHost({
+      filename: "f.bin",
+      vendor: FileVendor.USER,
+    });
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain(
+      "ReadFileReplyD2HPacket failed",
+    );
     expect(sawReadAttempt).toBe(true);
   });
 
@@ -554,7 +562,7 @@ describe("transfer cleanup on every failure point", () => {
     const { connection, writes, pushReplies } = buildExitTrackingConnection();
     pushReplies(nack(), exitReply());
     const result = await connection.removeFile("user-file.bin");
-    expect(result).toBe(false);
+    expect(result.isErr()).toBe(true);
     expect(writes[0]).toBeInstanceOf(EraseFileH2DPacket);
     expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
   });
@@ -563,7 +571,7 @@ describe("transfer cleanup on every failure point", () => {
     const { connection, writes, pushReplies } = buildExitTrackingConnection();
     pushReplies(nack(), exitReply());
     const result = await connection.removeAllFiles();
-    expect(result).toBe(false);
+    expect(result.isErr()).toBe(true);
     expect(writes[0]).toBeInstanceOf(FileClearUpH2DPacket);
     expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
   });
@@ -571,12 +579,14 @@ describe("transfer cleanup on every failure point", () => {
   test("init reply is required before transfer mode is entered", async () => {
     const { connection, writes, pushReplies } = buildExitTrackingConnection();
     pushReplies(nack() as unknown as HostBoundPacket);
-    await expect(
-      connection.downloadFileToHost({
-        filename: "f.bin",
-        vendor: FileVendor.USER,
-      }),
-    ).rejects.toThrow("InitFileTransferH2DPacket");
+    const result = await connection.downloadFileToHost({
+      filename: "f.bin",
+      vendor: FileVendor.USER,
+    });
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain(
+      "InitFileTransferH2DPacket",
+    );
     // The device never acknowledged the init, so no exit is sent.
     expect(writes).toHaveLength(1);
     expect(writes[0]).toBeInstanceOf(InitFileTransferH2DPacket);
@@ -600,7 +610,7 @@ test("captureScreenSetup rejects NACK and timeout replies", async () => {
   for (const reply of cases) {
     const connection = new V5SerialConnection({} as Serial);
     connection.writeDataAsync = async () => reply;
-    expect(await connection.captureScreenSetup()).toBeNull();
+    expect((await connection.captureScreenSetup()).isErr()).toBe(true);
   }
 });
 
@@ -610,7 +620,7 @@ test("captureScreenSetup accepts the matching reply packet", async () => {
     ScreenCaptureReplyD2HPacket.prototype,
   ) as ScreenCaptureReplyD2HPacket;
   connection.writeDataAsync = async () => reply;
-  expect(await connection.captureScreenSetup()).toBe(reply);
+  expect((await connection.captureScreenSetup())._unsafeUnwrap()).toBe(reply);
 });
 
 test("captureScreen converts the device framebuffer from BGRA to RGB", async () => {
@@ -619,11 +629,12 @@ test("captureScreen converts the device framebuffer from BGRA to RGB", async () 
   framebuffer.set([3, 2, 1, 255]);
   connection.writeDataAsync = async () =>
     protocolReply(ScreenCaptureReplyD2HPacket);
-  connection.downloadFileToHostUnlocked = async () => framebuffer;
+  connection.downloadFileToHostUnlocked = () => okAsync(framebuffer);
 
   const result = await connection.captureScreen();
-  expect(result).toHaveLength(480 * 272 * 3);
-  expect(result.slice(0, 3)).toEqual(new Uint8Array([1, 2, 3]));
+  const pixels = result._unsafeUnwrap();
+  expect(pixels).toHaveLength(480 * 272 * 3);
+  expect(pixels.slice(0, 3)).toEqual(new Uint8Array([1, 2, 3]));
 });
 
 test("captureScreen waits behind an in-flight transfer", async () => {
@@ -648,7 +659,7 @@ test("captureScreen waits behind an in-flight transfer", async () => {
     }
     return protocolReply(ExitFileTransferReplyD2HPacket);
   };
-  connection.downloadFileToHostUnlocked = async () => framebuffer;
+  connection.downloadFileToHostUnlocked = () => okAsync(framebuffer);
 
   const upload = connection.uploadFileToDevice({
     filename: "program.bin",
@@ -664,7 +675,7 @@ test("captureScreen waits behind an in-flight transfer", async () => {
   expect(screenRequests).toBe(0);
 
   uploadInit.resolve();
-  expect(await upload).toBe(true);
+  expect((await upload)._unsafeUnwrap()).toBe(true);
   await screen;
   expect(screenRequests).toBe(1);
 });
@@ -710,7 +721,7 @@ describe("lifecycle hardening", () => {
     const { serial, listeners } = buildLifecycleConnection();
     const connection = new V5SerialConnection(serial);
     for (let i = 0; i < 3; i++) {
-      expect(await connection.open(0, false)).toBe(true);
+      expect((await connection.open(0, false))._unsafeUnwrap()).toBe(true);
       expect((listeners["disconnect"] ?? []).length).toBe(1);
       await connection.close();
       expect((listeners["disconnect"] ?? []).length).toBe(0);
@@ -752,7 +763,7 @@ describe("lifecycle hardening", () => {
     } as unknown as Serial;
 
     const connection = new V5SerialConnection(wrappedSerial);
-    expect(await connection.open(0, false)).toBe(true);
+    expect((await connection.open(0, false))._unsafeUnwrap()).toBe(true);
 
     let disconnects = 0;
     connection.on("disconnected", () => disconnects++);
@@ -878,8 +889,8 @@ describe("removeFile and removeAllFiles go through the transaction queue", () =>
     expect(eraseSeen).toBe(false);
 
     releaseFirstInit();
-    expect(await upload).toBe(true);
-    expect(await removePromise).toBe(true);
+    expect((await upload)._unsafeUnwrap()).toBe(true);
+    expect((await removePromise).isOk()).toBe(true);
     expect(eraseSeen).toBe(true);
   });
 
@@ -921,7 +932,7 @@ describe("removeFile and removeAllFiles go through the transaction queue", () =>
 
     releaseFirstInit();
     await download;
-    expect(await clearPromise).toBe(true);
+    expect((await clearPromise).isOk()).toBe(true);
     expect(clearSeen).toBe(true);
   });
 });

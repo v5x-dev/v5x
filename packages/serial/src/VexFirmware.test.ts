@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { zipSync } from "fflate";
+import { okAsync } from "neverthrow";
 import { V5SerialDevice } from "./VexDevice";
 import { V5SerialConnection } from "./VexConnection";
 import {
@@ -25,10 +26,12 @@ test("firmware upload validates an archive and uploads both images", async () =>
     percent: 100,
   });
   let replyIndex = 0;
-  const uploadFile = (async (request) => {
+  const uploadFile = (request: {
+    downloadTarget: number;
+  }): ReturnType<V5SerialConnection["uploadFileToDevice"]> => {
     uploadedTargets.push(request.downloadTarget);
-    return true;
-  }) satisfies V5SerialConnection["uploadFileToDevice"];
+    return okAsync<boolean>(true);
+  };
   device.connection = {
     isConnected: true,
     writeDataAsync: async () =>
@@ -47,9 +50,12 @@ test("firmware upload validates an archive and uploads both images", async () =>
   });
 
   try {
-    expect(
-      await device.brain.uploadFirmware("https://example.test/", "1.2.3"),
-    ).toBe(true);
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.2.3",
+    );
+    expect(result.isOk()).toBe(true);
+    expect(result._unsafeUnwrap()).toBe(true);
     expect(uploadedTargets).toHaveLength(2);
   } finally {
     globalThis.fetch = originalFetch;
@@ -73,9 +79,12 @@ test("firmware downloads reject declared oversized responses before reading", as
   );
 
   try {
-    await expect(
-      device.brain.uploadFirmware("https://example.test/", "1.2.3"),
-    ).rejects.toThrow("exceeds");
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.2.3",
+    );
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain("exceeds");
   } finally {
     globalThis.fetch = originalFetch;
   }

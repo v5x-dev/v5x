@@ -7,9 +7,9 @@ export default function registerCatCommand(program: Sade) {
     .action(async (file) => {
       await withV5Device(async (device) => {
         const decoder = new TextDecoder();
-        const content = await device.brain.readFile(file);
-        if (content === undefined) throw new Error(`failed to read ${file}`);
-        console.log(decoder.decode(content));
+        const result = await device.brain.readFile(file);
+        if (result.isErr()) throw new Error(`failed to read ${file}`);
+        console.log(decoder.decode(result.value));
       });
     });
 }

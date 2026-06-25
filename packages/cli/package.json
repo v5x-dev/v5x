@@ -32,10 +32,12 @@
     "@types/bun": "latest"
   },
   "dependencies": {
+    "@v5x/serial": "workspace:*",
     "bun-serialport": "^0.1.1",
     "chalk": "^5.6.2",
     "cmd-table": "^1.6.0",
     "fflate": "^0.8.3",
+    "neverthrow": "^8.2.0",
     "sade": "^1.8.1"
   },
   "repository": {
