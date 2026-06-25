@@ -1,5 +1,5 @@
 import type { Sade } from "sade";
-import { connectV5Device } from "../device";
+import { withV5Device } from "../device";
 import { Table } from "cmd-table";
 import { SmartDeviceType, VexFirmwareVersion } from "@v5x/serial";
 
@@ -51,8 +51,7 @@ export default function registerDevicesCommand(program: Sade) {
   program
     .command("devices", "list devices connected to brain", { alias: "lsdev" })
     .action(async () => {
-      const device = await connectV5Device();
-      try {
+      await withV5Device(async (device) => {
         const smartDevices = device.devices;
         const table = new Table({ compact: true });
         table.addColumn("port");
@@ -60,8 +59,6 @@ export default function registerDevicesCommand(program: Sade) {
         table.addColumn("version");
         formatDeviceRows(smartDevices).forEach((row) => table.addRow(row));
         console.log(table.render());
-      } finally {
-        await device.dispose();
-      }
+      });
     });
 }

@@ -6,6 +6,7 @@ import {
   type ZerobaseSlotNumber,
 } from "@v5x/serial";
 import { detectProgramType, type ProgramType } from "./detect";
+import { isRecord } from "./guards";
 import { runProcess } from "./process";
 
 export interface ProjectInfo {
@@ -14,10 +15,6 @@ export interface ProjectInfo {
   name: string;
   description: string;
   artifact?: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function stringAt(value: unknown, keys: string[]): string | undefined {

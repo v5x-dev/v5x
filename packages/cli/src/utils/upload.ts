@@ -1,4 +1,4 @@
-import { connectV5Device } from "../device";
+import { withV5Device } from "../device";
 import {
   buildProject,
   createProgramConfig,
@@ -16,6 +16,33 @@ export interface UploadOptions {
   artifact?: string;
   build: boolean;
   run: boolean;
+}
+
+export interface UploadCommandOptions {
+  slot: string;
+  name?: string;
+  description?: string;
+  icon: string;
+  file?: string;
+  build?: boolean;
+  run?: boolean;
+}
+
+export async function uploadProgramFromCommand(
+  path: string | undefined,
+  options: UploadCommandOptions,
+  runDefault: boolean,
+): Promise<void> {
+  await uploadProgram({
+    path: path ?? process.cwd(),
+    slot: Number(options.slot),
+    name: options.name,
+    description: options.description,
+    icon: options.icon,
+    artifact: options.file,
+    build: options.build ?? true,
+    run: options.run ?? runDefault,
+  });
 }
 
 export async function uploadProgram(options: UploadOptions): Promise<void> {
@@ -37,9 +64,7 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
   const coldBytes = validatedArtifacts.cold
     ? new Uint8Array(await Bun.file(validatedArtifacts.cold.path).arrayBuffer())
     : undefined;
-  const device = await connectV5Device();
-
-  try {
+  await withV5Device(async (device) => {
     let previousState = "";
     const uploaded = await device.brain.uploadProgram(
       config,
@@ -62,7 +87,5 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
     console.log(
       `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,
     );
-  } finally {
-    await device.dispose();
-  }
+  });
 }

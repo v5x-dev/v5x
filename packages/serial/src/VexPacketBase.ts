@@ -1,6 +1,8 @@
 import { AckType, type DataArray } from "./Vex.js";
 import type { PacketEncoder } from "./VexPacketEncoder.js";
 
+const MATCH_STATUS_ALT_ACK = 167;
+
 export abstract class Packet {
   data: Uint8Array; // the buffer sent to the device or received from the device
 
@@ -69,6 +71,6 @@ export class HostBoundPacket extends Packet {
 
   static isValidPacket(data: Uint8Array, n: number): boolean {
     const ack = data[n + 1];
-    return ack === AckType.CDC2_ACK || ack === 167; // XXX: got 167 from MatchStatusReplyD2HPacket
+    return ack === AckType.CDC2_ACK || ack === MATCH_STATUS_ALT_ACK;
   }
 }

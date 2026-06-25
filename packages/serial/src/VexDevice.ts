@@ -211,28 +211,21 @@ export class V5SerialDevice extends VexSerialDevice {
     if (this.isConnected) return true;
     if (timeout < 0) return false;
 
-    const endTime = new Date().getTime() + timeout;
+    const endTime = Date.now() + timeout;
 
     if (this._isReconnecting) {
-      let successBeforeTimeout;
-      do {
-        successBeforeTimeout = await sleepUntil(
-          () => !this._isReconnecting,
-          timeout === 0 ? 1000 : timeout,
-        );
-        // eslint-disable-next-line no-unmodified-loop-condition
-      } while (timeout === 0 && !successBeforeTimeout);
+      if (timeout === 0) {
+        await this.waitForReconnectToFinish();
+      } else if (!(await sleepUntil(() => !this._isReconnecting, timeout))) {
+        return false;
+      }
 
       if (this.isConnected) return true;
-      if (!successBeforeTimeout) return false;
     }
 
     this._isReconnecting = true;
     try {
-      // eslint-disable-next-line no-unmodified-loop-condition
-      while (timeout === 0 || new Date().getTime() < endTime) {
-        // console.log("try to reconnect");
-
+      while (timeout === 0 || Date.now() < endTime) {
         let tryIdx = 0;
         while (true) {
           const c = new V5SerialConnection(this.defaultSerial);
@@ -288,10 +281,14 @@ export class V5SerialDevice extends VexSerialDevice {
     return true;
   }
 
+  private async waitForReconnectToFinish(): Promise<void> {
+    while (this._isReconnecting) {
+      if (await sleepUntil(() => !this._isReconnecting, 1000)) return;
+    }
+  }
+
   private async doAfterConnect(): Promise<void> {
     if (this.connection == null) return;
-
-    //console.log("doAfterConnect");
 
     this.connection.on("disconnected", (_data) => {
       if (this.autoReconnect && !this._isDisconnecting) void this.reconnect();
@@ -375,14 +372,16 @@ export class V5SerialDevice extends VexSerialDevice {
     const isScreenReversed = (flags4 & 0b00000001) === 0;
 
     const flags5 = sfPacket.flags;
-    const isRadioData = (flags5 & Math.pow(2, 32 - 12)) !== 0;
-    const isDoublePressed = (flags5 & Math.pow(2, 32 - 14)) !== 0;
-    const isCharging = (flags5 & Math.pow(2, 32 - 15)) !== 0;
-    const isPressed = (flags5 & Math.pow(2, 32 - 17)) !== 0;
-    const isVexNet = (flags5 & Math.pow(2, 32 - 18)) !== 0;
-    const controller1Available = (flags5 & Math.pow(2, 32 - 19)) !== 0;
-    const radioConnected = (flags5 & Math.pow(2, 32 - 22)) !== 0;
-    const radioAvailable = (flags5 & Math.pow(2, 32 - 23)) !== 0;
+    const hasFlag = (bit: number): boolean =>
+      (flags5 & (2 ** (32 - bit))) !== 0;
+    const isRadioData = hasFlag(12);
+    const isDoublePressed = hasFlag(14);
+    const isCharging = hasFlag(15);
+    const isPressed = hasFlag(17);
+    const isVexNet = hasFlag(18);
+    const controller1Available = hasFlag(19);
+    const radioConnected = hasFlag(22);
+    const radioAvailable = hasFlag(23);
     const batteryPercent = sfPacket.battery ?? 0;
     const controller0Available =
       radioConnected || sfPacket.controllerBatteryPercent !== undefined;

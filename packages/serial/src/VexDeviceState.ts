@@ -252,21 +252,21 @@ export class V5Brain {
   }
 
   async getValue(key: string): Promise<string | undefined> {
-    return await transfers.getValue(this.state, key);
+    return transfers.getValue(this.state, key);
   }
 
   async setValue(key: string, value: string): Promise<boolean> {
-    return await transfers.setValue(this.state, key, value);
+    return transfers.setValue(this.state, key, value);
   }
 
   async listFiles(
     vendor = FileVendor.USER,
   ): Promise<IFileHandle[] | undefined> {
-    return await transfers.listFiles(this.state, vendor);
+    return transfers.listFiles(this.state, vendor);
   }
 
   async listProgram(): Promise<IProgramInfo[] | undefined> {
-    return await transfers.listProgram(this.state);
+    return transfers.listProgram(this.state);
   }
 
   async readFile(
@@ -274,7 +274,7 @@ export class V5Brain {
     downloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<Uint8Array | undefined> {
-    return await transfers.readFile(
+    return transfers.readFile(
       this.state,
       request,
       downloadTarget,
@@ -285,11 +285,11 @@ export class V5Brain {
   async removeFile(
     request: IFileBasicInfo | string,
   ): Promise<boolean | undefined> {
-    return await transfers.removeFile(this.state, request);
+    return transfers.removeFile(this.state, request);
   }
 
   async removeAllFiles(): Promise<boolean | undefined> {
-    return await transfers.removeAllFiles(this.state);
+    return transfers.removeAllFiles(this.state);
   }
 
   async uploadFirmware(
@@ -297,7 +297,7 @@ export class V5Brain {
     usingVersion?: string,
     progressCallback?: (state: string, current: number, total: number) => void,
   ): Promise<boolean | undefined> {
-    return await firmware.uploadFirmware(
+    return firmware.uploadFirmware(
       this.state,
       publicUrl,
       usingVersion,
@@ -311,7 +311,7 @@ export class V5Brain {
     coldFileBuf: Uint8Array | undefined,
     progressCallback: (state: string, current: number, total: number) => void,
   ): Promise<boolean | undefined> {
-    return await transfers.uploadProgram(
+    return transfers.uploadProgram(
       this.state,
       iniConfig,
       binFileBuf,
@@ -324,7 +324,7 @@ export class V5Brain {
     request: IFileWriteRequest,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<boolean | undefined> {
-    return await transfers.writeFile(this.state, request, progressCallback);
+    return transfers.writeFile(this.state, request, progressCallback);
   }
 
   /**
@@ -336,7 +336,7 @@ export class V5Brain {
   async captureScreen(
     progressCallback?: (current: number, total: number) => void,
   ): Promise<Uint8Array | undefined> {
-    return await transfers.captureScreen(this.state, progressCallback);
+    return transfers.captureScreen(this.state, progressCallback);
   }
 }
 

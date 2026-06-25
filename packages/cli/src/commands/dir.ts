@@ -1,5 +1,5 @@
 import type { Sade } from "sade";
-import { connectV5Device } from "../device";
+import { withV5Device } from "../device";
 import { Table } from "cmd-table";
 import { FileVendor } from "@v5x/serial";
 
@@ -95,8 +95,7 @@ export default function registerDirCommand(program: Sade) {
   program
     .command("dir", "list files on flash", { alias: "ls" })
     .action(async () => {
-      const device = await connectV5Device();
-      try {
+      await withV5Device(async (device) => {
         const files = [];
         for (const vendor of VENDORS) {
           const vendorFiles = (await device.brain.listFiles(vendor)) ?? [];
@@ -115,8 +114,6 @@ export default function registerDirCommand(program: Sade) {
         table.addColumn("crc32");
         formatFileRows(files).forEach((row) => table.addRow(row));
         console.log(table.render());
-      } finally {
-        await device.dispose();
-      }
+      });
     });
 }

@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { unzipSync } from "fflate";
+import { hasErrorCode, isRecord } from "./guards";
 
 export type ProjectToolchain = "pros" | "vexide";
 
@@ -45,10 +46,6 @@ const DEFAULT_PROS_TEMPLATE: ProsTemplateSource = {
     "https://github.com/purduesigbots/pros/releases/download/4.2.2/kernel%404.2.2.zip",
   sha256: "f019642af93dc3d164d1c3e67a2a7dc75c795ac6a4d550c9221c480e2e7f4899",
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 function validateDisplayName(name: string): void {
   if (name.length === 0 || /[\u0000-\u001f]/.test(name)) {
@@ -87,10 +84,6 @@ function createProjectNames(
   else validateProsRemoteName(prosRemoteName);
 
   return { displayName, cargoPackageName, prosRemoteName };
-}
-
-function hasErrorCode(error: unknown, code: string): boolean {
-  return isRecord(error) && error.code === code;
 }
 
 async function reserveDestination(

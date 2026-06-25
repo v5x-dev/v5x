@@ -1,5 +1,8 @@
 import type { Sade } from "sade";
-import { uploadProgram } from "../utils/upload";
+import {
+  uploadProgramFromCommand,
+  type UploadCommandOptions,
+} from "../utils/upload";
 
 export default function registerUploadCommand(program: Sade) {
   program
@@ -13,30 +16,7 @@ export default function registerUploadCommand(program: Sade) {
     .option("-f, --file", "upload an existing .bin artifact")
     .option("--no-build", "skip building the project")
     .option("--run", "start the program after uploading")
-    .action(
-      async (
-        path: string,
-        options: {
-          slot: string;
-          name?: string;
-          description?: string;
-          icon: string;
-          file?: string;
-          build?: boolean;
-          run?: boolean;
-        },
-      ) => {
-        path ??= process.cwd();
-        await uploadProgram({
-          path,
-          slot: Number(options.slot),
-          name: options.name,
-          description: options.description,
-          icon: options.icon,
-          artifact: options.file,
-          build: options.build ?? true,
-          run: options.run ?? false,
-        });
-      },
+    .action((path: string | undefined, options: UploadCommandOptions) =>
+      uploadProgramFromCommand(path, options, false),
     );
 }

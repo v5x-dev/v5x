@@ -1,5 +1,5 @@
 import type { Sade } from "sade";
-import { connectV5Device } from "../device";
+import { withV5Device } from "../device";
 
 function printKittyRGB(bytes: Uint8Array) {
   const WIDTH = 480;
@@ -29,13 +29,10 @@ export default function registerScreenshotCommand(program: Sade) {
       alias: "sc",
     })
     .action(async () => {
-      const device = await connectV5Device();
-      try {
+      await withV5Device(async (device) => {
         const data = await device.brain.captureScreen();
         if (data === undefined) throw new Error("failed to capture screenshot");
         printKittyRGB(data);
-      } finally {
-        await device.dispose();
-      }
+      });
     });
 }
