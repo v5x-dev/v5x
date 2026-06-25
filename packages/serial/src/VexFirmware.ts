@@ -164,11 +164,11 @@ export async function sleepUntil(
   return false;
 }
 
-export async function sleep(ms: number): Promise<unknown> {
+export async function sleep(ms: number): Promise<void> {
   if (ms < 0) {
     throw new RangeError("ms must be non-negative");
   }
-  return await new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 interface FirmwareImage {
@@ -273,7 +273,7 @@ export async function uploadFirmware(
   const images = await extractFirmwareImages(usingVersion, vexos);
   pcb("UNZIP VEXOS", 1, 1);
 
-  return await state.withFileTransfer(async () => {
+  return state.withFileTransfer(async () => {
     pcb("FACTORY ENB BOOT", 0, 0);
 
     const result = await conn.writeDataAsync(new FactoryEnableH2DPacket());

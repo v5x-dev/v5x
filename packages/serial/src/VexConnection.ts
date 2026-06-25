@@ -64,6 +64,11 @@ import {
 import { type VexFirmwareVersion } from "./VexFirmwareVersion.js";
 
 const thePacketEncoder = PacketEncoder.getInstance();
+const SCREEN_CAPTURE_HEIGHT = 272;
+const SCREEN_CAPTURE_WIDTH = 480;
+const SCREEN_CAPTURE_CHANNELS = 3;
+const SCREEN_CAPTURE_MESSAGE_WIDTH = 512;
+const SCREEN_CAPTURE_MESSAGE_CHANNELS = 4;
 
 /**
  * A connection to a V5 device.
@@ -237,8 +242,8 @@ export class VexSerialConnection extends VexEventTarget {
     if (port == null && askUser) {
       try {
         port = await this.serial.requestPort({ filters: this.filters });
-      } catch (e) {
-        //console.warn("No valid port selected.");
+      } catch {
+        // User canceled port selection or no matching port was available.
       }
     }
 
@@ -262,7 +267,7 @@ export class VexSerialConnection extends VexEventTarget {
       this.emit("connected", undefined);
 
       return true;
-    } catch (e) {
+    } catch {
       await this.close();
       return false;
     }
@@ -280,48 +285,39 @@ export class VexSerialConnection extends VexEventTarget {
     rawData: DeviceBoundPacket | Uint8Array,
     timeout: number = 1000,
   ): Promise<HostBoundPacket | ArrayBuffer | AckType> {
-    return await new Promise<HostBoundPacket | ArrayBuffer | AckType>(
-      (resolve) => {
-        if (this.writer === undefined) {
-          resolve(AckType.CDC2_NACK);
-          return;
-        }
+    return new Promise<HostBoundPacket | ArrayBuffer | AckType>((resolve) => {
+      if (this.writer === undefined) {
+        resolve(AckType.CDC2_NACK);
+        return;
+      }
 
-        const data: Uint8Array =
-          rawData instanceof DeviceBoundPacket ? rawData.data : rawData;
-        const cb = {
-          callback: resolve,
-          timeout: setTimeout(() => {
-            const index = this.callbacksQueue.indexOf(cb);
-            if (index === -1) return;
-            this.callbacksQueue.splice(index, 1);
-            cb.callback(AckType.TIMEOUT);
-          }, timeout),
-          wantedCommandId:
-            rawData instanceof DeviceBoundPacket
-              ? rawData.commandId
-              : undefined,
-          wantedCommandExId:
-            rawData instanceof DeviceBoundPacket
-              ? rawData.commandExtendedId
-              : undefined,
-        };
-        this.callbacksQueue.push(cb);
+      const data: Uint8Array =
+        rawData instanceof DeviceBoundPacket ? rawData.data : rawData;
+      const cb = {
+        callback: resolve,
+        timeout: setTimeout(() => {
+          const index = this.callbacksQueue.indexOf(cb);
+          if (index === -1) return;
+          this.callbacksQueue.splice(index, 1);
+          cb.callback(AckType.TIMEOUT);
+        }, timeout),
+        wantedCommandId:
+          rawData instanceof DeviceBoundPacket ? rawData.commandId : undefined,
+        wantedCommandExId:
+          rawData instanceof DeviceBoundPacket
+            ? rawData.commandExtendedId
+            : undefined,
+      };
+      this.callbacksQueue.push(cb);
 
-        this.writer
-          .write(data)
-          .then(() => {
-            logData(data, 100);
-          })
-          .catch(() => {
-            const index = this.callbacksQueue.indexOf(cb);
-            if (index === -1) return;
-            this.callbacksQueue.splice(index, 1);
-            clearTimeout(cb.timeout);
-            resolve(AckType.WRITE_ERROR);
-          });
-      },
-    );
+      this.writer.write(data).catch(() => {
+        const index = this.callbacksQueue.indexOf(cb);
+        if (index === -1) return;
+        this.callbacksQueue.splice(index, 1);
+        clearTimeout(cb.timeout);
+        resolve(AckType.WRITE_ERROR);
+      });
+    });
   }
 
   protected async readData(
@@ -405,7 +401,6 @@ export class VexSerialConnection extends VexEventTarget {
 
         if (callbackInfo === undefined) {
           console.warn("Unexpected command", cmdId, cmdExId, ack);
-          // TODO: trigger event
           continue;
         }
 
@@ -531,7 +526,7 @@ export class V5SerialConnection extends VexSerialConnection {
     coldFileBuf: Uint8Array | undefined,
     progressCallback: (state: string, current: number, total: number) => void,
   ): Promise<boolean | undefined> {
-    return await this.withFileTransfer(async () => {
+    return this.withFileTransfer(async () => {
       const iniFileBuffer = new TextEncoder().encode(iniConfig.createIni());
 
       const basename = iniConfig.baseName;
@@ -596,7 +591,7 @@ export class V5SerialConnection extends VexSerialConnection {
     downloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<Uint8Array> {
-    return await this.withFileTransfer(async () =>
+    return this.withFileTransfer(() =>
       this.downloadFileToHostUnlocked(
         request,
         downloadTarget,
@@ -616,8 +611,6 @@ export class V5SerialConnection extends VexSerialConnection {
     downloadTarget: FileDownloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<Uint8Array> {
-    // TODO assert that the device is connected
-
     const { filename, vendor, loadAddress, size } = request;
 
     let nextAddress = loadAddress ?? USER_FLASH_USR_CODE_START;
@@ -638,12 +631,11 @@ export class V5SerialConnection extends VexSerialConnection {
     if (!(p1 instanceof InitFileTransferReplyD2HPacket))
       throw new Error("InitFileTransferH2DPacket failed");
 
+    let transferFailed = true;
+
     try {
       const fileSize = size ?? p1.fileSize;
-      const bufferChunkSize =
-        p1.windowSize > 0 && p1.windowSize <= USER_PROG_CHUNK_SIZE
-          ? p1.windowSize
-          : USER_PROG_CHUNK_SIZE;
+      const bufferChunkSize = getTransferChunkSize(p1.windowSize);
       let bufferOffset = 0;
       const fileBuf = new Uint8Array(fileSize);
 
@@ -681,6 +673,7 @@ export class V5SerialConnection extends VexSerialConnection {
         progressCallback?.(bufferOffset, fileSize);
       }
 
+      transferFailed = false;
       return fileBuf;
     } finally {
       // Always exit file-transfer mode even if reading or writing the
@@ -693,7 +686,7 @@ export class V5SerialConnection extends VexSerialConnection {
           30000,
         );
       } catch (cleanupError) {
-        throw cleanupError;
+        if (!transferFailed) throw cleanupError;
       }
     }
   }
@@ -702,7 +695,7 @@ export class V5SerialConnection extends VexSerialConnection {
     request: IFileWriteRequest,
     progressCallback?: (current: number, total: number) => void,
   ): Promise<boolean> {
-    return await this.withFileTransfer(async () =>
+    return this.withFileTransfer(() =>
       this.uploadFileToDeviceUnlocked(request, progressCallback),
     );
   }
@@ -723,7 +716,6 @@ export class V5SerialConnection extends VexSerialConnection {
     } = request;
 
     if (buf === undefined) {
-      // TODO: check connection status
       return false;
     }
 
@@ -731,8 +723,6 @@ export class V5SerialConnection extends VexSerialConnection {
     vendor = vendor ?? FileVendor.USER;
 
     let nextAddress = loadAddress ?? USER_FLASH_USR_CODE_START;
-
-    // TODO if downloadTarget is FILE_TARGET_A1, FactoryEnable
 
     const p1 = await this.writeDataAsync(
       new InitFileTransferH2DPacket(
@@ -750,10 +740,7 @@ export class V5SerialConnection extends VexSerialConnection {
     if (!(p1 instanceof InitFileTransferReplyD2HPacket))
       throw new Error("InitFileTransferH2DPacket failed");
 
-    const bufferChunkSize =
-      p1.windowSize > 0 && p1.windowSize <= USER_PROG_CHUNK_SIZE
-        ? p1.windowSize
-        : USER_PROG_CHUNK_SIZE;
+    const bufferChunkSize = getTransferChunkSize(p1.windowSize);
     let bufferOffset = 0;
 
     let lastBlock = false;
@@ -842,7 +829,7 @@ export class V5SerialConnection extends VexSerialConnection {
    * operation completes.
    */
   async removeFile(request: IFileBasicInfo | string): Promise<boolean> {
-    return await this.withFileTransfer(async () => {
+    return this.withFileTransfer(async () => {
       let vendor: FileVendor, filename: string;
       if (typeof request === "string") {
         vendor = FileVendor.USER;
@@ -875,7 +862,7 @@ export class V5SerialConnection extends VexSerialConnection {
    * transfer-mode session.
    */
   async removeAllFiles(): Promise<boolean> {
-    return await this.withFileTransfer(async () => {
+    return this.withFileTransfer(async () => {
       try {
         const result = await this.writeDataAsync(
           new FileClearUpH2DPacket(FileVendor.USER),
@@ -905,6 +892,33 @@ export class V5SerialConnection extends VexSerialConnection {
     return result instanceof ScreenCaptureReplyD2HPacket ? result : null;
   }
 
+  async captureScreen(
+    progressCallback?: (current: number, total: number) => void,
+  ): Promise<Uint8Array> {
+    return this.withFileTransfer(async () => {
+      const response = await this.captureScreenSetup();
+      if (response === null) {
+        throw new Error("screen capture request was rejected");
+      }
+
+      const framebuffer = await this.downloadFileToHostUnlocked(
+        {
+          filename: "screen",
+          vendor: FileVendor.SYS,
+          loadAddress: 0,
+          size:
+            SCREEN_CAPTURE_MESSAGE_WIDTH *
+            SCREEN_CAPTURE_HEIGHT *
+            SCREEN_CAPTURE_MESSAGE_CHANNELS,
+        },
+        FileDownloadTarget.FILE_TARGET_CBUF,
+        progressCallback,
+      );
+
+      return convertScreenCapture(framebuffer);
+    });
+  }
+
   async setMatchMode(mode: MatchMode): Promise<MatchModeReplyD2HPacket | null> {
     const result = await this.writeDataAsync(
       new UpdateMatchModeH2DPacket(mode, 0),
@@ -915,7 +929,7 @@ export class V5SerialConnection extends VexSerialConnection {
   async runProgram(
     value: SlotNumber | string,
   ): Promise<LoadFileActionReplyD2HPacket | null> {
-    return await this.loadProgram(value);
+    return this.loadProgram(value);
   }
 
   async loadProgram(
@@ -956,20 +970,6 @@ export class V5SerialConnection extends VexSerialConnection {
   }
 }
 
-function logData(data: Uint8Array, limitedSize: number): void {
-  if (data === undefined) return;
-
-  limitedSize ||= data.length;
-  let a = "";
-  for (let n = 0; n < data.length && n < limitedSize; n++)
-    a += ("00" + data[n]!.toString(16)).substr(-2, 2) + " ";
-  limitedSize < data.length && (a += " ... ");
-
-  // console.log(a);
-
-  // XXX: NOT USED?
-}
-
 function binaryArrayJoin(
   left: Uint8Array | ArrayBuffer | null,
   right: Uint8Array | ArrayBuffer | null,
@@ -977,9 +977,36 @@ function binaryArrayJoin(
   const leftSize = left != null ? left.byteLength : 0;
   const rightSize = right != null ? right.byteLength : 0;
   const all = new Uint8Array(leftSize + rightSize);
-  return all.length === 0
-    ? new Uint8Array()
-    : (left != null && all.set(new Uint8Array(left), 0),
-      right != null && all.set(new Uint8Array(right), leftSize),
-      all);
+  if (all.length === 0) return new Uint8Array();
+  if (left != null) all.set(new Uint8Array(left), 0);
+  if (right != null) all.set(new Uint8Array(right), leftSize);
+  return all;
+}
+
+function getTransferChunkSize(windowSize: number): number {
+  return windowSize > 0 && windowSize <= USER_PROG_CHUNK_SIZE
+    ? windowSize
+    : USER_PROG_CHUNK_SIZE;
+}
+
+function convertScreenCapture(framebuffer: Uint8Array): Uint8Array {
+  const pixels = new Uint8Array(
+    SCREEN_CAPTURE_WIDTH * SCREEN_CAPTURE_HEIGHT * SCREEN_CAPTURE_CHANNELS,
+  );
+
+  for (let row = 0; row < SCREEN_CAPTURE_HEIGHT; row++) {
+    for (let column = 0; column < SCREEN_CAPTURE_WIDTH; column++) {
+      const source =
+        (row * SCREEN_CAPTURE_MESSAGE_WIDTH + column) *
+        SCREEN_CAPTURE_MESSAGE_CHANNELS;
+      const target =
+        (row * SCREEN_CAPTURE_WIDTH + column) * SCREEN_CAPTURE_CHANNELS;
+
+      pixels[target] = framebuffer[source + 2] ?? 0;
+      pixels[target + 1] = framebuffer[source + 1] ?? 0;
+      pixels[target + 2] = framebuffer[source] ?? 0;
+    }
+  }
+
+  return pixels;
 }

@@ -1064,7 +1064,7 @@ export class GetSlot1to4InfoReplyD2HPacket extends HostBoundPacket {
     this.slots = [];
 
     for (let i = 0; i < 4; i++) {
-      const hasData = (this.slotFlags & Math.pow(2, start - 1 + i)) !== 0;
+      const hasData = (this.slotFlags & (2 ** (start - 1 + i))) !== 0;
 
       if (!hasData) continue;
 

@@ -19,6 +19,7 @@ import {
   LinkFileH2DPacket,
   LinkFileReplyD2HPacket,
   ReadFileReplyD2HPacket,
+  ScreenCaptureH2DPacket,
   ScreenCaptureReplyD2HPacket,
   SelectDashReplyD2HPacket,
   WriteFileH2DPacket,
@@ -519,6 +520,36 @@ describe("transfer cleanup on every failure point", () => {
     expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
   });
 
+  test("download read failure is not masked by exit failure", async () => {
+    const connection = new V5SerialConnection({} as Serial);
+    let sawReadAttempt = false;
+    connection.writeDataAsync = async (packet) => {
+      if (packet instanceof InitFileTransferH2DPacket) {
+        return Object.assign(
+          Object.create(InitFileTransferReplyD2HPacket.prototype),
+          {
+            windowSize: 4,
+            fileSize: 4,
+            crc32: 0,
+          },
+        ) as InitFileTransferReplyD2HPacket;
+      }
+      if (packet instanceof ExitFileTransferH2DPacket) {
+        throw new Error("exit failed");
+      }
+      sawReadAttempt = true;
+      return AckType.CDC2_NACK;
+    };
+
+    await expect(
+      connection.downloadFileToHost({
+        filename: "f.bin",
+        vendor: FileVendor.USER,
+      }),
+    ).rejects.toThrow("ReadFileReplyD2HPacket failed");
+    expect(sawReadAttempt).toBe(true);
+  });
+
   test("remove file failure still exits transfer mode", async () => {
     const { connection, writes, pushReplies } = buildExitTrackingConnection();
     pushReplies(nack(), exitReply());
@@ -580,6 +611,62 @@ test("captureScreenSetup accepts the matching reply packet", async () => {
   ) as ScreenCaptureReplyD2HPacket;
   connection.writeDataAsync = async () => reply;
   expect(await connection.captureScreenSetup()).toBe(reply);
+});
+
+test("captureScreen converts the device framebuffer from BGRA to RGB", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const framebuffer = new Uint8Array(512 * 272 * 4);
+  framebuffer.set([3, 2, 1, 255]);
+  connection.writeDataAsync = async () =>
+    protocolReply(ScreenCaptureReplyD2HPacket);
+  connection.downloadFileToHostUnlocked = async () => framebuffer;
+
+  const result = await connection.captureScreen();
+  expect(result).toHaveLength(480 * 272 * 3);
+  expect(result.slice(0, 3)).toEqual(new Uint8Array([1, 2, 3]));
+});
+
+test("captureScreen waits behind an in-flight transfer", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const uploadInit = deferred<void>();
+  const framebuffer = new Uint8Array(512 * 272 * 4);
+  let initCount = 0;
+  let screenRequests = 0;
+
+  connection.writeDataAsync = async (packet) => {
+    if (packet instanceof InitFileTransferH2DPacket) {
+      initCount++;
+      await uploadInit.promise;
+      return initReply(4, 0);
+    }
+    if (packet instanceof WriteFileH2DPacket) {
+      return protocolReply(WriteFileReplyD2HPacket);
+    }
+    if (packet instanceof ScreenCaptureH2DPacket) {
+      screenRequests++;
+      return protocolReply(ScreenCaptureReplyD2HPacket);
+    }
+    return protocolReply(ExitFileTransferReplyD2HPacket);
+  };
+  connection.downloadFileToHostUnlocked = async () => framebuffer;
+
+  const upload = connection.uploadFileToDevice({
+    filename: "program.bin",
+    buf: new Uint8Array([1, 2, 3, 4]),
+    downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+    autoRun: false,
+  });
+  await Bun.sleep(0);
+  expect(initCount).toBe(1);
+
+  const screen = connection.captureScreen();
+  await Bun.sleep(0);
+  expect(screenRequests).toBe(0);
+
+  uploadInit.resolve();
+  expect(await upload).toBe(true);
+  await screen;
+  expect(screenRequests).toBe(1);
 });
 
 describe("lifecycle hardening", () => {

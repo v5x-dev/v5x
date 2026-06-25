@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { isRecord } from "./guards";
 
 export type ProgramType =
   | "pros"
@@ -8,14 +9,10 @@ export type ProgramType =
   | "unknown";
 
 function hasVexideDependency(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) return false;
+  if (!isRecord(value)) return false;
   if (!("dependencies" in value)) return false;
   const dependencies = value.dependencies;
-  return (
-    typeof dependencies === "object" &&
-    dependencies !== null &&
-    "vexide" in dependencies
-  );
+  return isRecord(dependencies) && "vexide" in dependencies;
 }
 
 export async function detectProgramType(path: string): Promise<ProgramType> {

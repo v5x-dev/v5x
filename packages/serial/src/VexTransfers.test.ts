@@ -1,10 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import {
-  AckType,
-  FileDownloadTarget,
-  FileVendor,
-  type IFileWriteRequest,
-} from "./Vex";
+import { FileDownloadTarget, FileVendor, type IFileWriteRequest } from "./Vex";
 import { V5SerialConnection } from "./VexConnection";
 import { V5SerialDevice } from "./VexDevice";
 import {
@@ -15,7 +10,6 @@ import {
   GetDirectoryFileCountReplyD2HPacket,
   GetProgramSlotInfoReplyD2HPacket,
   ReadKeyValueReplyD2HPacket,
-  ScreenCaptureReplyD2HPacket,
   WriteKeyValueReplyD2HPacket,
 } from "./VexPacketModels";
 import { VexFirmwareVersion } from "./VexFirmwareVersion";
@@ -57,47 +51,38 @@ test("file and key-value operations report protocol outcomes", async () => {
   expect(await device.brain.removeAllFiles()).toBe(true);
 });
 
-test("screen capture rejects NACK and timeout without downloading", async () => {
-  for (const response of [AckType.CDC2_NACK, AckType.TIMEOUT]) {
-    const device = new V5SerialDevice(serial);
-    devices.push(device);
-    let downloads = 0;
-    const writeData = ((_packet, resolve) =>
-      resolve(response)) satisfies V5SerialConnection["writeData"];
-    device.connection = {
-      isConnected: true,
-      writeData,
-      downloadFileToHost: async () => {
-        downloads++;
-        return new Uint8Array();
-      },
-      close: async () => {},
-    } as unknown as V5SerialConnection;
-
-    await expect(device.brain.captureScreen()).rejects.toThrow("rejected");
-    expect(downloads).toBe(0);
-  }
-});
-
-test("screen capture converts the device framebuffer from BGRA to RGB", async () => {
+test("screen capture propagates connection rejection", async () => {
   const device = new V5SerialDevice(serial);
   devices.push(device);
-  const framebuffer = new Uint8Array(512 * 272 * 4);
-  framebuffer.set([3, 2, 1, 255]);
-  const writeData = ((_packet, resolve) =>
-    resolve(
-      protocolReply(ScreenCaptureReplyD2HPacket),
-    )) satisfies V5SerialConnection["writeData"];
   device.connection = {
     isConnected: true,
-    writeData,
-    downloadFileToHostUnlocked: async () => framebuffer,
+    captureScreen: async () => {
+      throw new Error("screen capture request was rejected");
+    },
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+
+  await expect(device.brain.captureScreen()).rejects.toThrow("rejected");
+});
+
+test("screen capture delegates to the connection while refresh is paused", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const expected = new Uint8Array([1, 2, 3]);
+  let sawPausedRefresh = false;
+  device.connection = {
+    isConnected: true,
+    captureScreen: async () => {
+      sawPausedRefresh = device.state.isFileTransferring;
+      return expected;
+    },
     close: async () => {},
   } as unknown as V5SerialConnection;
 
   const result = await device.brain.captureScreen();
-  expect(result?.length).toBe(480 * 272 * 3);
-  expect(result?.slice(0, 3)).toEqual(new Uint8Array([1, 2, 3]));
+  expect(result).toBe(expected);
+  expect(sawPausedRefresh).toBe(true);
+  expect(device.state.isFileTransferring).toBe(false);
 });
 
 test("listFiles enumerates directory entries returned by the device", async () => {

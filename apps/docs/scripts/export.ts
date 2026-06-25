@@ -13,6 +13,16 @@ const excludedFiles = new Set([
   "Start Docs.bat",
 ]);
 
+function stripCommonRoot(path: string, commonRoot: string | undefined): string {
+  return commonRoot && path.startsWith(`${commonRoot}/`)
+    ? path.slice(commonRoot.length + 1)
+    : path;
+}
+
+function htmlPathname(path: string): string {
+  return path === "index.html" ? "/" : `/${path.replace(/\/index\.html$/, "")}`;
+}
+
 await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
 
@@ -22,10 +32,7 @@ const rootParts = new Set(paths.map((path) => path.split("/")[0]));
 const commonRoot = rootParts.size === 1 ? [...rootParts][0] : undefined;
 
 for (const archivePath of paths) {
-  const relativePath =
-    commonRoot && archivePath.startsWith(`${commonRoot}/`)
-      ? archivePath.slice(commonRoot.length + 1)
-      : archivePath;
+  const relativePath = stripCommonRoot(archivePath, commonRoot);
 
   if (!relativePath || excludedFiles.has(relativePath)) continue;
   const destination = resolveArchiveDestination(outputDirectory, relativePath);
@@ -35,10 +42,7 @@ for (const archivePath of paths) {
     throw new Error(`missing archive entry: ${archivePath}`);
 
   if (relativePath.endsWith(".html")) {
-    const pathname =
-      relativePath === "index.html"
-        ? "/"
-        : `/${relativePath.replace(/\/index\.html$/, "")}`;
+    const pathname = htmlPathname(relativePath);
     const canonicalUrl = `${siteUrl}${pathname}`;
     let html = new TextDecoder().decode(file);
     if (relativePath === "index.html") {
@@ -56,9 +60,7 @@ for (const archivePath of paths) {
 }
 
 const exportedPaths = Object.keys(archive).map((path) =>
-  commonRoot && path.startsWith(`${commonRoot}/`)
-    ? path.slice(commonRoot.length + 1)
-    : path,
+  stripCommonRoot(path, commonRoot),
 );
 
 if (!exportedPaths.includes("index.html")) {
@@ -75,9 +77,7 @@ const sitemapPaths = exportedPaths
       path === "index.html" ||
       (path.endsWith("/index.html") && path !== "index/index.html"),
   )
-  .map((path) =>
-    path === "index.html" ? "/" : `/${path.replace(/\/index\.html$/, "")}`,
-  )
+  .map((path) => htmlPathname(path))
   .sort();
 const sitemap = [
   '<?xml version="1.0" encoding="UTF-8"?>',

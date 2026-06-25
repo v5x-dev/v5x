@@ -16,3 +16,15 @@ export async function connectV5Device(
     throw error;
   }
 }
+
+export async function withV5Device<Result>(
+  operation: (device: V5SerialDevice) => Promise<Result>,
+  device = new V5SerialDevice(serial),
+): Promise<Result> {
+  const connectedDevice = await connectV5Device(device);
+  try {
+    return await operation(connectedDevice);
+  } finally {
+    await connectedDevice.dispose();
+  }
+}

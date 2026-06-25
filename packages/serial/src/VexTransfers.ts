@@ -6,12 +6,10 @@ import {
   type IFileWriteRequest,
   FileDownloadTarget,
   RadioChannelType,
-  AckType,
 } from "./Vex.js";
 import { type ProgramIniConfig } from "./VexIniConfig.js";
 import type { V5SerialDeviceState } from "./VexDeviceState.js";
 import { sleep, sleepUntilAsync } from "./VexFirmware.js";
-import type { HostBoundPacket } from "./VexPacketBase.js";
 import {
   GetDirectoryEntryH2DPacket,
   GetDirectoryEntryReplyD2HPacket,
@@ -21,8 +19,6 @@ import {
   GetProgramSlotInfoReplyD2HPacket,
   ReadKeyValueH2DPacket,
   ReadKeyValueReplyD2HPacket,
-  ScreenCaptureH2DPacket,
-  ScreenCaptureReplyD2HPacket,
   WriteKeyValueH2DPacket,
   WriteKeyValueReplyD2HPacket,
 } from "./VexPacketModels.js";
@@ -100,18 +96,14 @@ export async function listProgram(
   if (files === undefined) return;
 
   const programList: IProgramInfo[] = [];
-  const iniFiles = files.filter(
-    (file) => file?.filename?.endsWith(".ini") ?? false,
-  );
+  const iniFiles = files.filter((file) => file.filename.endsWith(".ini"));
 
   for (let i = 0; i < iniFiles.length; i++) {
     const ini = iniFiles[i]!;
     if (ini.size === 0) continue;
 
     const programName = /(.+?)(\.[^.]*$|$)/.exec(ini.filename)?.[1] ?? "";
-    const bin = files.filter(
-      (e) => e != null && e.filename === programName + ".bin",
-    )[0];
+    const bin = files.find((file) => file.filename === programName + ".bin");
     if (bin == null || bin.timestamp === 0 || bin.size === 0) continue;
 
     const n = new Date();
@@ -125,7 +117,7 @@ export async function listProgram(
       requestedSlot: -1,
     };
 
-    const result2 = await conn?.writeDataAsync(
+    const result2 = await conn.writeDataAsync(
       new GetProgramSlotInfoH2DPacket(FileVendor.USER, program.binfile),
     );
     if (result2 instanceof GetProgramSlotInfoReplyD2HPacket) {
@@ -155,13 +147,9 @@ export async function readFile(
     handle = request;
   }
 
-  return await state.withFileTransfer(async () => {
-    return await conn.downloadFileToHost(
-      handle,
-      downloadTarget,
-      progressCallback,
-    );
-  });
+  return state.withFileTransfer(() =>
+    conn.downloadFileToHost(handle, downloadTarget, progressCallback),
+  );
 }
 
 export async function removeFile(
@@ -171,9 +159,7 @@ export async function removeFile(
   const conn = state._instance.connection;
   if (conn == null || !conn.isConnected) return;
 
-  return await state.withFileTransfer(async () => {
-    return await conn.removeFile(request);
-  });
+  return state.withFileTransfer(() => conn.removeFile(request));
 }
 
 export async function removeAllFiles(
@@ -182,9 +168,7 @@ export async function removeAllFiles(
   const conn = state._instance.connection;
   if (conn == null || !conn.isConnected) return undefined;
 
-  return await state.withFileTransfer(async () => {
-    return await conn.removeAllFiles();
-  });
+  return state.withFileTransfer(() => conn.removeAllFiles());
 }
 
 export async function uploadProgram(
@@ -200,7 +184,7 @@ export async function uploadProgram(
 
   let switchedToDownload = false;
 
-  return await state.withFileTransfer(async () => {
+  return state.withFileTransfer(async () => {
     try {
       if (device.isV5Controller) {
         await sleep(250);
@@ -231,7 +215,7 @@ export async function uploadProgram(
         coldFileBuf,
         progressCallback,
       );
-      if (!(p2 ?? false)) return false;
+      if (!p2) return false;
 
       if (device.isV5Controller) {
         // Disconnected
@@ -270,9 +254,9 @@ export async function writeFile(
 ): Promise<boolean | undefined> {
   const conn = state._instance.connection;
   if (conn == null || !conn.isConnected) return undefined;
-  return await state.withFileTransfer(async () => {
-    return await conn.uploadFileToDevice(request, progressCallback);
-  });
+  return state.withFileTransfer(() =>
+    conn.uploadFileToDevice(request, progressCallback),
+  );
 }
 
 /**
@@ -290,50 +274,5 @@ export async function captureScreen(
   const conn = state._instance.connection;
   if (conn == null || !conn.isConnected) return undefined;
 
-  return await state.withFileTransfer(async () => {
-    const response = await new Promise<HostBoundPacket | ArrayBuffer | AckType>(
-      (resolve) => {
-        conn.writeData(new ScreenCaptureH2DPacket(0), resolve);
-      },
-    );
-    if (!(response instanceof ScreenCaptureReplyD2HPacket)) {
-      throw new Error("screen capture request was rejected");
-    }
-
-    const height = 272;
-    const width = 480;
-    const channels = 3;
-    const messageWidth = 512; // brain goofiness
-    const messageChannels = 4; // brain goofiness
-
-    let buf = await conn.downloadFileToHostUnlocked(
-      {
-        filename: "screen",
-        vendor: FileVendor.SYS,
-        loadAddress: 0,
-        size: messageWidth * height * messageChannels, // RGBA ig
-      },
-      FileDownloadTarget.FILE_TARGET_CBUF,
-      progressCallback,
-    );
-
-    buf = buf
-      // remove the extra columns
-      .filter(
-        (_byte, i) =>
-          i % (messageWidth * messageChannels) < width * messageChannels,
-      )
-      // remove the fake alpha channel
-      .filter((_byte, i) => (i + 1) % messageChannels !== 0);
-
-    // reverse the pixel (bgr -> rgb)
-    for (let i = 0; i < buf.length; i += channels) {
-      const px = buf.slice(i, i + channels).reverse();
-      for (let j = 0; j < px.length; j++) {
-        buf[i + j] = px[j]!;
-      }
-    }
-
-    return buf;
-  });
+  return state.withFileTransfer(() => conn.captureScreen(progressCallback));
 }

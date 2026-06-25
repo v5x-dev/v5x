@@ -191,13 +191,13 @@ export class WebSerialAdapter extends EventTarget implements Serial {
               info.vendorId = vendorId;
               info.productId = productId;
               break;
-            } catch (e) {
+            } catch {
               current = join(current, "..");
             }
           }
         }
         ports.push(info);
-      } catch (e) {
+      } catch {
         // Not a real device or no permission
       }
     }
