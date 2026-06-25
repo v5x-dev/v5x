@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { errAsync, ok, okAsync, ResultAsync } from "neverthrow";
 import { FileVendor, MatchMode, RadioChannelType } from "./Vex";
 import {
   V5Radio,
@@ -8,6 +9,7 @@ import {
   sleepUntilAsync,
 } from "./VexDevice";
 import { V5SerialConnection } from "./VexConnection";
+import { VexIoError, VexProtocolError } from "./VexError";
 import { type ProgramIniConfig } from "./VexIniConfig";
 import {
   GetDeviceStatusReplyD2HPacket as GetDeviceStatusReplyD2HPacketClass,
@@ -31,15 +33,15 @@ afterEach(async () => {
 describe("sleepUntilAsync", () => {
   test("waits between attempts and propagates predicate failures", async () => {
     let attempts = 0;
-    expect(await sleepUntilAsync(async () => ++attempts === 2, 100, 10)).toBe(
-      true,
-    );
-    expect(attempts).toBe(2);
     expect(
-      sleepUntilAsync(async () => {
-        throw new Error("predicate failed");
-      }, 100),
-    ).rejects.toThrow("predicate failed");
+      (await sleepUntilAsync(async () => ++attempts === 2, 100, 10))._unsafeUnwrap(),
+    ).toBe(true);
+    expect(attempts).toBe(2);
+    const failed = await sleepUntilAsync(async () => {
+      throw new Error("predicate failed");
+    }, 100);
+    expect(failed.isErr()).toBe(true);
+    expect(failed._unsafeUnwrapErr().message).toContain("predicate failed");
   });
 });
 
@@ -51,9 +53,9 @@ test("downloadFileFromInternet rejects HTTP errors", async () => {
   );
   globalThis.fetch = mockedFetch;
   try {
-    expect(
-      downloadFileFromInternet("https://example.test/file"),
-    ).rejects.toThrow("404");
+    const result = await downloadFileFromInternet("https://example.test/file");
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain("404");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -67,9 +69,12 @@ test("firmware uploads reject unsafe version paths", async () => {
     close: async () => {},
   } as unknown as V5SerialConnection;
 
-  await expect(
-    device.brain.uploadFirmware("https://example.test/", "../firmware"),
-  ).rejects.toThrow("invalid VEXos version");
+  const result = await device.brain.uploadFirmware(
+    "https://example.test/",
+    "../firmware",
+  );
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr().message).toContain("invalid VEXos version");
 });
 
 test("firmware uploads propagate download failures", async () => {
@@ -86,9 +91,12 @@ test("firmware uploads propagate download failures", async () => {
   );
 
   try {
-    await expect(
-      device.brain.uploadFirmware("https://example.test/", "valid-version"),
-    ).rejects.toThrow("404");
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "valid-version",
+    );
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain("404");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -99,13 +107,14 @@ test("successful file reads resume automatic refresh", async () => {
   devices.push(device);
   const connection = {
     isConnected: true,
-    downloadFileToHost: async () => new Uint8Array([1, 2, 3]),
+    downloadFileToHost: () => okAsync(new Uint8Array([1, 2, 3])),
     close: async () => {},
   } as unknown as V5SerialConnection;
   device.connection = connection;
 
   expect(
-    await device.brain.readFile({ filename: "test", vendor: FileVendor.USER }),
+    (await device.brain.readFile({ filename: "test", vendor: FileVendor.USER }))
+      ._unsafeUnwrap(),
   ).toEqual(new Uint8Array([1, 2, 3]));
   expect(device.state.isFileTransferring).toBe(false);
 });
@@ -122,7 +131,8 @@ test("concurrent file operations keep automatic refresh paused", async () => {
   );
   device.connection = {
     isConnected: true,
-    downloadFileToHost: async () => (calls++ === 0 ? first : second),
+    downloadFileToHost: () =>
+      new ResultAsync((calls++ === 0 ? first : second).then((v) => ok(v))),
     close: async () => {},
   } as unknown as V5SerialConnection;
 
@@ -146,24 +156,24 @@ test("state-changing methods wait for acknowledgement before updating state", as
   let stopped = false;
   device.connection = {
     isConnected: true,
-    setMatchMode: async () => ({}),
-    loadProgram: async (slot: number) => {
+    setMatchMode: () => okAsync({} as MatchModeReplyD2HPacket),
+    loadProgram: (slot: number) => {
       loadedSlots.push(slot);
-      return {};
+      return okAsync({} as LoadFileActionReplyD2HPacket);
     },
-    stopProgram: async () => {
+    stopProgram: () => {
       stopped = true;
-      return {};
+      return okAsync({} as LoadFileActionReplyD2HPacket);
     },
     close: async () => {},
   } as unknown as V5SerialConnection;
 
-  expect(await device.setMatchMode("driver")).toBe(true);
+  expect((await device.setMatchMode("driver")).isOk()).toBe(true);
   expect(device.matchMode).toBe("driver");
-  expect(await device.brain.setActiveProgram(2)).toBe(true);
+  expect((await device.brain.setActiveProgram(2)).isOk()).toBe(true);
   expect(device.brain.activeProgram).toBe(2);
   expect(loadedSlots).toEqual([2]);
-  expect(await device.brain.setActiveProgram(0)).toBe(true);
+  expect((await device.brain.setActiveProgram(0)).isOk()).toBe(true);
   expect(device.brain.activeProgram).toBe(0);
   expect(stopped).toBe(true);
 });
@@ -172,8 +182,8 @@ test("state-changing methods report a disconnected device", async () => {
   const device = new V5SerialDevice(serial);
   devices.push(device);
 
-  expect(await device.setMatchMode("driver")).toBe(false);
-  expect(await device.brain.setActiveProgram(1)).toBe(false);
+  expect((await device.setMatchMode("driver")).isErr()).toBe(true);
+  expect((await device.brain.setActiveProgram(1)).isErr()).toBe(true);
 });
 
 test("controller uploads restore the pit channel after upload failure", async () => {
@@ -185,9 +195,9 @@ test("controller uploads restore the pit channel after upload failure", async ()
 
     override get radio(): V5Radio {
       return {
-        changeChannel: async (channel: RadioChannelType) => {
+        changeChannel: (channel: RadioChannelType) => {
           channels.push(channel);
-          return true;
+          return okAsync(undefined);
         },
       } as unknown as V5Radio;
     }
@@ -195,22 +205,22 @@ test("controller uploads restore the pit channel after upload failure", async ()
 
   const device = new ControllerDevice(serial);
   devices.push(device);
-  device.refresh = async () => true;
+  device.refresh = () => okAsync<boolean>(true);
   device.connection = {
     isConnected: true,
-    getSystemStatus: async () => ({}),
-    uploadProgramToDevice: async () => false,
+    getSystemStatus: () => okAsync({} as never),
+    uploadProgramToDevice: () => okAsync<boolean>(false),
     close: async () => {},
   } as unknown as V5SerialConnection;
 
   expect(
-    await device.brain.uploadProgram(
+    (await device.brain.uploadProgram(
       {} as ProgramIniConfig,
       new Uint8Array([1]),
       undefined,
       () => {},
-    ),
-  ).toBe(false);
+    )).isErr(),
+  ).toBe(true);
   expect(channels).toEqual([RadioChannelType.DOWNLOAD, RadioChannelType.PIT]);
 });
 
@@ -221,9 +231,7 @@ test("automatic refresh failures are emitted instead of left unhandled", async (
     isConnected: true,
     close: async () => {},
   } as unknown as V5SerialConnection;
-  device.refresh = async () => {
-    throw new Error("refresh failed");
-  };
+  device.refresh = () => errAsync(new VexIoError("refresh failed"));
 
   const emitted = new Promise<unknown>((resolve) => {
     device.on("error", (error) => {
@@ -243,18 +251,18 @@ test("connect opens and retains a supplied connection", async () => {
     get isConnected() {
       return connected;
     },
-    open: async () => {
+    open: () => {
       opened = true;
       connected = true;
-      return true;
+      return okAsync<boolean>(true);
     },
-    query1: async () => ({}),
+    query1: () => okAsync({} as never),
     on: () => {},
     close: async () => {},
   } as unknown as V5SerialConnection;
-  device.refresh = async () => true;
+  device.refresh = () => okAsync<boolean>(true);
 
-  expect(await device.connect(connection)).toBe(true);
+  expect((await device.connect(connection)).isOk()).toBe(true);
   expect(opened).toBe(true);
   expect(device.connection).toBe(connection);
 });
@@ -266,16 +274,16 @@ test("explicit disconnect does not trigger automatic reconnect", async () => {
   let reconnects = 0;
   const connection = {
     isConnected: true,
-    query1: async () => ({}),
+    query1: () => okAsync({} as never),
     on: (event: string, listener: () => void) => {
       if (event === "disconnected") disconnected = listener;
     },
     close: async () => disconnected?.(),
   } as unknown as V5SerialConnection;
-  device.refresh = async () => true;
-  device.reconnect = async () => {
+  device.refresh = () => okAsync<boolean>(true);
+  device.reconnect = () => {
     reconnects++;
-    return true;
+    return okAsync(undefined);
   };
 
   await device.connect(connection);
@@ -297,39 +305,41 @@ test("reconnect clears its guard when port discovery throws", async () => {
   const device = new InspectableDevice(failingSerial);
   devices.push(device);
 
-  await expect(device.reconnect(100)).rejects.toThrow("port discovery failed");
+  const result = await device.reconnect(100);
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr().message).toContain("port discovery failed");
   expect(device.isReconnecting).toBe(false);
 });
 
 describe("sleepUntil and sleepUntilAsync argument validation", () => {
   test("rejects non-positive intervals", async () => {
-    await expect(sleepUntilAsync(async () => true, 10, 0)).rejects.toThrow(
-      "interval must be positive",
-    );
-    await expect(sleepUntil(() => true, 10, -1)).rejects.toThrow(
-      "interval must be positive",
-    );
+    let r = await sleepUntilAsync(async () => true, 10, 0);
+    expect(r.isErr()).toBe(true);
+    expect(r._unsafeUnwrapErr().message).toContain("interval must be positive");
+    r = await sleepUntil(() => true, 10, -1);
+    expect(r.isErr()).toBe(true);
+    expect(r._unsafeUnwrapErr().message).toContain("interval must be positive");
   });
 
   test("rejects negative timeouts", async () => {
-    await expect(sleepUntilAsync(async () => true, -1)).rejects.toThrow(
-      "timeout must be non-negative",
-    );
-    await expect(sleepUntil(() => true, -1)).rejects.toThrow(
-      "timeout must be non-negative",
-    );
+    let r = await sleepUntilAsync(async () => true, -1);
+    expect(r.isErr()).toBe(true);
+    expect(r._unsafeUnwrapErr().message).toContain("timeout must be non-negative");
+    r = await sleepUntil(() => true, -1);
+    expect(r.isErr()).toBe(true);
+    expect(r._unsafeUnwrapErr().message).toContain("timeout must be non-negative");
   });
 
   test("predicate exceptions reject without leaving timers behind", async () => {
-    await expect(
-      sleepUntilAsync(
-        async () => {
-          throw new Error("boom");
-        },
-        100,
-        5,
-      ),
-    ).rejects.toThrow("boom");
+    const r = await sleepUntilAsync(
+      async () => {
+        throw new Error("boom");
+      },
+      100,
+      5,
+    );
+    expect(r.isErr()).toBe(true);
+    expect(r._unsafeUnwrapErr().message).toContain("boom");
   });
 });
 
@@ -356,9 +366,11 @@ describe("downloadFileFromInternet streaming limits", () => {
       { preconnect: originalFetch.preconnect },
     ) as typeof fetch;
 
-    await expect(
-      downloadFileFromInternet("https://example.test/big", { maxBytes: 10 }),
-    ).rejects.toThrow("exceeds limit");
+    const r = await downloadFileFromInternet("https://example.test/big", {
+      maxBytes: 10,
+    });
+    expect(r.isErr()).toBe(true);
+    expect(r._unsafeUnwrapErr().message).toContain("exceeds limit");
   });
 
   test("accepts bodies that fit within the configured byte limit", async () => {
@@ -371,7 +383,7 @@ describe("downloadFileFromInternet streaming limits", () => {
     const result = await downloadFileFromInternet("https://example.test/ok", {
       maxBytes: 10,
     });
-    expect(new Uint8Array(result)).toEqual(body);
+    expect(new Uint8Array(result._unsafeUnwrap())).toEqual(body);
   });
 
   test("rejects declared content length that exceeds the limit", async () => {
@@ -384,9 +396,11 @@ describe("downloadFileFromInternet streaming limits", () => {
       { preconnect: originalFetch.preconnect },
     ) as typeof fetch;
 
-    await expect(
-      downloadFileFromInternet("https://example.test/big", { maxBytes: 10 }),
-    ).rejects.toThrow("exceeds limit");
+    const r = await downloadFileFromInternet("https://example.test/big", {
+      maxBytes: 10,
+    });
+    expect(r.isErr()).toBe(true);
+    expect(r._unsafeUnwrapErr().message).toContain("exceeds limit");
   });
 });
 
@@ -397,51 +411,59 @@ function buildReply(args: {
   devices?: Partial<GetDeviceStatusReplyD2HPacketClass>;
 }) {
   return {
-    getSystemStatus: async () =>
-      Object.assign(
-        Object.create(GetSystemStatusReplyD2HPacketClass.prototype),
-        {
-          cpu0Version: VexFirmwareVersion.allZero(),
-          cpu1Version: VexFirmwareVersion.allZero(),
-          systemVersion: VexFirmwareVersion.allZero(),
-          uniqueId: 0,
-          sysflags: [0, 0, 0, 0, 0, 0, 0],
-          ...args.system,
-        },
-      ) as GetSystemStatusReplyD2HPacketClass,
-    getSystemFlags: async () =>
-      Object.assign(
-        Object.create(GetSystemFlagsReplyD2HPacketClass.prototype),
-        {
-          flags: 0,
-          battery: 0,
-          controllerBatteryPercent: 0,
-          partnerControllerBatteryPercent: 0,
-          currentProgram: 0,
-          ...args.flags,
-        },
-      ) as GetSystemFlagsReplyD2HPacketClass,
-    getRadioStatus: async () =>
-      Object.assign(
-        Object.create(GetRadioStatusReplyD2HPacketClass.prototype),
-        {
-          device: 0,
-          quality: 0,
-          strength: 0,
-          channel: 0,
-          timeslot: 0,
-          ...args.radio,
-        },
-      ) as GetRadioStatusReplyD2HPacketClass,
-    getDeviceStatus: async () =>
-      Object.assign(
-        Object.create(GetDeviceStatusReplyD2HPacketClass.prototype),
-        {
-          count: 0,
-          devices: [],
-          ...args.devices,
-        },
-      ) as GetDeviceStatusReplyD2HPacketClass,
+    getSystemStatus: () =>
+      okAsync(
+        Object.assign(
+          Object.create(GetSystemStatusReplyD2HPacketClass.prototype),
+          {
+            cpu0Version: VexFirmwareVersion.allZero(),
+            cpu1Version: VexFirmwareVersion.allZero(),
+            systemVersion: VexFirmwareVersion.allZero(),
+            uniqueId: 0,
+            sysflags: [0, 0, 0, 0, 0, 0, 0],
+            ...args.system,
+          },
+        ) as GetSystemStatusReplyD2HPacketClass,
+      ),
+    getSystemFlags: () =>
+      okAsync(
+        Object.assign(
+          Object.create(GetSystemFlagsReplyD2HPacketClass.prototype),
+          {
+            flags: 0,
+            battery: 0,
+            controllerBatteryPercent: 0,
+            partnerControllerBatteryPercent: 0,
+            currentProgram: 0,
+            ...args.flags,
+          },
+        ) as GetSystemFlagsReplyD2HPacketClass,
+      ),
+    getRadioStatus: () =>
+      okAsync(
+        Object.assign(
+          Object.create(GetRadioStatusReplyD2HPacketClass.prototype),
+          {
+            device: 0,
+            quality: 0,
+            strength: 0,
+            channel: 0,
+            timeslot: 0,
+            ...args.radio,
+          },
+        ) as GetRadioStatusReplyD2HPacketClass,
+      ),
+    getDeviceStatus: () =>
+      okAsync(
+        Object.assign(
+          Object.create(GetDeviceStatusReplyD2HPacketClass.prototype),
+          {
+            count: 0,
+            devices: [],
+            ...args.devices,
+          },
+        ) as GetDeviceStatusReplyD2HPacketClass,
+      ),
   };
 }
 
@@ -463,22 +485,24 @@ describe("refresh snapshot safety", () => {
     device.connection = {
       isConnected: true,
       ...replies,
-      getSystemStatus: async () => {
+      getSystemStatus: () => {
         calls++;
-        if (calls === 2) return null; // second refresh fails at first call
-        return replies.getSystemStatus();
+        // second refresh fails at first call
+        return calls === 2
+          ? errAsync(new VexProtocolError("system status nack"))
+          : replies.getSystemStatus();
       },
       close: async () => {},
     } as unknown as V5SerialConnection;
 
-    expect(await device.refresh()).toBe(true);
+    expect((await device.refresh())._unsafeUnwrap()).toBe(true);
     expect(device.state.brain.cpu0Version.toInternalString()).toBe("1.2.3.b4");
     expect(device.state.radio.channel).toBe(7);
     expect(device.state.matchMode).toBe("disabled");
     expect(device.state.brain.isAvailable).toBe(true);
 
     const next = await device.refresh();
-    expect(next).toBe(false);
+    expect(next._unsafeUnwrap()).toBe(false);
     expect(device.state.brain.isAvailable).toBe(false);
     // Previous coherent snapshot is preserved.
     expect(device.state.brain.cpu0Version.toInternalString()).toBe("1.2.3.b4");
@@ -503,11 +527,7 @@ describe("refresh snapshot safety", () => {
     device.connection = {
       isConnected: true,
       ...replies,
-      getSystemStatus: async () => {
-        const next = await gate;
-        resolveStatus = null;
-        return next;
-      },
+      getSystemStatus: async () => ok(await gate),
       close: async () => {},
     } as unknown as V5SerialConnection;
 
@@ -531,7 +551,7 @@ describe("refresh snapshot safety", () => {
       ) as GetSystemStatusReplyD2HPacketClass,
     );
     const result = await refresh;
-    expect(result).toBe(false);
+    expect(result._unsafeUnwrap()).toBe(false);
     // The state must NOT have been committed by a generation that
     // started before the device was disposed.
     expect(device.state.brain.cpu0Version.toInternalString()).toBe("0.0.0.b0");
@@ -546,9 +566,12 @@ describe("promise-returning program/match state", () => {
     const replies: Array<MatchModeReplyD2HPacket | null> = [];
     device.connection = {
       isConnected: true,
-      setMatchMode: async (mode: MatchMode) => {
+      setMatchMode: (mode: MatchMode) => {
         calls.push(mode);
-        return replies.shift() ?? null;
+        const r = replies.shift();
+        return r == null
+          ? errAsync(new VexProtocolError("setMatchMode nack"))
+          : okAsync(r);
       },
       close: async () => {},
     } as unknown as V5SerialConnection;
@@ -558,13 +581,13 @@ describe("promise-returning program/match state", () => {
         MatchModeReplyD2HPacket.prototype,
       ) as MatchModeReplyD2HPacket,
     );
-    expect(await device.setMatchMode("autonomous")).toBe(true);
+    expect((await device.setMatchMode("autonomous")).isOk()).toBe(true);
     expect(device.state.matchMode).toBe("autonomous");
     expect(calls).toEqual(["autonomous"]);
 
-    // Reject path: state is not updated and the method resolves false.
+    // Reject path: state is not updated and the method resolves to an error.
     replies.push(null);
-    expect(await device.setMatchMode("driver")).toBe(false);
+    expect((await device.setMatchMode("driver")).isErr()).toBe(true);
     expect(device.state.matchMode).toBe("autonomous");
   });
 
@@ -580,19 +603,27 @@ describe("promise-returning program/match state", () => {
     ];
     device.connection = {
       isConnected: true,
-      runProgram: async (slot: string | number) => {
+      runProgram: (slot: string | number) => {
         calls.push(slot);
-        return replies.shift() ?? null;
+        const r = replies.shift();
+        return r == null
+          ? errAsync(new VexProtocolError("runProgram nack"))
+          : okAsync(r);
       },
-      stopProgram: async () => replies.shift() ?? null,
+      stopProgram: () => {
+        const r = replies.shift();
+        return r == null
+          ? errAsync(new VexProtocolError("stopProgram nack"))
+          : okAsync(r);
+      },
       close: async () => {},
     } as unknown as V5SerialConnection;
 
-    expect(await device.brain.runProgram(1)).toBe(true);
+    expect((await device.brain.runProgram(1)).isOk()).toBe(true);
     expect(device.state.brain.activeProgram).toBe(1);
     expect(calls).toEqual([1]);
 
-    expect(await device.brain.stopProgram()).toBe(false);
+    expect((await device.brain.stopProgram()).isErr()).toBe(true);
     expect(device.state.brain.activeProgram).toBe(1);
   });
 
@@ -601,10 +632,10 @@ describe("promise-returning program/match state", () => {
     devices.push(device);
     device.connection = {
       isConnected: false,
-      setMatchMode: async () => null,
+      setMatchMode: () => errAsync(new VexProtocolError("setMatchMode nack")),
       close: async () => {},
     } as unknown as V5SerialConnection;
-    expect(await device.setMatchMode("disabled")).toBe(false);
+    expect((await device.setMatchMode("disabled")).isErr()).toBe(true);
   });
 });
 
@@ -736,15 +767,12 @@ describe("firmware size limits", () => {
       { name: "1.0.0/assets.bin", data: new Uint8Array(16) },
     ]);
     mockFetchBytes(zip);
-    try {
-      const result = await device.brain.uploadFirmware(
-        "https://example.test/",
-        "1.0.0",
-      );
-      throw new Error(`Expected rejection, got: ${result}`);
-    } catch (e) {
-      expect((e as Error).message).toContain("per-entry limit");
-    }
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.0.0",
+    );
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain("per-entry limit");
   });
 
   test("aggregate firmware size is rejected when oversized", async () => {
@@ -762,15 +790,12 @@ describe("firmware size limits", () => {
       { name: "1.0.0/assets.bin", data: half },
     ]);
     mockFetchBytes(zip);
-    try {
-      const result = await device.brain.uploadFirmware(
-        "https://example.test/",
-        "1.0.0",
-      );
-      throw new Error(`Expected rejection, got: ${result}`);
-    } catch (e) {
-      expect((e as Error).message).toContain("aggregate");
-    }
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.0.0",
+    );
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain("aggregate");
   });
 
   test("unexpected ZIP entries are rejected before any upload", async () => {
@@ -786,15 +811,12 @@ describe("firmware size limits", () => {
       { name: "1.0.0/extra.bin", data: new Uint8Array(16) },
     ]);
     mockFetchBytes(zip);
-    try {
-      const result = await device.brain.uploadFirmware(
-        "https://example.test/",
-        "1.0.0",
-      );
-      throw new Error(`Expected rejection, got: ${result}`);
-    } catch (e) {
-      expect((e as Error).message).toContain("unexpected entries");
-    }
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.0.0",
+    );
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain("unexpected entries");
   });
 
   test("empty firmware entries are rejected before any upload", async () => {
@@ -809,15 +831,12 @@ describe("firmware size limits", () => {
       { name: "1.0.0/assets.bin", data: new Uint8Array(16) },
     ]);
     mockFetchBytes(zip);
-    try {
-      const result = await device.brain.uploadFirmware(
-        "https://example.test/",
-        "1.0.0",
-      );
-      throw new Error(`Expected rejection, got: ${result}`);
-    } catch (e) {
-      expect((e as Error).message).toContain("empty");
-    }
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.0.0",
+    );
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain("empty");
   });
 
   test("compressed VEXos archives are rejected when oversized", async () => {
@@ -828,14 +847,10 @@ describe("firmware size limits", () => {
       close: async () => {},
     } as unknown as V5SerialConnection;
     mockFetchBytes(new Uint8Array(200 * 1024 * 1024));
-    try {
-      const result = await device.brain.uploadFirmware(
-        "https://example.test/",
-        "1.0.0",
-      );
-      throw new Error(`Expected rejection, got: ${result}`);
-    } catch (e) {
-      expect((e as Error).message).toBeDefined();
-    }
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.0.0",
+    );
+    expect(result.isErr()).toBe(true);
   });
 });

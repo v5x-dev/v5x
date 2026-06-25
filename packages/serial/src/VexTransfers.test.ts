@@ -1,7 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
+import { errAsync, ok, okAsync } from "neverthrow";
 import { FileDownloadTarget, FileVendor, type IFileWriteRequest } from "./Vex";
 import { V5SerialConnection } from "./VexConnection";
 import { V5SerialDevice } from "./VexDevice";
+import { VexProtocolError } from "./VexError";
 import {
   EraseFileReplyD2HPacket,
   ExitFileTransferReplyD2HPacket,
@@ -35,20 +37,20 @@ test("file and key-value operations report protocol outcomes", async () => {
   device.connection = {
     isConnected: true,
     writeDataAsync: async () => replies.shift(),
-    removeFile: async () => true,
-    removeAllFiles: async () => true,
+    removeFile: () => okAsync(undefined),
+    removeAllFiles: () => okAsync(undefined),
     close: async () => {},
   } as unknown as V5SerialConnection;
 
-  expect(await device.brain.getValue("key")).toBe("value");
-  expect(await device.brain.setValue("key", "value")).toBe(true);
+  expect((await device.brain.getValue("key"))._unsafeUnwrap()).toBe("value");
+  expect((await device.brain.setValue("key", "value")).isOk()).toBe(true);
   expect(
-    await device.brain.removeFile({
+    (await device.brain.removeFile({
       filename: "program.bin",
       vendor: FileVendor.USER,
-    }),
+    })).isOk(),
   ).toBe(true);
-  expect(await device.brain.removeAllFiles()).toBe(true);
+  expect((await device.brain.removeAllFiles()).isOk()).toBe(true);
 });
 
 test("screen capture propagates connection rejection", async () => {
@@ -56,13 +58,14 @@ test("screen capture propagates connection rejection", async () => {
   devices.push(device);
   device.connection = {
     isConnected: true,
-    captureScreen: async () => {
-      throw new Error("screen capture request was rejected");
-    },
+    captureScreen: () =>
+      errAsync(new VexProtocolError("screen capture request was rejected")),
     close: async () => {},
   } as unknown as V5SerialConnection;
 
-  await expect(device.brain.captureScreen()).rejects.toThrow("rejected");
+  const result = await device.brain.captureScreen();
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr().message).toContain("rejected");
 });
 
 test("screen capture delegates to the connection while refresh is paused", async () => {
@@ -72,15 +75,15 @@ test("screen capture delegates to the connection while refresh is paused", async
   let sawPausedRefresh = false;
   device.connection = {
     isConnected: true,
-    captureScreen: async () => {
+    captureScreen: () => {
       sawPausedRefresh = device.state.isFileTransferring;
-      return expected;
+      return okAsync(expected);
     },
     close: async () => {},
   } as unknown as V5SerialConnection;
 
   const result = await device.brain.captureScreen();
-  expect(result).toBe(expected);
+  expect(result._unsafeUnwrap()).toBe(expected);
   expect(sawPausedRefresh).toBe(true);
   expect(device.state.isFileTransferring).toBe(false);
 });
@@ -110,9 +113,9 @@ test("listFiles enumerates directory entries returned by the device", async () =
     close: async () => {},
   } as unknown as V5SerialConnection;
 
-  const files = await device.brain.listFiles();
+  const files = (await device.brain.listFiles())._unsafeUnwrap();
   expect(files).toHaveLength(1);
-  expect(files?.[0]?.filename).toBe("robot.bin");
+  expect(files[0]?.filename).toBe("robot.bin");
 });
 
 test("listProgram reports program slots returned by the device", async () => {
@@ -155,10 +158,10 @@ test("listProgram reports program slots returned by the device", async () => {
     close: async () => {},
   } as unknown as V5SerialConnection;
 
-  const programs = await device.brain.listProgram();
+  const programs = (await device.brain.listProgram())._unsafeUnwrap();
   expect(programs).toHaveLength(1);
-  expect(programs?.[0]?.name).toBe("robot");
-  expect(programs?.[0]?.slot).toBe(3);
+  expect(programs[0]?.name).toBe("robot");
+  expect(programs[0]?.slot).toBe(3);
 });
 
 test("readFile routes through the connection with parsed metadata", async () => {
@@ -168,17 +171,17 @@ test("readFile routes through the connection with parsed metadata", async () => 
   let observed: unknown;
   device.connection = {
     isConnected: true,
-    downloadFileToHost: async (request: {
+    downloadFileToHost: (request: {
       filename: string;
       vendor: FileVendor;
     }) => {
       observed = request;
-      return expected;
+      return okAsync(expected);
     },
     close: async () => {},
   } as unknown as V5SerialConnection;
 
-  const data = await device.brain.readFile("robot.bin");
+  const data = (await device.brain.readFile("robot.bin"))._unsafeUnwrap();
   expect(data).toEqual(expected);
   expect(observed).toEqual({ filename: "robot.bin", vendor: FileVendor.USER });
 });
@@ -196,14 +199,14 @@ test("writeFile forwards the request through the connection", async () => {
   let observed: unknown;
   device.connection = {
     isConnected: true,
-    uploadFileToDevice: async (req: IFileWriteRequest) => {
+    uploadFileToDevice: (req: IFileWriteRequest) => {
       observed = req;
-      return true;
+      return okAsync<boolean>(true);
     },
     close: async () => {},
   } as unknown as V5SerialConnection;
 
-  expect(await device.brain.writeFile(request)).toBe(true);
+  expect((await device.brain.writeFile(request))._unsafeUnwrap()).toBe(true);
   expect(observed).toBe(request);
 });
 
@@ -215,28 +218,28 @@ test("uploadProgram on a controller switches to and from the download channel", 
   const channels: number[] = [];
   Object.defineProperty(device, "radio", {
     get: () => ({
-      changeChannel: async (channel: number) => {
+      changeChannel: (channel: number) => {
         channels.push(channel);
-        return true;
+        return okAsync(undefined);
       },
     }),
   });
-  device.refresh = async () => true;
+  device.refresh = () => okAsync<boolean>(true);
   device.connection = {
     isConnected: true,
-    getSystemStatus: async () => ({}),
-    uploadProgramToDevice: async () => true,
+    getSystemStatus: () => ok({} as never),
+    uploadProgramToDevice: () => okAsync<boolean>(true),
     close: async () => {},
   } as unknown as V5SerialConnection;
 
   const config = { baseName: "robot" } as never;
   expect(
-    await device.brain.uploadProgram(
+    (await device.brain.uploadProgram(
       config,
       new Uint8Array([1]),
       undefined,
       () => {},
-    ),
+    ))._unsafeUnwrap(),
   ).toBe(true);
   expect(channels).toEqual([1, 0]);
 });

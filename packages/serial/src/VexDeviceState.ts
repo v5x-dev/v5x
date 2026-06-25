@@ -17,6 +17,12 @@ import { VexEventTarget } from "./VexEvent.js";
 import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
 import { type ProgramIniConfig } from "./VexIniConfig.js";
 import {
+  VexNotConnectedError,
+  VexProtocolError,
+  VexSerialError,
+} from "./VexError.js";
+import { err, ok, ResultAsync } from "neverthrow";
+import {
   FileControlH2DPacket,
   FileControlReplyD2HPacket,
 } from "./VexPacketModels.js";
@@ -43,7 +49,7 @@ export abstract class VexSerialDevice extends VexEventTarget {
     this.defaultSerial = defaultSerial;
   }
 
-  abstract connect(conn?: V5SerialConnection): Promise<boolean>;
+  abstract connect(conn?: V5SerialConnection): ResultAsync<void, VexSerialError>;
 
   abstract disconnect(): Promise<void>;
 }
@@ -69,9 +75,7 @@ export class V5SerialDeviceState {
    * so this method does not serialise anything; it only signals the
    * device that a transfer is in progress so refresh polling is paused.
    */
-  async withFileTransfer<Result>(
-    operation: () => Promise<Result>,
-  ): Promise<Result> {
+  async withFileTransfer<T>(operation: () => PromiseLike<T>): Promise<T> {
     this.refreshPauseDepth++;
     try {
       return await operation();
@@ -151,11 +155,11 @@ export class V5Brain {
   /**
    * @deprecated Setting this property dispatches a fire-and-forget
    * request that cannot be awaited. Use {@link setActiveProgram}
-   * instead, which returns a promise that resolves to `false` when
-   * the device refuses or is disconnected.
+   * instead, which returns a {@link ResultAsync} that resolves to an
+   * error result when the device refuses or is disconnected.
    */
   set activeProgram(value) {
-    void this.setActiveProgram(value as SlotNumber | 0).catch(() => {
+    void this.setActiveProgram(value as SlotNumber | 0).mapErr(() => {
       // Preserve the legacy fire-and-forget contract; callers who
       // need rejection handling should migrate to setActiveProgram().
     });
@@ -163,60 +167,62 @@ export class V5Brain {
 
   /**
    * Load a program slot on the brain, or stop the currently running
-   * program when called with `0`. Returns `true` when the device
-   * acknowledges the command and the local snapshot is updated.
-   * Returns `false` when the device refuses, the request times out,
-   * or no connection is currently open.
+   * program when called with `0`. Resolves to an error result when the
+   * device refuses, the request times out, or no connection is open.
    */
-  async setActiveProgram(value: SlotNumber | 0): Promise<boolean> {
-    if (this.state.brain.activeProgram === value) return true;
+  setActiveProgram(value: SlotNumber | 0): ResultAsync<void, VexSerialError> {
+    return new ResultAsync((async () => {
+      if (this.state.brain.activeProgram === value) return ok(undefined);
 
-    const conn = this.state._instance.connection;
-    if (conn == null) return false;
+      const conn = this.state._instance.connection;
+      if (conn == null) return err(new VexNotConnectedError());
 
-    const result =
-      value === 0 ? await conn.stopProgram() : await conn.loadProgram(value);
-    if (result == null) return false;
+      const result =
+        value === 0 ? await conn.stopProgram() : await conn.loadProgram(value);
+      if (result.isErr()) return err(result.error);
 
-    this.state.brain.activeProgram = value;
-    return true;
+      this.state.brain.activeProgram = value;
+      return ok(undefined);
+    })());
   }
 
   /**
    * Request that the brain start running the program in the given slot.
-   * Returns `true` when the device acknowledges the command and the
-   * local snapshot is updated. Returns `false` when the device refuses,
-   * the request times out, or no connection is currently open.
+   * Resolves to an error result when the device refuses, the request
+   * times out, or no connection is open.
    */
-  async runProgram(slot: SlotNumber | string): Promise<boolean> {
-    const conn = this.state._instance.connection;
-    if (conn == null) return false;
+  runProgram(slot: SlotNumber | string): ResultAsync<void, VexSerialError> {
+    return new ResultAsync((async () => {
+      const conn = this.state._instance.connection;
+      if (conn == null) return err(new VexNotConnectedError());
 
-    const reply = await conn.runProgram(slot);
-    if (reply == null) return false;
+      const reply = await conn.runProgram(slot);
+      if (reply.isErr()) return err(reply.error);
 
-    const slotNumber =
-      typeof slot === "string" ? Number.parseInt(slot, 10) : slot;
-    if (Number.isFinite(slotNumber))
-      this.state.brain.activeProgram = slotNumber;
-    return true;
+      const slotNumber =
+        typeof slot === "string" ? Number.parseInt(slot, 10) : slot;
+      if (Number.isFinite(slotNumber))
+        this.state.brain.activeProgram = slotNumber;
+      return ok(undefined);
+    })());
   }
 
   /**
-   * Request that the brain stop the currently running program. Returns
-   * `true` when the device acknowledges the command and the local
-   * snapshot is updated. Returns `false` when the device refuses, the
-   * request times out, or no connection is currently open.
+   * Request that the brain stop the currently running program. Resolves
+   * to an error result when the device refuses, the request times out,
+   * or no connection is open.
    */
-  async stopProgram(): Promise<boolean> {
-    const conn = this.state._instance.connection;
-    if (conn == null) return false;
+  stopProgram(): ResultAsync<void, VexSerialError> {
+    return new ResultAsync((async () => {
+      const conn = this.state._instance.connection;
+      if (conn == null) return err(new VexNotConnectedError());
 
-    const reply = await conn.stopProgram();
-    if (reply == null) return false;
+      const reply = await conn.stopProgram();
+      if (reply.isErr()) return err(reply.error);
 
-    this.state.brain.activeProgram = 0;
-    return true;
+      this.state.brain.activeProgram = 0;
+      return ok(undefined);
+    })());
   }
 
   get battery(): V5Battery {
@@ -251,29 +257,29 @@ export class V5Brain {
     return this.state.brain.uniqueId;
   }
 
-  async getValue(key: string): Promise<string | undefined> {
+  getValue(key: string): ResultAsync<string | undefined, VexSerialError> {
     return transfers.getValue(this.state, key);
   }
 
-  async setValue(key: string, value: string): Promise<boolean> {
+  setValue(key: string, value: string): ResultAsync<void, VexSerialError> {
     return transfers.setValue(this.state, key, value);
   }
 
-  async listFiles(
+  listFiles(
     vendor = FileVendor.USER,
-  ): Promise<IFileHandle[] | undefined> {
+  ): ResultAsync<IFileHandle[], VexSerialError> {
     return transfers.listFiles(this.state, vendor);
   }
 
-  async listProgram(): Promise<IProgramInfo[] | undefined> {
+  listProgram(): ResultAsync<IProgramInfo[], VexSerialError> {
     return transfers.listProgram(this.state);
   }
 
-  async readFile(
+  readFile(
     request: IFileBasicInfo | string,
     downloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
-  ): Promise<Uint8Array | undefined> {
+  ): ResultAsync<Uint8Array, VexSerialError> {
     return transfers.readFile(
       this.state,
       request,
@@ -282,21 +288,21 @@ export class V5Brain {
     );
   }
 
-  async removeFile(
+  removeFile(
     request: IFileBasicInfo | string,
-  ): Promise<boolean | undefined> {
+  ): ResultAsync<void, VexSerialError> {
     return transfers.removeFile(this.state, request);
   }
 
-  async removeAllFiles(): Promise<boolean | undefined> {
+  removeAllFiles(): ResultAsync<void, VexSerialError> {
     return transfers.removeAllFiles(this.state);
   }
 
-  async uploadFirmware(
+  uploadFirmware(
     publicUrl = "https://content.vexrobotics.com/vexos/public/V5/",
     usingVersion?: string,
     progressCallback?: (state: string, current: number, total: number) => void,
-  ): Promise<boolean | undefined> {
+  ): ResultAsync<boolean, VexSerialError> {
     return firmware.uploadFirmware(
       this.state,
       publicUrl,
@@ -305,12 +311,12 @@ export class V5Brain {
     );
   }
 
-  async uploadProgram(
+  uploadProgram(
     iniConfig: ProgramIniConfig,
     binFileBuf: Uint8Array,
     coldFileBuf: Uint8Array | undefined,
     progressCallback: (state: string, current: number, total: number) => void,
-  ): Promise<boolean | undefined> {
+  ): ResultAsync<boolean, VexSerialError> {
     return transfers.uploadProgram(
       this.state,
       iniConfig,
@@ -320,10 +326,10 @@ export class V5Brain {
     );
   }
 
-  async writeFile(
+  writeFile(
     request: IFileWriteRequest,
     progressCallback?: (current: number, total: number) => void,
-  ): Promise<boolean | undefined> {
+  ): ResultAsync<boolean, VexSerialError> {
     return transfers.writeFile(this.state, request, progressCallback);
   }
 
@@ -333,9 +339,9 @@ export class V5Brain {
    * @returns array of bytes where each pixel is represented by 3 consecutive bytes (rgb).
    * This array's length is 272 width * 480 height * 3 channels = 391680 bytes.
    */
-  async captureScreen(
+  captureScreen(
     progressCallback?: (current: number, total: number) => void,
-  ): Promise<Uint8Array | undefined> {
+  ): ResultAsync<Uint8Array, VexSerialError> {
     return transfers.captureScreen(this.state, progressCallback);
   }
 }
@@ -479,10 +485,14 @@ export class V5Radio {
     return this.state.radio.latency;
   }
 
-  async changeChannel(channel: RadioChannelType): Promise<boolean> {
-    const result = await this.state._instance.connection?.writeDataAsync(
-      new FileControlH2DPacket(1, channel),
-    );
-    return result instanceof FileControlReplyD2HPacket;
+  changeChannel(channel: RadioChannelType): ResultAsync<void, VexSerialError> {
+    return new ResultAsync((async () => {
+      const result = await this.state._instance.connection?.writeDataAsync(
+        new FileControlH2DPacket(1, channel),
+      );
+      return result instanceof FileControlReplyD2HPacket
+        ? ok(undefined)
+        : err(new VexProtocolError("changeChannel was not acknowledged"));
+    })());
   }
 }

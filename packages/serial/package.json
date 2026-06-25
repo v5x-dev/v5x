@@ -59,6 +59,7 @@
   },
   "dependencies": {
     "@types/dom-serial": "^1.0.2",
+    "neverthrow": "^8.2.0",
     "unzipit": "^2.0.3"
   }
 }
