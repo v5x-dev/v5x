@@ -15,6 +15,7 @@ import registerRmCommand from "./commands/rm";
 import registerScreenshotCommand from "./commands/screenshot";
 import registerInstallCommand from "./commands/install";
 import registerCleanCommand from "./commands/clean";
+import registerProgramsCommand from "./commands/programs";
 
 const program = sade("v5x").version(pkg.version).describe(pkg.description);
 
@@ -22,6 +23,7 @@ registerBuildCommand(program);
 registerCleanCommand(program);
 registerUploadCommand(program);
 registerRunCommand(program);
+registerProgramsCommand(program);
 registerNewCommand(program);
 registerInitCommand(program);
 registerDirCommand(program);

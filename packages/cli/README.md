@@ -38,6 +38,11 @@ v5x upload --slot 2 --no-build --file ./bin/monolith.bin
 # Build, upload, and immediately start the program.
 v5x run --slot 2
 
+# List, start, and stop programs already on the brain.
+v5x programs
+v5x start 2
+v5x stop
+
 # Create a project directly from the built-in templates.
 v5x new robot --type pros
 v5x new robot --type vexide
