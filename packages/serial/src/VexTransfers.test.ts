@@ -45,10 +45,12 @@ test("file and key-value operations report protocol outcomes", async () => {
   expect((await device.brain.getValue("key"))._unsafeUnwrap()).toBe("value");
   expect((await device.brain.setValue("key", "value")).isOk()).toBe(true);
   expect(
-    (await device.brain.removeFile({
-      filename: "program.bin",
-      vendor: FileVendor.USER,
-    })).isOk(),
+    (
+      await device.brain.removeFile({
+        filename: "program.bin",
+        vendor: FileVendor.USER,
+      })
+    ).isOk(),
   ).toBe(true);
   expect((await device.brain.removeAllFiles()).isOk()).toBe(true);
 });
@@ -171,10 +173,7 @@ test("readFile routes through the connection with parsed metadata", async () => 
   let observed: unknown;
   device.connection = {
     isConnected: true,
-    downloadFileToHost: (request: {
-      filename: string;
-      vendor: FileVendor;
-    }) => {
+    downloadFileToHost: (request: { filename: string; vendor: FileVendor }) => {
       observed = request;
       return okAsync(expected);
     },
@@ -234,12 +233,14 @@ test("uploadProgram on a controller switches to and from the download channel", 
 
   const config = { baseName: "robot" } as never;
   expect(
-    (await device.brain.uploadProgram(
-      config,
-      new Uint8Array([1]),
-      undefined,
-      () => {},
-    ))._unsafeUnwrap(),
+    (
+      await device.brain.uploadProgram(
+        config,
+        new Uint8Array([1]),
+        undefined,
+        () => {},
+      )
+    )._unsafeUnwrap(),
   ).toBe(true);
   expect(channels).toEqual([1, 0]);
 });

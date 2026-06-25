@@ -169,7 +169,9 @@ export function sleepUntilAsync(
   interval = 20,
 ): ResultAsync<boolean, VexSerialError> {
   if (timeout < 0) {
-    return errAsync(new VexInvalidArgumentError("timeout must be non-negative"));
+    return errAsync(
+      new VexInvalidArgumentError("timeout must be non-negative"),
+    );
   }
   if (interval <= 0) {
     return errAsync(new VexInvalidArgumentError("interval must be positive"));
@@ -209,7 +211,9 @@ export function sleepUntil(
   interval = 20,
 ): ResultAsync<boolean, VexSerialError> {
   if (timeout < 0) {
-    return errAsync(new VexInvalidArgumentError("timeout must be non-negative"));
+    return errAsync(
+      new VexInvalidArgumentError("timeout must be non-negative"),
+    );
   }
   if (interval <= 0) {
     return errAsync(new VexInvalidArgumentError("interval must be positive"));
@@ -352,10 +356,9 @@ async function runUploadFirmware(
 
   if (version === undefined) {
     pcb("FETCH CATALOG", 0, 1);
-    const catalog = await downloadFileFromInternet(
-      publicUrl + "catalog.txt",
-      { maxBytes: MAX_CATALOG_BYTES },
-    );
+    const catalog = await downloadFileFromInternet(publicUrl + "catalog.txt", {
+      maxBytes: MAX_CATALOG_BYTES,
+    });
     if (catalog.isErr()) return err(catalog.error);
     version = new TextDecoder().decode(catalog.value).trim();
     pcb("FETCH CATALOG", 1, 1);
@@ -417,9 +420,12 @@ async function runUploadFirmware(
       linkedFile: undefined,
     };
 
-    const bootUpload = await conn.uploadFileToDevice(bootWriteRequest, (c, t) => {
-      pcb("UPLOAD BOOT", c, t);
-    });
+    const bootUpload = await conn.uploadFileToDevice(
+      bootWriteRequest,
+      (c, t) => {
+        pcb("UPLOAD BOOT", c, t);
+      },
+    );
     if (bootUpload.isErr()) return err(bootUpload.error);
     if (!bootUpload.value) return ok(false);
 

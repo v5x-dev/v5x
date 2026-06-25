@@ -34,7 +34,9 @@ describe("sleepUntilAsync", () => {
   test("waits between attempts and propagates predicate failures", async () => {
     let attempts = 0;
     expect(
-      (await sleepUntilAsync(async () => ++attempts === 2, 100, 10))._unsafeUnwrap(),
+      (
+        await sleepUntilAsync(async () => ++attempts === 2, 100, 10)
+      )._unsafeUnwrap(),
     ).toBe(true);
     expect(attempts).toBe(2);
     const failed = await sleepUntilAsync(async () => {
@@ -113,8 +115,9 @@ test("successful file reads resume automatic refresh", async () => {
   device.connection = connection;
 
   expect(
-    (await device.brain.readFile({ filename: "test", vendor: FileVendor.USER }))
-      ._unsafeUnwrap(),
+    (
+      await device.brain.readFile({ filename: "test", vendor: FileVendor.USER })
+    )._unsafeUnwrap(),
   ).toEqual(new Uint8Array([1, 2, 3]));
   expect(device.state.isFileTransferring).toBe(false);
 });
@@ -214,12 +217,14 @@ test("controller uploads restore the pit channel after upload failure", async ()
   } as unknown as V5SerialConnection;
 
   expect(
-    (await device.brain.uploadProgram(
-      {} as ProgramIniConfig,
-      new Uint8Array([1]),
-      undefined,
-      () => {},
-    )).isErr(),
+    (
+      await device.brain.uploadProgram(
+        {} as ProgramIniConfig,
+        new Uint8Array([1]),
+        undefined,
+        () => {},
+      )
+    ).isErr(),
   ).toBe(true);
   expect(channels).toEqual([RadioChannelType.DOWNLOAD, RadioChannelType.PIT]);
 });
@@ -324,10 +329,14 @@ describe("sleepUntil and sleepUntilAsync argument validation", () => {
   test("rejects negative timeouts", async () => {
     let r = await sleepUntilAsync(async () => true, -1);
     expect(r.isErr()).toBe(true);
-    expect(r._unsafeUnwrapErr().message).toContain("timeout must be non-negative");
+    expect(r._unsafeUnwrapErr().message).toContain(
+      "timeout must be non-negative",
+    );
     r = await sleepUntil(() => true, -1);
     expect(r.isErr()).toBe(true);
-    expect(r._unsafeUnwrapErr().message).toContain("timeout must be non-negative");
+    expect(r._unsafeUnwrapErr().message).toContain(
+      "timeout must be non-negative",
+    );
   });
 
   test("predicate exceptions reject without leaving timers behind", async () => {

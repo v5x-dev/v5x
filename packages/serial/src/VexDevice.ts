@@ -140,26 +140,34 @@ export class V5SerialDevice extends VexSerialDevice {
    * device NACKs, the request times out, or no connection is open.
    */
   setMatchMode(mode: MatchMode): ResultAsync<void, VexSerialError> {
-    return new ResultAsync((async () => {
-      const reply = await this.connection?.setMatchMode(mode);
-      if (reply === undefined) return err(new VexNotConnectedError());
-      if (reply.isErr()) return err(reply.error);
-      this.state.matchMode = mode;
-      return ok(undefined);
-    })());
+    return new ResultAsync(
+      (async () => {
+        const reply = await this.connection?.setMatchMode(mode);
+        if (reply === undefined) return err(new VexNotConnectedError());
+        if (reply.isErr()) return err(reply.error);
+        this.state.matchMode = mode;
+        return ok(undefined);
+      })(),
+    );
   }
 
   get radio(): V5Radio {
     return new V5Radio(this.state);
   }
 
-  mockTouch(x: number, y: number, press: boolean): ResultAsync<void, VexSerialError> {
-    return new ResultAsync((async () => {
-      const reply = await this.connection?.mockTouch(x, y, press);
-      if (reply === undefined) return err(new VexNotConnectedError());
-      if (reply.isErr()) return err(reply.error);
-      return ok(undefined);
-    })());
+  mockTouch(
+    x: number,
+    y: number,
+    press: boolean,
+  ): ResultAsync<void, VexSerialError> {
+    return new ResultAsync(
+      (async () => {
+        const reply = await this.connection?.mockTouch(x, y, press);
+        if (reply === undefined) return err(new VexNotConnectedError());
+        if (reply.isErr()) return err(reply.error);
+        return ok(undefined);
+      })(),
+    );
   }
 
   connect(conn?: V5SerialConnection): ResultAsync<void, VexSerialError> {
@@ -380,28 +388,32 @@ export class V5SerialDevice extends VexSerialDevice {
     }
 
     const ssPacket = await conn.getSystemStatus();
-    if (generation !== this._refreshGeneration || this._disposed) return ok(false);
+    if (generation !== this._refreshGeneration || this._disposed)
+      return ok(false);
     if (ssPacket.isErr()) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
       return ok(false);
     }
 
     const sfPacket = await conn.getSystemFlags();
-    if (generation !== this._refreshGeneration || this._disposed) return ok(false);
+    if (generation !== this._refreshGeneration || this._disposed)
+      return ok(false);
     if (sfPacket.isErr()) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
       return ok(false);
     }
 
     const rdPacket = await conn.getRadioStatus();
-    if (generation !== this._refreshGeneration || this._disposed) return ok(false);
+    if (generation !== this._refreshGeneration || this._disposed)
+      return ok(false);
     if (rdPacket.isErr()) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
       return ok(false);
     }
 
     const dsPacket = await conn.getDeviceStatus();
-    if (generation !== this._refreshGeneration || this._disposed) return ok(false);
+    if (generation !== this._refreshGeneration || this._disposed)
+      return ok(false);
     if (dsPacket.isErr()) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
       return ok(false);

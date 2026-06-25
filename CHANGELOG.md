@@ -18,3 +18,11 @@ package-version heading.
   `setMatchMode()` and `setActiveProgram()` methods.
 - Verify ESM, CommonJS, declarations, and embedded source content from packed
   artifacts.
+- Port every public async API to return `neverthrow` `ResultAsync` values
+  typed as `ResultAsync<T, VexSerialError>` instead of throwing or resolving
+  to `null`/`false`/`undefined`. Added a `VexSerialError` hierarchy
+  (`VexNotConnectedError`, `VexProtocolError`, `VexTransferError`,
+  `VexDownloadError`, `VexFirmwareError`, `VexIoError`,
+  `VexInvalidArgumentError`) with a stable `kind` discriminator so callers can
+  branch on failure categories without parsing messages.
+- Add `neverthrow` as a runtime dependency.

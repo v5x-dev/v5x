@@ -465,24 +465,26 @@ export class VexSerialConnection extends VexEventTarget {
   }
 
   query1(): ResultAsync<Query1ReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(new Query1H2DPacket(), 100);
-      return result instanceof Query1ReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("query1 was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new Query1H2DPacket(), 100);
+        return result instanceof Query1ReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("query1 was not acknowledged"));
+      })(),
+    );
   }
 
   getSystemVersion(): ResultAsync<VexFirmwareVersion, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(new SystemVersionH2DPacket());
-      if (result instanceof SystemVersionReplyD2HPacket) {
-        return ok(result.version);
-      }
-      return err(
-        new VexProtocolError("system version was not acknowledged"),
-      );
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new SystemVersionH2DPacket());
+        if (result instanceof SystemVersionReplyD2HPacket) {
+          return ok(result.version);
+        }
+        return err(new VexProtocolError("system version was not acknowledged"));
+      })(),
+    );
   }
 }
 
@@ -516,54 +518,69 @@ export class V5SerialConnection extends VexSerialConnection {
     }
   }
 
-  getDeviceStatus(): ResultAsync<GetDeviceStatusReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(new GetDeviceStatusH2DPacket());
-      return result instanceof GetDeviceStatusReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("device status was not acknowledged"));
-    })());
+  getDeviceStatus(): ResultAsync<
+    GetDeviceStatusReplyD2HPacket,
+    VexSerialError
+  > {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new GetDeviceStatusH2DPacket(),
+        );
+        return result instanceof GetDeviceStatusReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("device status was not acknowledged"));
+      })(),
+    );
   }
 
   getRadioStatus(): ResultAsync<GetRadioStatusReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(new GetRadioStatusH2DPacket());
-      return result instanceof GetRadioStatusReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("radio status was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new GetRadioStatusH2DPacket());
+        return result instanceof GetRadioStatusReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("radio status was not acknowledged"));
+      })(),
+    );
   }
 
   getSystemFlags(): ResultAsync<GetSystemFlagsReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(new GetSystemFlagsH2DPacket());
-      return result instanceof GetSystemFlagsReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("system flags were not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new GetSystemFlagsH2DPacket());
+        return result instanceof GetSystemFlagsReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("system flags were not acknowledged"));
+      })(),
+    );
   }
 
   getSystemStatus(
     timeout = 1000,
   ): ResultAsync<GetSystemStatusReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(
-        new GetSystemStatusH2DPacket(),
-        timeout,
-      );
-      return result instanceof GetSystemStatusReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("system status was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new GetSystemStatusH2DPacket(),
+          timeout,
+        );
+        return result instanceof GetSystemStatusReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("system status was not acknowledged"));
+      })(),
+    );
   }
 
   getMatchStatus(): ResultAsync<MatchStatusReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(new GetMatchStatusH2DPacket());
-      return result instanceof MatchStatusReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("match status was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new GetMatchStatusH2DPacket());
+        return result instanceof MatchStatusReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("match status was not acknowledged"));
+      })(),
+    );
   }
 
   /**
@@ -604,9 +621,12 @@ export class V5SerialConnection extends VexSerialConnection {
       vendor: FileVendor.USER,
       autoRun: false,
     };
-    const r1 = await this.uploadFileToDeviceUnlocked(iniRequest, (current, total) => {
-      progressCallback("INI", current, total);
-    });
+    const r1 = await this.uploadFileToDeviceUnlocked(
+      iniRequest,
+      (current, total) => {
+        progressCallback("INI", current, total);
+      },
+    );
     if (r1.isErr()) return err(r1.error);
     if (!r1.value) return ok(false);
 
@@ -640,9 +660,12 @@ export class V5SerialConnection extends VexSerialConnection {
       autoRun: iniConfig.autorun,
       linkedFile: coldRequest,
     };
-    const r3 = await this.uploadFileToDeviceUnlocked(binRequest, (current, total) => {
-      progressCallback("BIN", current, total);
-    });
+    const r3 = await this.uploadFileToDeviceUnlocked(
+      binRequest,
+      (current, total) => {
+        progressCallback("BIN", current, total);
+      },
+    );
 
     return r3;
   }
@@ -653,7 +676,11 @@ export class V5SerialConnection extends VexSerialConnection {
     progressCallback?: (current: number, total: number) => void,
   ): ResultAsync<Uint8Array, VexSerialError> {
     return wrapTransfer(this, () =>
-      this.downloadFileToHostUnlocked(request, downloadTarget, progressCallback),
+      this.downloadFileToHostUnlocked(
+        request,
+        downloadTarget,
+        progressCallback,
+      ),
     );
   }
 
@@ -668,7 +695,13 @@ export class V5SerialConnection extends VexSerialConnection {
     downloadTarget: FileDownloadTarget = FileDownloadTarget.FILE_TARGET_QSPI,
     progressCallback?: (current: number, total: number) => void,
   ): ResultAsync<Uint8Array, VexSerialError> {
-    return new ResultAsync(this._downloadFileToHostUnlocked(request, downloadTarget, progressCallback));
+    return new ResultAsync(
+      this._downloadFileToHostUnlocked(
+        request,
+        downloadTarget,
+        progressCallback,
+      ),
+    );
   }
 
   private async _downloadFileToHostUnlocked(
@@ -694,9 +727,7 @@ export class V5SerialConnection extends VexSerialConnection {
     );
 
     if (!(p1 instanceof InitFileTransferReplyD2HPacket)) {
-      return err(
-        new VexTransferError("InitFileTransferH2DPacket failed"),
-      );
+      return err(new VexTransferError("InitFileTransferH2DPacket failed"));
     }
 
     let transferFailed = true;
@@ -813,9 +844,7 @@ export class V5SerialConnection extends VexSerialConnection {
     );
 
     if (!(p1 instanceof InitFileTransferReplyD2HPacket)) {
-      return err(
-        new VexTransferError("InitFileTransferH2DPacket failed"),
-      );
+      return err(new VexTransferError("InitFileTransferH2DPacket failed"));
     }
 
     const bufferChunkSize = getTransferChunkSize(p1.windowSize);
@@ -913,7 +942,9 @@ export class V5SerialConnection extends VexSerialConnection {
    * file-transfer mode in a `finally` block regardless of how the
    * operation completes.
    */
-  removeFile(request: IFileBasicInfo | string): ResultAsync<void, VexSerialError> {
+  removeFile(
+    request: IFileBasicInfo | string,
+  ): ResultAsync<void, VexSerialError> {
     return new ResultAsync(
       this.withFileTransfer(async () => {
         let vendor: FileVendor, filename: string;
@@ -966,7 +997,9 @@ export class V5SerialConnection extends VexSerialConnection {
           result =
             ack instanceof FileClearUpReplyD2HPacket
               ? ok(undefined)
-              : err(new VexProtocolError("removeAllFiles was not acknowledged"));
+              : err(
+                  new VexProtocolError("removeAllFiles was not acknowledged"),
+                );
         } catch (e) {
           result = err(toVexSerialError(e, "io"));
         } finally {
@@ -989,13 +1022,18 @@ export class V5SerialConnection extends VexSerialConnection {
    * error result on NACK) before downloading the framebuffer so that a
    * rejected request performs no download.
    */
-  captureScreenSetup(): ResultAsync<ScreenCaptureReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(new ScreenCaptureH2DPacket(0));
-      return result instanceof ScreenCaptureReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("screen capture was rejected"));
-    })());
+  captureScreenSetup(): ResultAsync<
+    ScreenCaptureReplyD2HPacket,
+    VexSerialError
+  > {
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(new ScreenCaptureH2DPacket(0));
+        return result instanceof ScreenCaptureReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("screen capture was rejected"));
+      })(),
+    );
   }
 
   captureScreen(
@@ -1033,14 +1071,16 @@ export class V5SerialConnection extends VexSerialConnection {
   setMatchMode(
     mode: MatchMode,
   ): ResultAsync<MatchModeReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(
-        new UpdateMatchModeH2DPacket(mode, 0),
-      );
-      return result instanceof MatchModeReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("setMatchMode was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new UpdateMatchModeH2DPacket(mode, 0),
+        );
+        return result instanceof MatchModeReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("setMatchMode was not acknowledged"));
+      })(),
+    );
   }
 
   runProgram(
@@ -1052,25 +1092,33 @@ export class V5SerialConnection extends VexSerialConnection {
   loadProgram(
     value: SlotNumber | string,
   ): ResultAsync<LoadFileActionReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(
-        new LoadFileActionH2DPacket(FileVendor.USER, FileLoadAction.RUN, value),
-      );
-      return result instanceof LoadFileActionReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("loadProgram was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new LoadFileActionH2DPacket(
+            FileVendor.USER,
+            FileLoadAction.RUN,
+            value,
+          ),
+        );
+        return result instanceof LoadFileActionReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("loadProgram was not acknowledged"));
+      })(),
+    );
   }
 
   stopProgram(): ResultAsync<LoadFileActionReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(
-        new LoadFileActionH2DPacket(FileVendor.USER, FileLoadAction.STOP, ""),
-      );
-      return result instanceof LoadFileActionReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("stopProgram was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new LoadFileActionH2DPacket(FileVendor.USER, FileLoadAction.STOP, ""),
+        );
+        return result instanceof LoadFileActionReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("stopProgram was not acknowledged"));
+      })(),
+    );
   }
 
   mockTouch(
@@ -1078,28 +1126,32 @@ export class V5SerialConnection extends VexSerialConnection {
     y: number,
     press: boolean,
   ): ResultAsync<SendDashTouchReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(
-        new SendDashTouchH2DPacket(x, y, press),
-      );
-      return result instanceof SendDashTouchReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("mockTouch was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new SendDashTouchH2DPacket(x, y, press),
+        );
+        return result instanceof SendDashTouchReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("mockTouch was not acknowledged"));
+      })(),
+    );
   }
 
   openScreen(
     screen: number | SelectDashScreen,
     port: number,
   ): ResultAsync<SelectDashReplyD2HPacket, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.writeDataAsync(
-        new SelectDashH2DPacket(screen, port),
-      );
-      return result instanceof SelectDashReplyD2HPacket
-        ? ok(result)
-        : err(new VexProtocolError("openScreen was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.writeDataAsync(
+          new SelectDashH2DPacket(screen, port),
+        );
+        return result instanceof SelectDashReplyD2HPacket
+          ? ok(result)
+          : err(new VexProtocolError("openScreen was not acknowledged"));
+      })(),
+    );
   }
 }
 
@@ -1151,7 +1203,9 @@ function convertScreenCapture(framebuffer: Uint8Array): Uint8Array {
  */
 function wrapTransfer<T>(
   conn: V5SerialConnection,
-  operation: () => Promise<Result<T, VexSerialError>> | ResultAsync<T, VexSerialError>,
+  operation: () =>
+    | Promise<Result<T, VexSerialError>>
+    | ResultAsync<T, VexSerialError>,
 ): ResultAsync<T, VexSerialError> {
   return new ResultAsync(
     conn.withFileTransfer<Result<T, VexSerialError>>(async () => {

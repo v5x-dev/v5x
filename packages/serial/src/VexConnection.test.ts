@@ -183,7 +183,9 @@ test("download failures still exit file transfer mode", async () => {
     vendor: FileVendor.USER,
   });
   expect(downloadResult.isErr()).toBe(true);
-  expect(downloadResult._unsafeUnwrapErr().message).toContain("returned address");
+  expect(downloadResult._unsafeUnwrapErr().message).toContain(
+    "returned address",
+  );
   expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
 });
 
@@ -214,7 +216,9 @@ test("linked upload failures still exit file transfer mode", async () => {
     },
   });
   expect(uploadResult.isErr()).toBe(true);
-  expect(uploadResult._unsafeUnwrapErr().message).toContain("LinkFileH2DPacket failed");
+  expect(uploadResult._unsafeUnwrapErr().message).toContain(
+    "LinkFileH2DPacket failed",
+  );
   expect(writes.at(-2)).toBeInstanceOf(LinkFileH2DPacket);
   expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
 });
@@ -497,7 +501,9 @@ describe("transfer cleanup on every failure point", () => {
       autoRun: false,
     });
     expect(result.isErr()).toBe(true);
-    expect(result._unsafeUnwrapErr().message).toContain("WriteFileReplyD2DPacket");
+    expect(result._unsafeUnwrapErr().message).toContain(
+      "WriteFileReplyD2DPacket",
+    );
     expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
   });
 

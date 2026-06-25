@@ -49,7 +49,9 @@ export abstract class VexSerialDevice extends VexEventTarget {
     this.defaultSerial = defaultSerial;
   }
 
-  abstract connect(conn?: V5SerialConnection): ResultAsync<void, VexSerialError>;
+  abstract connect(
+    conn?: V5SerialConnection,
+  ): ResultAsync<void, VexSerialError>;
 
   abstract disconnect(): Promise<void>;
 }
@@ -171,19 +173,23 @@ export class V5Brain {
    * device refuses, the request times out, or no connection is open.
    */
   setActiveProgram(value: SlotNumber | 0): ResultAsync<void, VexSerialError> {
-    return new ResultAsync((async () => {
-      if (this.state.brain.activeProgram === value) return ok(undefined);
+    return new ResultAsync(
+      (async () => {
+        if (this.state.brain.activeProgram === value) return ok(undefined);
 
-      const conn = this.state._instance.connection;
-      if (conn == null) return err(new VexNotConnectedError());
+        const conn = this.state._instance.connection;
+        if (conn == null) return err(new VexNotConnectedError());
 
-      const result =
-        value === 0 ? await conn.stopProgram() : await conn.loadProgram(value);
-      if (result.isErr()) return err(result.error);
+        const result =
+          value === 0
+            ? await conn.stopProgram()
+            : await conn.loadProgram(value);
+        if (result.isErr()) return err(result.error);
 
-      this.state.brain.activeProgram = value;
-      return ok(undefined);
-    })());
+        this.state.brain.activeProgram = value;
+        return ok(undefined);
+      })(),
+    );
   }
 
   /**
@@ -192,19 +198,21 @@ export class V5Brain {
    * times out, or no connection is open.
    */
   runProgram(slot: SlotNumber | string): ResultAsync<void, VexSerialError> {
-    return new ResultAsync((async () => {
-      const conn = this.state._instance.connection;
-      if (conn == null) return err(new VexNotConnectedError());
+    return new ResultAsync(
+      (async () => {
+        const conn = this.state._instance.connection;
+        if (conn == null) return err(new VexNotConnectedError());
 
-      const reply = await conn.runProgram(slot);
-      if (reply.isErr()) return err(reply.error);
+        const reply = await conn.runProgram(slot);
+        if (reply.isErr()) return err(reply.error);
 
-      const slotNumber =
-        typeof slot === "string" ? Number.parseInt(slot, 10) : slot;
-      if (Number.isFinite(slotNumber))
-        this.state.brain.activeProgram = slotNumber;
-      return ok(undefined);
-    })());
+        const slotNumber =
+          typeof slot === "string" ? Number.parseInt(slot, 10) : slot;
+        if (Number.isFinite(slotNumber))
+          this.state.brain.activeProgram = slotNumber;
+        return ok(undefined);
+      })(),
+    );
   }
 
   /**
@@ -213,16 +221,18 @@ export class V5Brain {
    * or no connection is open.
    */
   stopProgram(): ResultAsync<void, VexSerialError> {
-    return new ResultAsync((async () => {
-      const conn = this.state._instance.connection;
-      if (conn == null) return err(new VexNotConnectedError());
+    return new ResultAsync(
+      (async () => {
+        const conn = this.state._instance.connection;
+        if (conn == null) return err(new VexNotConnectedError());
 
-      const reply = await conn.stopProgram();
-      if (reply.isErr()) return err(reply.error);
+        const reply = await conn.stopProgram();
+        if (reply.isErr()) return err(reply.error);
 
-      this.state.brain.activeProgram = 0;
-      return ok(undefined);
-    })());
+        this.state.brain.activeProgram = 0;
+        return ok(undefined);
+      })(),
+    );
   }
 
   get battery(): V5Battery {
@@ -486,13 +496,15 @@ export class V5Radio {
   }
 
   changeChannel(channel: RadioChannelType): ResultAsync<void, VexSerialError> {
-    return new ResultAsync((async () => {
-      const result = await this.state._instance.connection?.writeDataAsync(
-        new FileControlH2DPacket(1, channel),
-      );
-      return result instanceof FileControlReplyD2HPacket
-        ? ok(undefined)
-        : err(new VexProtocolError("changeChannel was not acknowledged"));
-    })());
+    return new ResultAsync(
+      (async () => {
+        const result = await this.state._instance.connection?.writeDataAsync(
+          new FileControlH2DPacket(1, channel),
+        );
+        return result instanceof FileControlReplyD2HPacket
+          ? ok(undefined)
+          : err(new VexProtocolError("changeChannel was not acknowledged"));
+      })(),
+    );
   }
 }
