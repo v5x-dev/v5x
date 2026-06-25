@@ -27,8 +27,10 @@
       "name": "@v5x/examples",
       "dependencies": {
         "@sveltejs/vite-plugin-svelte": "^7.1.2",
+        "@v5x/serial": "workspace:*",
         "@v5x/web": "workspace:*",
         "@vitejs/plugin-react": "^6.0.3",
+        "neverthrow": "^8.2.0",
         "react": "19.2.7",
         "react-dom": "19.2.7",
         "solid-js": "^1.9.10",
@@ -65,10 +67,12 @@
         "v5x": "./dist/index.js",
       },
       "dependencies": {
+        "@v5x/serial": "workspace:*",
         "bun-serialport": "^0.1.1",
         "chalk": "^5.6.2",
         "cmd-table": "^1.6.0",
         "fflate": "^0.8.3",
+        "neverthrow": "^8.2.0",
         "sade": "^1.8.1",
       },
       "devDependencies": {
@@ -94,6 +98,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@v5x/serial": "workspace:*",
+        "neverthrow": "^8.2.0",
       },
       "devDependencies": {
         "@types/bun": "latest",

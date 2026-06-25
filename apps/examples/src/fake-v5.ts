@@ -2,6 +2,8 @@ import {
   createV5ClientWithFactory,
   type V5Client,
 } from "@v5x/web/client-internal";
+import { err, ok, ResultAsync, type Result } from "neverthrow";
+import { VexSerialError } from "@v5x/serial";
 
 export type FailureMode =
   | "none"
@@ -112,26 +114,37 @@ class FakeV5Device {
     this.#controls = controls;
   }
 
-  async connect(): Promise<boolean> {
+  connect(): ResultAsync<void, VexSerialError> {
+    return new ResultAsync(this.#connect());
+  }
+
+  async #connect(): Promise<Result<void, VexSerialError>> {
     await delay();
     this.#controls.increment("connects");
 
-    if (this.#controls.mode === "connect-failed") return false;
+    if (this.#controls.mode === "connect-failed") {
+      return err(new VexSerialError("io", "Fake serial connect failed."));
+    }
     if (this.#controls.mode === "connect-error") {
-      throw new Error("Fake serial connect error.");
+      return err(new VexSerialError("io", "Fake serial connect error."));
     }
 
     this.#connected = true;
-    return true;
+    return ok(undefined);
   }
 
-  async refresh(): Promise<void> {
+  refresh(): ResultAsync<boolean, VexSerialError> {
+    return new ResultAsync(this.#refresh());
+  }
+
+  async #refresh(): Promise<Result<boolean, VexSerialError>> {
     await delay();
     this.#controls.increment("refreshes");
 
     if (this.#controls.mode === "refresh-error") {
-      throw new Error("Fake serial refresh error.");
+      return err(new VexSerialError("io", "Fake serial refresh error."));
     }
+    return ok(true);
   }
 
   async disconnect(): Promise<void> {

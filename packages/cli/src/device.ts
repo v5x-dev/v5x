@@ -6,9 +6,11 @@ export async function connectV5Device(
 ): Promise<V5SerialDevice> {
   device.autoRefresh = false;
   try {
-    const connected = await device.connect();
-    if (!connected) {
-      throw new Error("v5 device not connected");
+    const result = await device.connect();
+    if (result.isErr()) {
+      throw new Error(
+        `v5 device not connected: ${result.error.message ?? result.error.kind}`,
+      );
     }
     return device;
   } catch (error) {

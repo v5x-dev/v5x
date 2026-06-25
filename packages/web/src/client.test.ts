@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { errAsync, okAsync, ResultAsync } from "neverthrow";
+import { VexSerialError } from "@v5x/serial";
 import {
   createV5ClientWithFactory,
   type V5ConnectionStatus,
@@ -7,9 +9,9 @@ import { V5WebError } from "./errors.js";
 
 interface FakeDevice {
   autoRefresh: boolean;
-  connect(): Promise<boolean>;
+  connect(): ResultAsync<void, VexSerialError>;
   disconnect(): Promise<void>;
-  refresh(): Promise<void>;
+  refresh(): ResultAsync<boolean, VexSerialError>;
 }
 
 class FakeSerial extends EventTarget implements Serial {
@@ -35,9 +37,9 @@ describe("createV5Client", () => {
   test("starts unsupported when no serial object exists", () => {
     const client = createV5ClientWithFactory({}, () => ({
       autoRefresh: false,
-      connect: async () => true,
+      connect: () => okAsync(undefined),
       disconnect: async () => {},
-      refresh: async () => {},
+      refresh: () => okAsync(true),
     }));
 
     expect(client.getSnapshot()).toMatchObject({
@@ -52,9 +54,9 @@ describe("createV5Client", () => {
     const statuses: V5ConnectionStatus[] = [];
     const client = createClient({
       autoRefresh: true,
-      connect: async () => true,
+      connect: () => okAsync(undefined),
       disconnect: async () => {},
-      refresh: async () => {},
+      refresh: () => okAsync(true),
     });
 
     client.subscribe(() => statuses.push(client.getSnapshot().status));
@@ -68,9 +70,9 @@ describe("createV5Client", () => {
     let calls = 0;
     const client = createClient({
       autoRefresh: true,
-      connect: async () => true,
+      connect: () => okAsync(undefined),
       disconnect: async () => {},
-      refresh: async () => {},
+      refresh: () => okAsync(true),
     });
 
     const unsubscribe = client.subscribe(() => calls++);
@@ -85,9 +87,9 @@ describe("createV5Client", () => {
     const statuses: V5ConnectionStatus[] = [];
     const client = createClient({
       autoRefresh: true,
-      connect: async () => true,
+      connect: () => okAsync(undefined),
       disconnect: async () => {},
-      refresh: async () => {},
+      refresh: () => okAsync(true),
     });
 
     client.subscribe(() => statuses.push(client.getSnapshot().status));
@@ -107,9 +109,9 @@ describe("createV5Client", () => {
   test("failed connect transitions to error", async () => {
     const client = createClient({
       autoRefresh: true,
-      connect: async () => false,
+      connect: () => errAsync(new VexSerialError("io", "connect failed")),
       disconnect: async () => {},
-      refresh: async () => {},
+      refresh: () => okAsync(true),
     });
 
     const connected = await client.connect();
@@ -125,11 +127,11 @@ describe("createV5Client", () => {
     let disconnects = 0;
     const client = createClient({
       autoRefresh: true,
-      connect: async () => true,
+      connect: () => okAsync(undefined),
       disconnect: async () => {
         disconnects++;
       },
-      refresh: async () => {},
+      refresh: () => okAsync(true),
     });
 
     await client.connect();
@@ -140,14 +142,12 @@ describe("createV5Client", () => {
     expect(client.getSnapshot().status).toBe("idle");
   });
 
-  test("unknown thrown values normalize to V5WebError", async () => {
+  test("failed connect reports the error from the result channel", async () => {
     const client = createClient({
       autoRefresh: true,
-      connect: async () => {
-        throw "serial exploded";
-      },
+      connect: () => errAsync(new VexSerialError("io", "serial exploded")),
       disconnect: async () => {},
-      refresh: async () => {},
+      refresh: () => okAsync(true),
     });
 
     const connected = await client.connect();
@@ -155,7 +155,6 @@ describe("createV5Client", () => {
 
     expect(connected).toBe(false);
     expect(error).toBeInstanceOf(V5WebError);
-    expect(error?.code).toBe("connect-error");
-    expect(error?.message).toBe("serial exploded");
+    expect(error?.code).toBe("connect-failed");
   });
 });

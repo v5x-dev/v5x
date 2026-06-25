@@ -1,4 +1,5 @@
-import { V5SerialDevice } from "@v5x/serial";
+import { V5SerialDevice, type VexSerialError } from "@v5x/serial";
+import { ResultAsync } from "neverthrow";
 import { V5WebError, normalizeV5WebError } from "./errors.js";
 import {
   getDefaultSerial,
@@ -44,10 +45,10 @@ export interface V5Client extends V5Store<V5Snapshot> {
 
 interface V5DeviceLike {
   autoRefresh: boolean;
-  connect(): Promise<boolean>;
+  connect(): ResultAsync<void, VexSerialError>;
   disconnect(): Promise<void>;
   dispose?: () => Promise<void>;
-  refresh(): Promise<unknown>;
+  refresh(): ResultAsync<boolean, VexSerialError>;
 }
 
 type V5DeviceFactory = (serial: Serial) => V5DeviceLike;
@@ -124,8 +125,8 @@ class V5WebClient implements V5Client {
     try {
       device = this.device ?? this.createDevice(this.serial);
       device.autoRefresh = false;
-      const connected = await device.connect();
-      if (!connected) {
+      const result = await device.connect();
+      if (result.isErr()) {
         this.device = null;
         await this.disposeDevice(device);
         this.setState(
@@ -189,7 +190,18 @@ class V5WebClient implements V5Client {
     if (this.device === null || this.status !== "connected") return;
 
     try {
-      await this.device.refresh();
+      const result = await this.device.refresh();
+      if (result.isErr()) {
+        this.setState(
+          "error",
+          normalizeV5WebError(
+            "refresh-error",
+            result.error,
+            "V5 device refresh failed.",
+          ),
+        );
+        return;
+      }
       this.listeners.emit();
     } catch (error: unknown) {
       this.setState(

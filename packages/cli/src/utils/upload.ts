@@ -83,7 +83,8 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
       },
     );
     if (previousState !== "") process.stderr.write("\n");
-    if (!uploaded) throw new Error("the brain rejected the program upload");
+    if (uploaded.isErr() || !uploaded.value)
+      throw new Error("the brain rejected the program upload");
     console.log(
       `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,
     );

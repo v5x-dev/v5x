@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
-import { V5SerialDevice } from "@v5x/serial";
+import { errAsync, okAsync } from "neverthrow";
+import { V5SerialDevice, VexSerialError } from "@v5x/serial";
 import { connectV5Device, withV5Device } from "./device";
 
 test("disposes a device when connecting fails", async () => {
   let disposed = false;
   const device = {
     autoRefresh: true,
-    connect: async () => false,
+    connect: () => errAsync(new VexSerialError("io", "not connected")),
     dispose: async () => {
       disposed = true;
     },
@@ -22,7 +23,7 @@ test("disposes a device when connecting throws", async () => {
   let disposed = false;
   const device = {
     autoRefresh: true,
-    connect: async () => {
+    connect: () => {
       throw new Error("serial failure");
     },
     dispose: async () => {
@@ -38,7 +39,7 @@ test("withV5Device disposes after a successful operation", async () => {
   let disposed = false;
   const fakeDevice = {
     autoRefresh: true,
-    connect: async () => true,
+    connect: () => okAsync(undefined),
     dispose: async () => {
       disposed = true;
     },
@@ -57,7 +58,7 @@ test("withV5Device disposes after an operation failure", async () => {
   let disposed = false;
   const fakeDevice = {
     autoRefresh: true,
-    connect: async () => true,
+    connect: () => okAsync(undefined),
     dispose: async () => {
       disposed = true;
     },

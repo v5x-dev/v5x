@@ -98,9 +98,10 @@ export default function registerDirCommand(program: Sade) {
       await withV5Device(async (device) => {
         const files = [];
         for (const vendor of VENDORS) {
-          const vendorFiles = (await device.brain.listFiles(vendor)) ?? [];
+          const result = await device.brain.listFiles(vendor);
+          if (result.isErr()) continue;
           files.push(
-            ...vendorFiles.map((file) => ({
+            ...result.value.map((file) => ({
               ...file,
               vendor,
             })),
