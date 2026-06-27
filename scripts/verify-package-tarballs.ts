@@ -82,8 +82,8 @@ async function verifyManifest(
     if (
       parsed.sideEffects !== true ||
       !Array.isArray(parsed.os) ||
-      parsed.os.length !== 1 ||
-      parsed.os[0] !== "linux" ||
+      parsed.os.length !== 2 ||
+      !["darwin", "linux"].every((os) => parsed.os.includes(os)) ||
       !isRecord(engines) ||
       typeof engines.bun !== "string" ||
       !isRecord(bin) ||

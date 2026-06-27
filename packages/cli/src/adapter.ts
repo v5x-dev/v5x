@@ -207,7 +207,7 @@ export class WebSerialAdapter extends EventTarget implements Serial {
   async getPorts(): Promise<SerialPort[]> {
     if (this._operatingSystem === "win32") {
       throw new Error(
-        "Windows serial access is not supported by this v5x CLI build; use Linux or macOS",
+        "Windows serial access needs a Windows-capable serial backend; bun-serialport only supports Linux and macOS",
       );
     }
 
