@@ -36,7 +36,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
     "test": "bun test",
-    "prepack": "bun run build",
+    "prepack": "bun run --cwd ../serial build && bun run build",
     "clean": "rm -rf dist"
   },
   "repository": {
