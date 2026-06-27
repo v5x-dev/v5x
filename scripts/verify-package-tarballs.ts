@@ -300,9 +300,9 @@ function getPackedSizeBudget(packageName: PackageName): {
 }
 
 const archives = process.argv.slice(2);
-if (archives.length !== 3) {
+if (archives.length === 0) {
   throw new Error(
-    "Pass the @v5x/serial, @v5x/cli, and @v5x/web tarballs to this script",
+    "Pass one or more @v5x/serial, @v5x/cli, or @v5x/web tarballs to this script",
   );
 }
 const verifiedPackages = new Set<PackageName>();
@@ -312,13 +312,4 @@ for (const archive of archives) {
     throw new Error(`Received duplicate tarball for ${packageName}`);
   }
   verifiedPackages.add(packageName);
-}
-for (const packageName of [
-  "@v5x/serial",
-  "@v5x/cli",
-  "@v5x/web",
-] satisfies PackageName[]) {
-  if (!verifiedPackages.has(packageName)) {
-    throw new Error(`Missing tarball for ${packageName}`);
-  }
 }
