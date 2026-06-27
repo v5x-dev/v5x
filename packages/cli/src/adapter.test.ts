@@ -85,9 +85,11 @@ describe("WebSerialAdapter", () => {
     ).toBe(ports[0]!);
   });
 
-  test("reports Windows as unsupported", async () => {
+  test("reports Windows as needing a different serial backend", async () => {
     const adapter = new WebSerialAdapter("win32", async () => []);
-    expect(adapter.getPorts()).rejects.toThrow("not supported");
+    await expect(adapter.getPorts()).rejects.toThrow(
+      "needs a Windows-capable serial backend",
+    );
   });
 
   test("models closed, open, errored, and reopened stream states", async () => {
