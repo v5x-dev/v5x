@@ -2,9 +2,16 @@ import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
+type PackageName = "@v5x/serial" | "@v5x/cli" | "@v5x/web";
+
 interface SourceMap {
   sources: string[];
   sourcesContent: string[];
+}
+
+interface PackageIdentity {
+  name: PackageName;
+  manifest: Record<string, unknown>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -21,6 +28,12 @@ function isSourceMap(value: unknown): value is SourceMap {
     Array.isArray(sourcesContent) &&
     sourcesContent.every((source) => typeof source === "string") &&
     sources.length === sourcesContent.length
+  );
+}
+
+function isPackageName(value: unknown): value is PackageName {
+  return (
+    value === "@v5x/serial" || value === "@v5x/cli" || value === "@v5x/web"
   );
 }
 
@@ -52,19 +65,48 @@ async function verifyMap(path: string): Promise<void> {
   }
 }
 
-async function verifyManifest(
-  path: string,
-  packageName: string,
-): Promise<void> {
+async function readPackageIdentity(path: string): Promise<PackageIdentity> {
   const parsed: unknown = JSON.parse(await Bun.file(path).text());
   if (!isRecord(parsed)) {
-    throw new Error(`${packageName} has an invalid package manifest`);
+    throw new Error(`${path} is not a valid package manifest`);
   }
 
-  if (packageName === "serial") {
+  if (!isPackageName(parsed.name)) {
+    throw new Error(`${path} has an unsupported package name`);
+  }
+
+  return { name: parsed.name, manifest: parsed };
+}
+
+function verifyExport(
+  manifest: Record<string, unknown>,
+  packageName: PackageName,
+  subpath: string,
+  types: string,
+  importPath: string,
+  requirePath?: string,
+): void {
+  const exports = manifest.exports;
+  const subpathExport = isRecord(exports) ? exports[subpath] : undefined;
+  if (
+    !isRecord(subpathExport) ||
+    subpathExport.types !== types ||
+    subpathExport.import !== importPath ||
+    (requirePath !== undefined && subpathExport.require !== requirePath)
+  ) {
+    throw new Error(`${packageName} ${subpath} export metadata is invalid`);
+  }
+}
+
+function verifyManifest(
+  packageName: PackageName,
+  parsed: Record<string, unknown>,
+): void {
+  if (packageName === "@v5x/serial") {
     const exports = parsed.exports;
     const rootExport = isRecord(exports) ? exports["."] : undefined;
     if (
+      parsed.name !== "@v5x/serial" ||
       parsed.sideEffects !== false ||
       parsed.types !== "./dist/index.d.ts" ||
       !isRecord(rootExport) ||
@@ -76,10 +118,11 @@ async function verifyManifest(
         "serial export conditions or declaration metadata are invalid",
       );
     }
-  } else {
+  } else if (packageName === "@v5x/cli") {
     const engines = parsed.engines;
     const bin = parsed.bin;
     if (
+      parsed.name !== "@v5x/cli" ||
       parsed.sideEffects !== true ||
       !Array.isArray(parsed.os) ||
       parsed.os.length !== 2 ||
@@ -93,19 +136,61 @@ async function verifyManifest(
         "CLI platform, runtime, or executable metadata are invalid",
       );
     }
+  } else {
+    if (
+      parsed.name !== "@v5x/web" ||
+      parsed.type !== "module" ||
+      parsed.main !== "./dist/index.js" ||
+      parsed.module !== "./dist/index.js" ||
+      parsed.types !== "./dist/index.d.ts" ||
+      parsed.sideEffects !== false
+    ) {
+      throw new Error("web package metadata is invalid");
+    }
+
+    verifyExport(
+      parsed,
+      packageName,
+      ".",
+      "./dist/index.d.ts",
+      "./dist/index.js",
+    );
+    verifyExport(
+      parsed,
+      packageName,
+      "./react",
+      "./dist/react/index.d.ts",
+      "./dist/react/index.js",
+    );
+    verifyExport(
+      parsed,
+      packageName,
+      "./svelte",
+      "./dist/svelte/index.d.ts",
+      "./dist/svelte/index.js",
+    );
+    verifyExport(
+      parsed,
+      packageName,
+      "./solid",
+      "./dist/solid/index.d.ts",
+      "./dist/solid/index.js",
+    );
   }
 }
 
-async function verifyArchive(archive: string): Promise<void> {
+async function verifyArchive(archive: string): Promise<PackageName> {
   const archiveName = basename(archive);
-  const packageName = archiveName.includes("serial") ? "serial" : "cli";
-  const directory = await mkdtemp(join(tmpdir(), `v5x-${packageName}-`));
+  const directory = await mkdtemp(join(tmpdir(), "v5x-package-"));
 
   try {
     await run(["tar", "-xzf", resolve(archive), "-C", directory]);
     const packageRoot = join(directory, "package");
     const files = await listFiles(packageRoot);
-    await verifyManifest(join(packageRoot, "package.json"), packageName);
+    const { name: packageName, manifest } = await readPackageIdentity(
+      join(packageRoot, "package.json"),
+    );
+    verifyManifest(packageName, manifest);
     const allowedRoots = new Set(["LICENSE", "README.md", "package.json"]);
     const unexpected = files.filter(
       (file) => !file.startsWith("dist/") && !allowedRoots.has(file),
@@ -125,38 +210,115 @@ async function verifyArchive(archive: string): Promise<void> {
       );
     }
 
-    const maps =
-      packageName === "serial"
-        ? ["dist/index.js.map", "dist/index.cjs.map"]
-        : ["dist/index.js.map"];
+    const maps = getRequiredMaps(packageName);
     for (const map of maps) await verifyMap(join(packageRoot, map));
 
-    if (packageName === "serial") {
-      for (const required of [
-        "dist/index.js",
-        "dist/index.cjs",
-        "dist/index.d.ts",
-      ]) {
-        if (!files.includes(required))
-          throw new Error(`${archiveName} is missing ${required}`);
+    for (const required of getRequiredFiles(packageName)) {
+      if (!files.includes(required)) {
+        throw new Error(`${archiveName} is missing ${required}`);
       }
-    } else {
+    }
+
+    if (packageName === "@v5x/cli") {
       const mode = (await stat(join(packageRoot, "dist/index.js"))).mode;
       if ((mode & 0o111) === 0)
         throw new Error(`${archiveName} CLI binary is not executable`);
     }
 
     const archiveSize = (await stat(archive)).size;
-    if (archiveSize > 2_000_000) {
-      throw new Error(`${archiveName} exceeds the 2 MB packed-size budget`);
+    const sizeBudget = getPackedSizeBudget(packageName);
+    if (archiveSize > sizeBudget.bytes) {
+      throw new Error(
+        `${archiveName} exceeds the ${sizeBudget.label} packed-size budget`,
+      );
     }
+
+    return packageName;
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 }
 
-const archives = process.argv.slice(2);
-if (archives.length !== 2) {
-  throw new Error("Pass the @v5x/serial and @v5x/cli tarballs to this script");
+function getRequiredFiles(packageName: PackageName): string[] {
+  if (packageName === "@v5x/serial") {
+    return ["dist/index.js", "dist/index.cjs", "dist/index.d.ts"];
+  }
+
+  if (packageName === "@v5x/cli") {
+    return ["dist/index.js"];
+  }
+
+  return [
+    "dist/client.d.ts",
+    "dist/errors.d.ts",
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/react/index.js",
+    "dist/react/index.d.ts",
+    "dist/react/provider.d.ts",
+    "dist/react/use-v5-connection.d.ts",
+    "dist/react/use-v5-snapshot.d.ts",
+    "dist/svelte/index.js",
+    "dist/svelte/index.d.ts",
+    "dist/svelte/state.d.ts",
+    "dist/solid/index.js",
+    "dist/solid/index.d.ts",
+    "dist/solid/create-v5-connection.d.ts",
+    "dist/solid/create-v5-snapshot.d.ts",
+    "dist/solid/provider.d.ts",
+    "dist/store.d.ts",
+    "dist/support.d.ts",
+  ];
 }
-for (const archive of archives) await verifyArchive(archive);
+
+function getRequiredMaps(packageName: PackageName): string[] {
+  if (packageName === "@v5x/serial") {
+    return ["dist/index.js.map", "dist/index.cjs.map"];
+  }
+
+  if (packageName === "@v5x/cli") {
+    return ["dist/index.js.map"];
+  }
+
+  return [
+    "dist/index.js.map",
+    "dist/react/index.js.map",
+    "dist/svelte/index.js.map",
+    "dist/solid/index.js.map",
+  ];
+}
+
+function getPackedSizeBudget(packageName: PackageName): {
+  bytes: number;
+  label: string;
+} {
+  if (packageName === "@v5x/web") {
+    return { bytes: 1_000_000, label: "1 MB" };
+  }
+
+  return { bytes: 2_000_000, label: "2 MB" };
+}
+
+const archives = process.argv.slice(2);
+if (archives.length !== 3) {
+  throw new Error(
+    "Pass the @v5x/serial, @v5x/cli, and @v5x/web tarballs to this script",
+  );
+}
+const verifiedPackages = new Set<PackageName>();
+for (const archive of archives) {
+  const packageName = await verifyArchive(archive);
+  if (verifiedPackages.has(packageName)) {
+    throw new Error(`Received duplicate tarball for ${packageName}`);
+  }
+  verifiedPackages.add(packageName);
+}
+for (const packageName of [
+  "@v5x/serial",
+  "@v5x/cli",
+  "@v5x/web",
+] satisfies PackageName[]) {
+  if (!verifiedPackages.has(packageName)) {
+    throw new Error(`Missing tarball for ${packageName}`);
+  }
+}
