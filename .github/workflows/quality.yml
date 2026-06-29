@@ -45,7 +45,8 @@ jobs:
           bun scripts/verify-package-tarballs.ts "$smoke_dir"/*.tgz
           cd "$smoke_dir"
           bun init -y
-          bun add ./v5x-serial-*.tgz ./v5x-cli-*.tgz
+          bun add ./v5x-serial-*.tgz
+          bun add ./v5x-cli-*.tgz
           bun -e 'import("@v5x/serial").then((module) => { if (typeof module.V5SerialDevice !== "function") throw new Error("missing V5SerialDevice export"); })'
           node -e 'const module = require("@v5x/serial"); if (typeof module.V5SerialDevice !== "function") throw new Error("missing CommonJS export")'
           bun -e 'await Bun.write("consumer.ts", "import { VexFirmwareVersion } from \"@v5x/serial\";\nnew VexFirmwareVersion(1, 2, 3, 4);\n"); await Bun.write("tsconfig.json", JSON.stringify({ compilerOptions: { module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true } }));'
