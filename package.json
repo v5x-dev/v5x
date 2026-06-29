@@ -16,6 +16,7 @@
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build && bun run docs:check",
     "dev": "turbo run dev",
     "cli": "bun packages/cli/src/index.ts",
     "docs:dev": "bun run --cwd apps/docs dev",
