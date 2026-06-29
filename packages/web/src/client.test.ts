@@ -11,6 +11,7 @@ interface FakeDevice {
   autoRefresh: boolean;
   connect(): ResultAsync<void, VexSerialError>;
   disconnect(): Promise<void>;
+  dispose?: () => Promise<void>;
   refresh(): ResultAsync<boolean, VexSerialError>;
 }
 
@@ -31,6 +32,23 @@ const serial = new FakeSerial();
 
 function createClient(device: FakeDevice) {
   return createV5ClientWithFactory({ serial }, () => device);
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 describe("createV5Client", () => {
@@ -140,6 +158,90 @@ describe("createV5Client", () => {
 
     expect(disconnects).toBe(1);
     expect(client.getSnapshot().status).toBe("idle");
+  });
+
+  test("disconnect during an in-flight successful connect leaves the client idle", async () => {
+    const connectDeferred = createDeferred<void>();
+    let disposes = 0;
+    let refreshes = 0;
+    const device: FakeDevice = {
+      autoRefresh: true,
+      connect: () =>
+        ResultAsync.fromPromise(
+          connectDeferred.promise,
+          () => new VexSerialError("io", "connect failed"),
+        ),
+      disconnect: async () => {},
+      dispose: async () => {
+        disposes++;
+      },
+      refresh: () => {
+        refreshes++;
+        return okAsync(true);
+      },
+    };
+    const client = createV5ClientWithFactory(
+      { serial, refreshIntervalMs: 1 },
+      () => device,
+    );
+
+    const connectPromise = client.connect();
+    expect(client.getSnapshot().status).toBe("connecting");
+
+    await client.disconnect();
+    connectDeferred.resolve(undefined);
+    const connected = await connectPromise;
+
+    expect(connected).toBe(false);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "idle",
+      connected: false,
+      error: null,
+    });
+    expect(disposes).toBe(1);
+
+    await delay(20);
+    expect(refreshes).toBe(0);
+  });
+
+  test("disconnect during an in-flight failed connect leaves the client idle", async () => {
+    const connectDeferred = createDeferred<void>();
+    const connectError = new VexSerialError("io", "connect failed");
+    let disposes = 0;
+    const device: FakeDevice = {
+      autoRefresh: true,
+      connect: () =>
+        ResultAsync.fromPromise(
+          connectDeferred.promise.then(() => {
+            throw connectError;
+          }),
+          (error) =>
+            error instanceof VexSerialError
+              ? error
+              : new VexSerialError("io", "connect failed"),
+        ),
+      disconnect: async () => {},
+      dispose: async () => {
+        disposes++;
+      },
+      refresh: () => okAsync(true),
+    };
+    const client = createClient(device);
+
+    const connectPromise = client.connect();
+    expect(client.getSnapshot().status).toBe("connecting");
+
+    await client.disconnect();
+    connectDeferred.resolve(undefined);
+    const connected = await connectPromise;
+
+    expect(connected).toBe(false);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "idle",
+      connected: false,
+      error: null,
+    });
+    expect(disposes).toBe(1);
   });
 
   test("failed connect reports the error from the result channel", async () => {

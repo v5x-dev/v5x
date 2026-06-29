@@ -91,6 +91,7 @@ class V5WebClient implements V5Client {
   private error: V5WebError | null = null;
   private device: V5DeviceLike | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
+  private connectionGeneration = 0;
 
   constructor(options: V5ClientOptions, internals: V5ClientInternals) {
     this.serial = options.serial ?? getDefaultSerial();
@@ -119,6 +120,7 @@ class V5WebClient implements V5Client {
     if (this.status === "connected") return true;
     if (this.status === "connecting") return false;
 
+    const generation = ++this.connectionGeneration;
     this.setState("connecting", null);
     let device: V5DeviceLike | null = null;
 
@@ -126,6 +128,13 @@ class V5WebClient implements V5Client {
       device = this.device ?? this.createDevice(this.serial);
       device.autoRefresh = false;
       const result = await device.connect();
+
+      if (!this.isCurrentConnection(generation)) {
+        this.device = null;
+        await this.tryDisposeDevice(device);
+        return false;
+      }
+
       if (result.isErr()) {
         this.device = null;
         await this.disposeDevice(device);
@@ -141,6 +150,12 @@ class V5WebClient implements V5Client {
       this.startRefreshTimer();
       return true;
     } catch (error: unknown) {
+      if (device !== null && !this.isCurrentConnection(generation)) {
+        this.device = null;
+        await this.tryDisposeDevice(device);
+        return false;
+      }
+
       const normalized = normalizeV5WebError(
         "connect-error",
         error,
@@ -160,6 +175,7 @@ class V5WebClient implements V5Client {
     if (this.status === "unsupported") return;
     if (this.status === "disconnecting") return;
 
+    this.connectionGeneration++;
     const device = this.device;
     this.device = null;
     this.stopRefreshTimer();
@@ -219,6 +235,10 @@ class V5WebClient implements V5Client {
     this.status = status;
     this.error = error;
     this.listeners.emit();
+  }
+
+  private isCurrentConnection(generation: number): boolean {
+    return generation === this.connectionGeneration;
   }
 
   private startRefreshTimer(): void {
