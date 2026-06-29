@@ -1,15 +1,23 @@
 # Contributing
 
 v5x uses Bun for dependency management, builds, and tests. Install the Bun
-version declared in `package.json`, then run:
+version declared in `package.json` and Node 24 for docs validation, then run:
 
 ```sh
 bun install --frozen-lockfile
+bun run check
+```
+
+`bun run check` runs formatting, linting, typechecking, tests, package and app
+builds, docs export, and docs validation. The expanded sequence is:
+
+```sh
 bun run format:check
 bun run lint
 bun run typecheck
 bun run test
 bun run build
+bun run docs:check
 ```
 
 Do not require connected VEX hardware in unit tests. Model serial ports, packet
