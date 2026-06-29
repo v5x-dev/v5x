@@ -1,9 +1,21 @@
 import { expect, test } from "bun:test";
-import { create, act, type ReactTestRenderer } from "react-test-renderer";
+import { Window } from "happy-dom";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { type V5Client, type V5Snapshot } from "../client.js";
 import { V5WebError } from "../errors.js";
 import { V5Provider } from "./provider.js";
 import { useV5Snapshot } from "./use-v5-snapshot.js";
+
+const window = new Window();
+Object.defineProperties(globalThis, {
+  document: { value: window.document },
+  Event: { value: window.Event },
+  HTMLElement: { value: window.HTMLElement },
+  IS_REACT_ACT_ENVIRONMENT: { value: true },
+  Node: { value: window.Node },
+  window: { value: window },
+});
 
 function createSnapshot(status: V5Snapshot["status"]): V5Snapshot {
   return {
@@ -21,6 +33,7 @@ function createSnapshot(status: V5Snapshot["status"]): V5Snapshot {
 }
 
 function createFakeClient(): V5Client & {
+  listenerCount(): number;
   setSnapshot(snapshot: V5Snapshot): void;
 } {
   const listeners = new Set<() => void>();
@@ -35,6 +48,7 @@ function createFakeClient(): V5Client & {
     connect: async () => true,
     disconnect: async () => {},
     refresh: async () => {},
+    listenerCount: () => listeners.size,
     setSnapshot(nextSnapshot) {
       snapshot = nextSnapshot;
       for (const listener of listeners) listener();
@@ -42,18 +56,19 @@ function createFakeClient(): V5Client & {
   };
 }
 
-test("useV5Snapshot reads the current snapshot from a provided client", () => {
+test("useV5Snapshot reads updates from a provided client and unsubscribes", async () => {
   const client = createFakeClient();
   const seen: V5Snapshot[] = [];
-  let renderer: ReactTestRenderer | undefined;
+  const container = document.createElement("div");
+  const root = createRoot(container);
 
   function Probe() {
     seen.push(useV5Snapshot());
     return null;
   }
 
-  act(() => {
-    renderer = create(
+  await act(async () => {
+    root.render(
       <V5Provider client={client}>
         <Probe />
       </V5Provider>,
@@ -61,14 +76,17 @@ test("useV5Snapshot reads the current snapshot from a provided client", () => {
   });
 
   expect(seen.at(-1)?.status).toBe("idle");
+  expect(client.listenerCount()).toBe(1);
 
-  act(() => {
+  await act(async () => {
     client.setSnapshot(createSnapshot("connected"));
   });
 
   expect(seen.at(-1)?.status).toBe("connected");
 
-  act(() => {
-    renderer?.unmount();
+  await act(async () => {
+    root.unmount();
   });
+
+  expect(client.listenerCount()).toBe(0);
 });
