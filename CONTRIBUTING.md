@@ -26,10 +26,11 @@ Hardware validation is useful as a separate manual check, but it must not make
 the default test suite unavailable to contributors or CI.
 
 Changes that affect a published package must add an entry to the Unreleased
-section of `CHANGELOG.md` under `@v5x/cli`, `@v5x/serial`, or both. Package
-versions are independent; move only the relevant entries to a dated version
-heading when publishing.
+section of `CHANGELOG.md` under `@v5x/cli`, `@v5x/serial`, `@v5x/web`, or the
+relevant combination. Package versions are independent; move only the relevant
+entries to a dated version heading when publishing.
 
-Before a release, pack both packages and run the same artifact checks as CI.
-The checks install the tarballs outside the workspace and verify ESM, CommonJS,
-declarations, the CLI executable, source maps, and package contents.
+Before a release, pack all publishable packages and run the same artifact
+checks as CI. The checks install the tarballs outside the workspace and verify
+ESM, CommonJS, declarations, the CLI executable, web package artifacts, source
+maps, and package contents.
