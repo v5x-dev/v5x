@@ -1,8 +1,8 @@
 # Changelog
 
-This repository versions `@v5x/cli` and `@v5x/serial` independently. Each
-release moves entries from the applicable Unreleased section to a dated
-package-version heading.
+This repository versions `@v5x/cli`, `@v5x/serial`, and `@v5x/web`
+independently. Each release moves entries from the applicable Unreleased
+section to a dated package-version heading.
 
 ## Unreleased
 
@@ -26,3 +26,5 @@ package-version heading.
   `VexInvalidArgumentError`) with a stable `kind` discriminator so callers can
   branch on failure categories without parsing messages.
 - Add `neverthrow` as a runtime dependency.
+
+### @v5x/web
