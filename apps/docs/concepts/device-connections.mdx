@@ -4,9 +4,10 @@ description: "Requirements for reliable USB communication with a V5 brain."
 ---
 
 The CLI discovers a V5 brain through the operating system's serial devices and
-currently supports Linux and macOS. Windows requires a different serial backend.
-The serial library uses the browser's Web Serial API and works wherever that API
-is implemented; this is separate from CLI platform support.
+currently supports Linux and macOS, matching the package metadata's `os` field.
+Windows is not published yet because the CLI needs a compatible serial backend
+there. The serial library uses the browser's Web Serial API and works wherever
+that API is implemented; this is separate from CLI platform support.
 
 ## Before connecting
 
