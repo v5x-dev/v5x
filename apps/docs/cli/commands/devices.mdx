@@ -12,3 +12,25 @@ Alias: `v5x lsdev`
 The result contains each smart-port number, detected device type, and firmware version. A connected brain is required.
 
 Device types include motors, controllers, inertial, distance, optical, GPS, vision, ADI, radio, and other devices recognized by the protocol.
+
+## JSON output
+
+```bash
+v5x devices --json
+```
+
+The JSON output is an array of devices:
+
+```json
+[
+  {
+    "port": 1,
+    "type": 2,
+    "typeLabel": "motor",
+    "version": 16387,
+    "versionString": "1.0.3"
+  }
+]
+```
+
+`type` and `version` preserve the raw values reported by the brain. `typeLabel` and `versionString` match the human-readable table formatting.

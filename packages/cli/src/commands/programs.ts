@@ -55,13 +55,30 @@ export function formatProgramRows(programs: IProgramInfo[]): string[][] {
   ]);
 }
 
+export function toProgramJson(programs: IProgramInfo[]) {
+  return programs.map((programInfo) => ({
+    slot: programInfo.slot,
+    requestedSlot: programInfo.requestedSlot,
+    name: programInfo.name,
+    size: programInfo.size,
+    time: programInfo.time.toISOString(),
+    binfile: programInfo.binfile,
+  }));
+}
+
 export default function registerProgramsCommand(program: Sade) {
   program
     .command("programs", "list programs on the V5 brain")
-    .action(async () => {
+    .option("--json", "print machine-readable JSON")
+    .action(async (options: { json?: boolean }) => {
       await withV5Device(async (device) => {
         const result = await device.brain.listProgram();
         if (result.isErr()) throw new Error("failed to list programs");
+
+        if (options.json === true) {
+          console.log(JSON.stringify(toProgramJson(result.value), null, 2));
+          return;
+        }
 
         const table = new Table({ compact: true });
         table.addColumn("slot");

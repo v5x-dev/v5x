@@ -3,6 +3,12 @@ import { withV5Device } from "../device";
 import { Table } from "cmd-table";
 import { SmartDeviceType, VexFirmwareVersion } from "@v5x/serial";
 
+type SmartDevice = {
+  port: number;
+  type: number;
+  version: number;
+};
+
 export const SMART_DEVICE_LABELS: Record<number, string> = {
   [SmartDeviceType.EMPTY]: "empty",
   [SmartDeviceType.V5_POWER]: "v5 power",
@@ -37,9 +43,7 @@ export function formatSmartDeviceVersion(version: number): string {
   return new VexFirmwareVersion(major, minor, patch, 0).toUserString();
 }
 
-export function formatDeviceRows(
-  smartDevices: Array<{ port: number; type: number; version: number }>,
-): string[][] {
+export function formatDeviceRows(smartDevices: SmartDevice[]): string[][] {
   return smartDevices.map((device) => [
     device.port.toString(),
     formatSmartDeviceType(device.type),
@@ -47,12 +51,28 @@ export function formatDeviceRows(
   ]);
 }
 
+export function toDeviceJson(smartDevices: SmartDevice[]) {
+  return smartDevices.map((device) => ({
+    port: device.port,
+    type: device.type,
+    typeLabel: formatSmartDeviceType(device.type),
+    version: device.version,
+    versionString: formatSmartDeviceVersion(device.version),
+  }));
+}
+
 export default function registerDevicesCommand(program: Sade) {
   program
     .command("devices", "list devices connected to brain", { alias: "lsdev" })
-    .action(async () => {
+    .option("--json", "print machine-readable JSON")
+    .action(async (options: { json?: boolean }) => {
       await withV5Device(async (device) => {
         const smartDevices = device.devices;
+        if (options.json === true) {
+          console.log(JSON.stringify(toDeviceJson(smartDevices), null, 2));
+          return;
+        }
+
         const table = new Table({ compact: true });
         table.addColumn("port");
         table.addColumn("type");
