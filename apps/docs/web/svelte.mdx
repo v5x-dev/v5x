@@ -20,3 +20,21 @@ description: "Use the V5 web client from Svelte 5 runes."
 ```
 
 The returned object includes the underlying client, reactive `snapshot` and `status` getters, and connection methods that forward to the shared client. The getters use Svelte 5 reactivity through `createSubscriber`; no `svelte/store` API is involved.
+
+## Client lifecycle
+
+Keep a stable shared state object for each app or tool surface. Create it in module or route-level state when the same V5 connection should be reused across components, instead of recreating it during component updates.
+
+Pass an explicit client when tests, dependency injection, or composition need to own the client lifecycle:
+
+```svelte
+<script lang="ts">
+  import { createV5Client } from "@v5x/web";
+  import { createV5State } from "@v5x/web/svelte";
+
+  const client = createV5Client();
+  const v5 = createV5State(client);
+</script>
+```
+
+Call `v5.disconnect()` when a route, tool surface, or abandoned workflow should release the V5 device. This stops the web client's background refresh timer and disposes the underlying `@v5x/serial` device when one is connected.
