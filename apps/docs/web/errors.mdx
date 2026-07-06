@@ -20,4 +20,11 @@ Each error has a stable `code`, a message, and an optional `cause`. Right now th
 
 Refresh errors mean the existing connection is no longer considered usable. The client stops background refresh, disconnects or disposes the stale device, clears the attached device reference, and leaves the snapshot in `error` with `error.code === "refresh-error"`. Call `connect()` to retry with a fresh device. Call `disconnect()` to clear the error and return to `idle` without starting another connection attempt.
 
-When Web Serial is unavailable, the snapshot status is `unsupported` and `unavailableReason` is `web-serial-unavailable`.
+When Web Serial is unavailable, the snapshot status is `unsupported` and `unavailableReason` is one of these stable values:
+
+- `non-browser-runtime`: `window` or `navigator` is not available, such as during server-side rendering or another non-browser runtime.
+- `insecure-context`: the page is not running in a secure context. Web Serial requires HTTPS or `localhost`.
+- `unsupported-browser`: the current browser is known not to support Web Serial, such as Firefox or Safari.
+- `web-serial-unavailable`: `navigator.serial` is still missing after the runtime, security, and known-browser checks pass.
+
+If `navigator.serial` exists, Web Serial is considered supported and `unavailableReason` is `null`.
