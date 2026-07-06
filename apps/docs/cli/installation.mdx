@@ -13,11 +13,11 @@ v5x --version
 The CLI requires Bun 1.3.14 or newer and Bun must be available on your shell's
 `PATH`.
 
-The current CLI release supports Linux and macOS. Windows requires a different
-serial backend because the CLI's native serial dependency supports POSIX serial
-APIs only. The separate `@v5x/serial` browser library is available wherever the
-browser implements the Web Serial API; browser support is independent of CLI
-operating-system support.
+The current CLI release supports Linux and macOS, matching the package
+metadata's `os` field. Windows is not published yet because the CLI needs a
+compatible serial backend there. The separate `@v5x/serial` browser library is
+available wherever the browser implements the Web Serial API; browser support
+is independent of CLI operating-system support.
 
 ## Install a toolchain
 

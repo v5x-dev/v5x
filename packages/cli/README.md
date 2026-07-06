@@ -13,9 +13,9 @@ bun add --global @v5x/cli
 The CLI supports PROS, vexide, and VEXcode C++ projects. The corresponding
 compiler toolchain must be installed before building a project.
 
-The current CLI release supports Linux and macOS. Bun 1.3.14 or newer is
-required. Windows requires a different serial backend because `bun-serialport`
-supports POSIX serial APIs only.
+The current CLI release supports Linux and macOS, matching the package
+metadata's `os` field. Bun 1.3.14 or newer is required. Windows is not
+published yet because the CLI needs a compatible serial backend there.
 For browser integrations, use
 `@v5x/serial` in a browser that implements Web Serial.
 

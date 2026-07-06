@@ -8,7 +8,8 @@ section to a dated package-version heading.
 
 ### @v5x/cli
 
-- Restrict the published CLI to Linux with Bun 1.3.14 or newer.
+- Publish the CLI for Linux and macOS with Bun 1.3.14 or newer. Windows
+  remains unsupported until the CLI has a compatible serial backend.
 - Verify packed source maps, executable permissions, and package contents.
 
 ### @v5x/serial

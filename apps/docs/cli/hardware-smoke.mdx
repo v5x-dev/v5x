@@ -1,0 +1,90 @@
+---
+title: "Hardware smoke checklist"
+description: "Optional V5 brain checks for release and risky serial changes."
+---
+
+Use this checklist only when you intentionally want to validate real hardware.
+It is optional for normal contributors and is not part of default CI.
+
+## Assumptions
+
+- A charged VEX V5 brain connected over a data-capable USB cable.
+- Linux or macOS with `@v5x/cli` installed under Bun 1.3.14 or newer.
+- Permission to access the serial device, and no other app currently owns the
+  port.
+- A disposable project or `.bin` artifact that can be uploaded to slot 8.
+- A terminal that supports the Kitty graphics protocol if you want to visually
+  inspect screenshots.
+
+## Prepare
+
+```bash
+v5x --version
+v5x devices
+```
+
+Confirm that `devices` lists the brain and any connected smart-port devices.
+Disconnect and reconnect the USB cable once, then run `v5x devices` again to
+verify that discovery recovers cleanly.
+
+## Program workflow
+
+From a disposable PROS, vexide, or VEXcode C++ project, upload to an unused
+slot:
+
+```bash
+v5x upload --slot 8 --name "v5x-smoke"
+v5x programs
+v5x run --slot 8 --name "v5x-smoke"
+v5x programs
+v5x stop
+```
+
+Confirm that the upload completes, `programs` shows the expected slot metadata,
+`run` starts the uploaded program, and `stop` returns the brain to an idle
+state.
+
+## Files
+
+Inspect the files created by the upload before removing the disposable slot
+artifacts:
+
+```bash
+v5x dir
+v5x cat slot_8.ini
+v5x rm slot_8.bin
+v5x rm slot_8.ini
+v5x dir
+```
+
+Only remove files that belong to this smoke test. Skip the `rm` commands when
+the selected slot contains a program you need to keep.
+
+## Key/value settings
+
+Read the well-known settings first. Only write a value that is safe for the
+test brain and restore the previous value before finishing.
+
+```bash
+v5x kv
+v5x kv get robotname
+v5x kv set robotname v5x-smoke
+v5x kv get robotname
+```
+
+## Screenshot
+
+```bash
+v5x screenshot
+```
+
+Confirm that the command returns a 480x272 capture. If the terminal does not
+render the image, treat successful command completion as the smoke result and
+use the troubleshooting guide for display issues.
+
+## Finish
+
+- Restore any key/value settings changed during the test.
+- Disconnect and reconnect the brain, then run `v5x devices` one final time.
+- Record the CLI version, operating system, brain VEXos version, and any
+  skipped steps in the release notes or pull request.

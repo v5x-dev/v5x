@@ -76,7 +76,7 @@
           },
           {
             "group": "Help",
-            "pages": ["cli/troubleshooting"]
+            "pages": ["cli/troubleshooting", "cli/hardware-smoke"]
           }
         ]
       },
