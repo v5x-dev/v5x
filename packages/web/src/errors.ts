@@ -6,14 +6,14 @@ export type V5WebErrorCode =
   | "refresh-error";
 
 export class V5WebError extends Error {
-  readonly code: V5WebErrorCode;
-  override readonly cause?: unknown;
+  override readonly name = "V5WebError";
 
-  constructor(code: V5WebErrorCode, message: string, cause?: unknown) {
+  constructor(
+    readonly code: V5WebErrorCode,
+    message: string,
+    override readonly cause?: unknown,
+  ) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = "V5WebError";
-    this.code = code;
-    this.cause = cause;
   }
 }
 
@@ -23,11 +23,11 @@ export function normalizeV5WebError(
   fallbackMessage: string,
 ): V5WebError {
   if (error instanceof V5WebError) return error;
-  if (error instanceof Error) {
-    return new V5WebError(code, error.message, error);
-  }
-  if (typeof error === "string" && error.length > 0) {
-    return new V5WebError(code, error, error);
-  }
-  return new V5WebError(code, fallbackMessage, error);
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string" && error !== ""
+        ? error
+        : fallbackMessage;
+  return new V5WebError(code, message, error);
 }

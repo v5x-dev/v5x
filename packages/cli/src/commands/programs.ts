@@ -1,43 +1,13 @@
 import type { IProgramInfo, SlotNumber } from "@v5x/serial";
 import type { Sade } from "sade";
-import { Table } from "cmd-table";
 import { withV5Device } from "../device";
+import { printJson, renderTable, unwrap, utcTimestamp } from "../utils/output";
 import { formatFileSize } from "./dir";
 
 export function parseSlotArgument(slot: string): SlotNumber {
-  switch (slot) {
-    case "1":
-      return 1;
-    case "2":
-      return 2;
-    case "3":
-      return 3;
-    case "4":
-      return 4;
-    case "5":
-      return 5;
-    case "6":
-      return 6;
-    case "7":
-      return 7;
-    case "8":
-      return 8;
-    default:
-      throw new Error("slot must be a number from 1 to 8");
-  }
-}
-
-export function formatProgramTimestamp(time: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "UTC",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(time);
+  if (!/^[1-8]$/.test(slot))
+    throw new Error("slot must be a number from 1 to 8");
+  return Number(slot) as SlotNumber;
 }
 
 function formatSlot(slot: number): string {
@@ -45,24 +15,24 @@ function formatSlot(slot: number): string {
 }
 
 export function formatProgramRows(programs: IProgramInfo[]): string[][] {
-  return programs.map((programInfo) => [
-    formatSlot(programInfo.slot),
-    formatSlot(programInfo.requestedSlot),
-    programInfo.name,
-    formatFileSize(programInfo.size),
-    formatProgramTimestamp(programInfo.time),
-    programInfo.binfile,
+  return programs.map((info) => [
+    formatSlot(info.slot),
+    formatSlot(info.requestedSlot),
+    info.name,
+    formatFileSize(info.size),
+    utcTimestamp.format(info.time),
+    info.binfile,
   ]);
 }
 
 export function toProgramJson(programs: IProgramInfo[]) {
-  return programs.map((programInfo) => ({
-    slot: programInfo.slot,
-    requestedSlot: programInfo.requestedSlot,
-    name: programInfo.name,
-    size: programInfo.size,
-    time: programInfo.time.toISOString(),
-    binfile: programInfo.binfile,
+  return programs.map(({ slot, requestedSlot, name, size, time, binfile }) => ({
+    slot,
+    requestedSlot,
+    name,
+    size,
+    time: time.toISOString(),
+    binfile,
   }));
 }
 
@@ -72,23 +42,18 @@ export default function registerProgramsCommand(program: Sade) {
     .option("--json", "print machine-readable JSON")
     .action(async (options: { json?: boolean }) => {
       await withV5Device(async (device) => {
-        const result = await device.brain.listProgram();
-        if (result.isErr()) throw new Error("failed to list programs");
-
-        if (options.json === true) {
-          console.log(JSON.stringify(toProgramJson(result.value), null, 2));
-          return;
-        }
-
-        const table = new Table({ compact: true });
-        table.addColumn("slot");
-        table.addColumn("requested");
-        table.addColumn("name");
-        table.addColumn("size");
-        table.addColumn("timestamp");
-        table.addColumn("file");
-        formatProgramRows(result.value).forEach((row) => table.addRow(row));
-        console.log(table.render());
+        const programs = unwrap(
+          await device.brain.listProgram(),
+          "failed to list programs",
+        );
+        if (options.json === true) printJson(toProgramJson(programs));
+        else
+          console.log(
+            renderTable(
+              ["slot", "requested", "name", "size", "timestamp", "file"],
+              formatProgramRows(programs),
+            ),
+          );
       });
     });
 
@@ -97,8 +62,10 @@ export default function registerProgramsCommand(program: Sade) {
     .action(async (slot: string) => {
       const slotNumber = parseSlotArgument(slot);
       await withV5Device(async (device) => {
-        const result = await device.brain.runProgram(slotNumber);
-        if (result.isErr()) throw new Error(`failed to start slot ${slot}`);
+        unwrap(
+          await device.brain.runProgram(slotNumber),
+          `failed to start slot ${slot}`,
+        );
         console.log(`started slot ${slot}`);
       });
     });
@@ -107,8 +74,7 @@ export default function registerProgramsCommand(program: Sade) {
     .command("stop", "stop the running program on the V5 brain")
     .action(async () => {
       await withV5Device(async (device) => {
-        const result = await device.brain.stopProgram();
-        if (result.isErr()) throw new Error("failed to stop program");
+        unwrap(await device.brain.stopProgram(), "failed to stop program");
         console.log("stopped program");
       });
     });

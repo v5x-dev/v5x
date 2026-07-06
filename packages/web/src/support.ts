@@ -1,6 +1,5 @@
 export function getDefaultSerial(): Serial | undefined {
-  if (typeof navigator === "undefined") return undefined;
-  return navigator.serial;
+  return typeof navigator === "undefined" ? undefined : navigator.serial;
 }
 
 export function isWebSerialSupported(serial?: Serial): boolean {

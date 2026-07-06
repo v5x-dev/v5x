@@ -1,6 +1,10 @@
 import { V5SerialDevice, type VexSerialError } from "@v5x/serial";
 import { ResultAsync } from "neverthrow";
-import { V5WebError, normalizeV5WebError } from "./errors.js";
+import {
+  V5WebError,
+  normalizeV5WebError,
+  type V5WebErrorCode,
+} from "./errors.js";
 import {
   getDefaultSerial,
   getWebSerialUnavailableReason,
@@ -53,32 +57,11 @@ interface V5DeviceLike {
 
 type V5DeviceFactory = (serial: Serial) => V5DeviceLike;
 
-interface V5ClientInternals {
-  createDevice: V5DeviceFactory;
-}
-
 const createDefaultDevice: V5DeviceFactory = (serial) => {
   const device = new V5SerialDevice(serial);
   device.autoRefresh = false;
   return device;
 };
-
-function createSnapshot(
-  status: V5ConnectionStatus,
-  supported: boolean,
-  unavailableReason: string | null,
-  error: V5WebError | null,
-): V5Snapshot {
-  return {
-    status,
-    supported,
-    unavailableReason,
-    connected: status === "connected",
-    connecting: status === "connecting",
-    disconnecting: status === "disconnecting",
-    error,
-  };
-}
 
 class V5WebClient implements V5Client {
   private readonly serial: Serial | undefined;
@@ -91,24 +74,28 @@ class V5WebClient implements V5Client {
   private error: V5WebError | null = null;
   private device: V5DeviceLike | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
-  private connectionGeneration = 0;
+  private generation = 0;
 
-  constructor(options: V5ClientOptions, internals: V5ClientInternals) {
+  constructor(options: V5ClientOptions, createDevice: V5DeviceFactory) {
     this.serial = options.serial ?? getDefaultSerial();
     this.supported = isWebSerialSupported(this.serial);
     this.unavailableReason = getWebSerialUnavailableReason(this.serial);
     this.refreshIntervalMs = options.refreshIntervalMs;
-    this.createDevice = internals.createDevice;
+    this.createDevice = createDevice;
     this.status = this.supported ? "idle" : "unsupported";
   }
 
   getSnapshot(): V5Snapshot {
-    return createSnapshot(
-      this.status,
-      this.supported,
-      this.unavailableReason,
-      this.error,
-    );
+    const { status } = this;
+    return {
+      status,
+      supported: this.supported,
+      unavailableReason: this.unavailableReason,
+      connected: status === "connected",
+      connecting: status === "connecting",
+      disconnecting: status === "disconnecting",
+      error: this.error,
+    };
   }
 
   subscribe(listener: () => void): V5Unsubscribe {
@@ -120,7 +107,7 @@ class V5WebClient implements V5Client {
     if (this.status === "connected") return true;
     if (this.status === "connecting") return false;
 
-    const generation = ++this.connectionGeneration;
+    const generation = ++this.generation;
     this.setState("connecting", null);
     let device: V5DeviceLike | null = null;
 
@@ -129,7 +116,8 @@ class V5WebClient implements V5Client {
       device.autoRefresh = false;
       const result = await device.connect();
 
-      if (!this.isCurrentConnection(generation)) {
+      // A disconnect() during the in-flight connect supersedes this attempt.
+      if (generation !== this.generation) {
         this.device = null;
         await this.tryDisposeDevice(device);
         return false;
@@ -150,32 +138,27 @@ class V5WebClient implements V5Client {
       this.startRefreshTimer();
       return true;
     } catch (error: unknown) {
-      if (device !== null && !this.isCurrentConnection(generation)) {
-        this.device = null;
+      this.device = null;
+      if (device !== null) {
         await this.tryDisposeDevice(device);
-        return false;
+        if (generation !== this.generation) return false;
       }
-
-      const normalized = normalizeV5WebError(
+      this.stopRefreshTimer();
+      this.fail(
         "connect-error",
         error,
         "V5 device connection threw an unknown error.",
       );
-      this.device = null;
-      this.stopRefreshTimer();
-      if (device !== null) {
-        await this.tryDisposeDevice(device);
-      }
-      this.setState("error", normalized);
       return false;
     }
   }
 
   async disconnect(): Promise<void> {
-    if (this.status === "unsupported") return;
-    if (this.status === "disconnecting") return;
+    if (this.status === "unsupported" || this.status === "disconnecting") {
+      return;
+    }
 
-    this.connectionGeneration++;
+    this.generation++;
     const device = this.device;
     this.device = null;
     this.stopRefreshTimer();
@@ -191,13 +174,10 @@ class V5WebClient implements V5Client {
       await this.disposeDevice(device);
       this.setState("idle", null);
     } catch (error: unknown) {
-      this.setState(
-        "error",
-        normalizeV5WebError(
-          "disconnect-error",
-          error,
-          "V5 device disconnect threw an unknown error.",
-        ),
+      this.fail(
+        "disconnect-error",
+        error,
+        "V5 device disconnect threw an unknown error.",
       );
     }
   }
@@ -208,25 +188,15 @@ class V5WebClient implements V5Client {
     try {
       const result = await this.device.refresh();
       if (result.isErr()) {
-        this.setState(
-          "error",
-          normalizeV5WebError(
-            "refresh-error",
-            result.error,
-            "V5 device refresh failed.",
-          ),
-        );
-        return;
+        this.fail("refresh-error", result.error, "V5 device refresh failed.");
+      } else {
+        this.listeners.emit();
       }
-      this.listeners.emit();
     } catch (error: unknown) {
-      this.setState(
-        "error",
-        normalizeV5WebError(
-          "refresh-error",
-          error,
-          "V5 device refresh threw an unknown error.",
-        ),
+      this.fail(
+        "refresh-error",
+        error,
+        "V5 device refresh threw an unknown error.",
       );
     }
   }
@@ -237,19 +207,15 @@ class V5WebClient implements V5Client {
     this.listeners.emit();
   }
 
-  private isCurrentConnection(generation: number): boolean {
-    return generation === this.connectionGeneration;
+  private fail(code: V5WebErrorCode, error: unknown, fallback: string): void {
+    this.setState("error", normalizeV5WebError(code, error, fallback));
   }
 
   private startRefreshTimer(): void {
     this.stopRefreshTimer();
-    if (this.refreshIntervalMs === undefined || this.refreshIntervalMs <= 0) {
-      return;
-    }
-
-    this.refreshTimer = setInterval(() => {
-      void this.refresh();
-    }, this.refreshIntervalMs);
+    const interval = this.refreshIntervalMs;
+    if (interval === undefined || interval <= 0) return;
+    this.refreshTimer = setInterval(() => void this.refresh(), interval);
   }
 
   private stopRefreshTimer(): void {
@@ -258,12 +224,8 @@ class V5WebClient implements V5Client {
     this.refreshTimer = undefined;
   }
 
-  private async disposeDevice(device: V5DeviceLike): Promise<void> {
-    if (device.dispose !== undefined) {
-      await device.dispose();
-      return;
-    }
-    await device.disconnect();
+  private disposeDevice(device: V5DeviceLike): Promise<void> {
+    return device.dispose?.() ?? device.disconnect();
   }
 
   private async tryDisposeDevice(device: V5DeviceLike): Promise<void> {
@@ -276,14 +238,14 @@ class V5WebClient implements V5Client {
 }
 
 export function createV5Client(options: V5ClientOptions = {}): V5Client {
-  return createV5ClientWithFactory(options, createDefaultDevice);
+  return new V5WebClient(options, createDefaultDevice);
 }
 
 export function createV5ClientWithFactory(
   options: V5ClientOptions,
   createDevice: V5DeviceFactory,
 ): V5Client {
-  return new V5WebClient(options, { createDevice });
+  return new V5WebClient(options, createDevice);
 }
 
 export type { V5Store, V5Unsubscribe };

@@ -47,6 +47,11 @@ const DEFAULT_PROS_TEMPLATE: ProsTemplateSource = {
   sha256: "f019642af93dc3d164d1c3e67a2a7dc75c795ac6a4d550c9221c480e2e7f4899",
 };
 
+export function parseToolchain(type: unknown): ProjectToolchain {
+  if (type === "pros" || type === "vexide") return type;
+  throw new Error("--type must be either pros or vexide");
+}
+
 function validateDisplayName(name: string): void {
   if (name.length === 0 || /[\u0000-\u001f]/.test(name)) {
     throw new Error(
@@ -105,11 +110,7 @@ async function reserveDestination(
   ) {
     throw new Error(`project directory is not empty: ${path}`);
   }
-  return {
-    created,
-    device: destination.dev,
-    inode: destination.ino,
-  };
+  return { created, device: destination.dev, inode: destination.ino };
 }
 
 async function removeOwnedReservation(
@@ -131,10 +132,8 @@ async function fetchBytes(
   url: string,
   description: string,
   limit: number,
-  init?: RequestInit,
 ): Promise<Uint8Array> {
   const response = await fetch(url, {
-    ...init,
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -164,14 +163,7 @@ async function fetchBytes(
   } finally {
     reader.releaseLock();
   }
-
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+  return Buffer.concat(chunks, length);
 }
 
 async function writeFiles(
@@ -205,6 +197,7 @@ async function createProsProject(
   if (digest !== source.sha256) {
     throw new Error(`PROS kernel ${source.tag} failed SHA-256 verification`);
   }
+
   let extractedLength = 0;
   const archive = unzipSync(bytes, {
     filter(file) {

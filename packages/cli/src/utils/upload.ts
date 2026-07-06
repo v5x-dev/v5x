@@ -45,6 +45,25 @@ export async function uploadProgramFromCommand(
   });
 }
 
+function reportProgress() {
+  let previousState = "";
+  const report = (state: string, current: number, total: number) => {
+    if (state !== previousState) {
+      if (previousState !== "") process.stderr.write("\n");
+      previousState = state;
+    }
+    const percent = total === 0 ? 0 : Math.floor((current / total) * 100);
+    const message = `${state.toLowerCase().padEnd(5)} ${percent}%`;
+    process.stderr.write(
+      process.stderr.isTTY ? `\r${message}` : `${message}\n`,
+    );
+  };
+  report.finish = () => {
+    if (previousState !== "") process.stderr.write("\n");
+  };
+  return report;
+}
+
 export async function uploadProgram(options: UploadOptions): Promise<void> {
   const project = await inspectProject(options.path);
   if (options.build) await buildProject(project);
@@ -57,32 +76,21 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
     type: project.type,
     run: options.run,
   });
-  const validatedArtifacts = await validateProgramArtifacts(artifacts);
-  const bytes = new Uint8Array(
-    await Bun.file(validatedArtifacts.hot.path).arrayBuffer(),
-  );
-  const coldBytes = validatedArtifacts.cold
-    ? new Uint8Array(await Bun.file(validatedArtifacts.cold.path).arrayBuffer())
+  const validated = await validateProgramArtifacts(artifacts);
+  const bytes = await Bun.file(validated.hot.path).bytes();
+  const coldBytes = validated.cold
+    ? await Bun.file(validated.cold.path).bytes()
     : undefined;
+
   await withV5Device(async (device) => {
-    let previousState = "";
+    const progress = reportProgress();
     const uploaded = await device.brain.uploadProgram(
       config,
       bytes,
       coldBytes,
-      (state, current, total) => {
-        if (state !== previousState) {
-          if (previousState !== "") process.stderr.write("\n");
-          previousState = state;
-        }
-        const percent = total === 0 ? 0 : Math.floor((current / total) * 100);
-        const message = `${state.toLowerCase().padEnd(5)} ${percent}%`;
-        process.stderr.write(
-          process.stderr.isTTY ? `\r${message}` : `${message}\n`,
-        );
-      },
+      progress,
     );
-    if (previousState !== "") process.stderr.write("\n");
+    progress.finish();
     if (uploaded.isErr() || !uploaded.value)
       throw new Error("the brain rejected the program upload");
     console.log(

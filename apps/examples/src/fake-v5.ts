@@ -12,6 +12,14 @@ export type FailureMode =
   | "refresh-error"
   | "disconnect-error";
 
+export const failureModes: readonly FailureMode[] = [
+  "none",
+  "connect-failed",
+  "connect-error",
+  "refresh-error",
+  "disconnect-error",
+];
+
 export interface FakeV5Stats {
   connects: number;
   refreshes: number;
@@ -21,6 +29,7 @@ export interface FakeV5Stats {
 
 export interface FakeV5Controls {
   readonly mode: FailureMode;
+  /** Replaced (never mutated) on change, so the reference works as a snapshot. */
   readonly stats: FakeV5Stats;
   setMode(mode: FailureMode): void;
   resetStats(): void;
@@ -32,13 +41,12 @@ export interface FakeV5Environment {
   controls: FakeV5Controls;
 }
 
-export const failureModes: readonly FailureMode[] = [
-  "none",
-  "connect-failed",
-  "connect-error",
-  "refresh-error",
-  "disconnect-error",
-];
+const zeroStats = (): FakeV5Stats => ({
+  connects: 0,
+  refreshes: 0,
+  disconnects: 0,
+  disposed: 0,
+});
 
 class FakeSerial extends EventTarget implements Serial {
   onconnect: (event: Event) => void = () => {};
@@ -55,12 +63,7 @@ class FakeSerial extends EventTarget implements Serial {
 
 class FakeControls implements FakeV5Controls {
   #mode: FailureMode;
-  #stats: FakeV5Stats = {
-    connects: 0,
-    refreshes: 0,
-    disconnects: 0,
-    disposed: 0,
-  };
+  #stats = zeroStats();
   #listeners = new Set<() => void>();
 
   constructor(mode: FailureMode) {
@@ -72,7 +75,7 @@ class FakeControls implements FakeV5Controls {
   }
 
   get stats(): FakeV5Stats {
-    return { ...this.#stats };
+    return this.#stats;
   }
 
   setMode(mode: FailureMode): void {
@@ -81,12 +84,7 @@ class FakeControls implements FakeV5Controls {
   }
 
   resetStats(): void {
-    this.#stats = {
-      connects: 0,
-      refreshes: 0,
-      disconnects: 0,
-      disposed: 0,
-    };
+    this.#stats = zeroStats();
     this.#emit();
   }
 
@@ -108,11 +106,8 @@ class FakeControls implements FakeV5Controls {
 class FakeV5Device {
   autoRefresh = false;
   #connected = false;
-  readonly #controls: FakeControls;
 
-  constructor(controls: FakeControls) {
-    this.#controls = controls;
-  }
+  constructor(private readonly controls: FakeControls) {}
 
   connect(): ResultAsync<void, VexSerialError> {
     return new ResultAsync(this.#connect());
@@ -120,17 +115,17 @@ class FakeV5Device {
 
   async #connect(): Promise<Result<void, VexSerialError>> {
     await delay();
-    this.#controls.increment("connects");
+    this.controls.increment("connects");
 
-    if (this.#controls.mode === "connect-failed") {
-      return err(new VexSerialError("io", "Fake serial connect failed."));
+    switch (this.controls.mode) {
+      case "connect-failed":
+        return err(new VexSerialError("io", "Fake serial connect failed."));
+      case "connect-error":
+        throw new Error("Fake serial connect error.");
+      default:
+        this.#connected = true;
+        return ok(undefined);
     }
-    if (this.#controls.mode === "connect-error") {
-      return err(new VexSerialError("io", "Fake serial connect error."));
-    }
-
-    this.#connected = true;
-    return ok(undefined);
   }
 
   refresh(): ResultAsync<boolean, VexSerialError> {
@@ -139,27 +134,23 @@ class FakeV5Device {
 
   async #refresh(): Promise<Result<boolean, VexSerialError>> {
     await delay();
-    this.#controls.increment("refreshes");
-
-    if (this.#controls.mode === "refresh-error") {
-      return err(new VexSerialError("io", "Fake serial refresh error."));
-    }
-    return ok(true);
+    this.controls.increment("refreshes");
+    return this.controls.mode === "refresh-error"
+      ? err(new VexSerialError("io", "Fake serial refresh error."))
+      : ok(true);
   }
 
   async disconnect(): Promise<void> {
     await delay();
-    this.#controls.increment("disconnects");
-
-    if (this.#controls.mode === "disconnect-error") {
+    this.controls.increment("disconnects");
+    if (this.controls.mode === "disconnect-error") {
       throw new Error("Fake serial disconnect error.");
     }
-
     this.#connected = false;
   }
 
   async dispose(): Promise<void> {
-    this.#controls.increment("disposed");
+    this.controls.increment("disposed");
     if (this.#connected) await this.disconnect();
   }
 }
@@ -170,9 +161,10 @@ export function createFakeV5Environment(options: {
 }): FakeV5Environment {
   const controls = new FakeControls(options.mode ?? "none");
   const serial = options.supported ? new FakeSerial() : undefined;
-  const client = createV5ClientWithFactory({ serial }, () => {
-    return new FakeV5Device(controls);
-  });
+  const client = createV5ClientWithFactory(
+    { serial },
+    () => new FakeV5Device(controls),
+  );
 
   return { client, controls };
 }

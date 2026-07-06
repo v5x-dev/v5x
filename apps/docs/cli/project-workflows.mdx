@@ -25,9 +25,9 @@ v5x upload --no-build --file ./path/to/program.bin
 v5x run --slot 3 --name "Skills"
 ```
 
-`run` uses the same upload pipeline as `upload`, but instructs the brain to start the uploaded program. Slots accepted by the CLI are numbered from 1 through 8.
+`run` uses the same upload pipeline as `upload`, then tells the brain to start the program. Slots are numbered 1 through 8.
 
 <Warning>
-  Uploading replaces the program files associated with the selected slot. Verify
-  the slot before transferring.
+  Uploading replaces whatever program is in the selected slot. Double-check the
+  slot number first.
 </Warning>

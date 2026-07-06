@@ -11,7 +11,7 @@ v5x detects a project from files in its root directory.
 | vexide      | `Cargo.toml` with vexide metadata  | `cargo v5`       |
 | VEXcode C++ | `vex/mkenv.mk` or `vex/mkrules.mk` | Project Makefile |
 
-The compiler toolchain remains responsible for producing the program binary. v5x locates that artifact, creates the brain metadata, and transfers both to the selected slot.
+The toolchain produces the program binary. v5x locates that artifact, creates the brain metadata, and transfers both to the selected slot.
 
 <Warning>
   Run commands from the project root, or pass the project directory as the
@@ -21,4 +21,4 @@ The compiler toolchain remains responsible for producing the program binary. v5x
 
 Project creation currently supports PROS and vexide. Existing VEXcode C++ projects can be built and uploaded but cannot be scaffolded by `v5x new` or `v5x init`.
 
-The built-in PROS scaffold uses a version-pinned kernel template whose SHA-256 digest is verified before extraction. Template upgrades therefore ship as explicit CLI changes instead of changing generated projects implicitly.
+The built-in PROS scaffold uses a version-pinned kernel template whose SHA-256 digest is verified before extraction, so template upgrades ship as explicit CLI changes rather than silently altering generated projects.

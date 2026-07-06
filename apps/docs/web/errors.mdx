@@ -16,6 +16,6 @@ if (!(await client.connect())) {
 }
 ```
 
-Each error has a stable `code`, a message, and an optional `cause`. The first milestone reports support, connect, disconnect, and refresh errors. Higher-level workflow errors for files, programs, screenshots, and key-value settings will be added with those workflows.
+Each error has a stable `code`, a message, and an optional `cause`. Right now the client reports support, connect, disconnect, and refresh errors; workflow errors for files, programs, screenshots, and key-value settings will land with those workflows.
 
 When Web Serial is unavailable, the snapshot status is `unsupported` and `unavailableReason` is `web-serial-unavailable`.

@@ -12,6 +12,6 @@ description: "Read battery, controller, smart-device, button, settings, and radi
 | `V5SmartDevice`   | `isAvailable`, `port`, `type`, `version`                                      |
 | `V5Radio`         | `channel`, `isAvailable`, `isConnected`, `isVexNet`, `isRadioData`, `latency` |
 
-These objects are state views created by `V5SerialDevice`. Obtain them from `device.brain`, `device.controllers`, `device.devices`, and `device.radio` instead of constructing them directly.
+These are state views created by `V5SerialDevice`. Get them from `device.brain`, `device.controllers`, `device.devices`, and `device.radio` rather than constructing them yourself.
 
 `V5Radio.changeChannel()` changes between `RadioChannelType.PIT` and `RadioChannelType.DOWNLOAD`.

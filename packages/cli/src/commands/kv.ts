@@ -1,17 +1,14 @@
 import type { Sade } from "sade";
-import { Table } from "cmd-table";
 import chalk from "chalk";
 import { withV5Device } from "../device";
+import { printJson, renderTable, unwrap } from "../utils/output";
 
 const WELL_KNOWN_KEYS = ["teamnumber", "robotname"] as const;
 
-export function toKvJson(
-  values: Array<{ key: string; value: string | undefined }>,
-) {
-  return values.map(({ key, value }) => ({
-    key,
-    value: value ?? null,
-  }));
+type KvRow = { key: string; value: string | undefined };
+
+export function toKvJson(values: KvRow[]) {
+  return values.map(({ key, value }) => ({ key, value: value ?? null }));
 }
 
 export default function registerKvCommand(program: Sade) {
@@ -20,27 +17,23 @@ export default function registerKvCommand(program: Sade) {
     .option("--json", "print machine-readable JSON")
     .action(async (options: { json?: boolean }) => {
       await withV5Device(async (device) => {
-        const rows: Array<{ key: string; value: string | undefined }> = [];
-        const table = new Table({ compact: true });
-        table.addColumn("key");
-        table.addColumn("value");
-
+        const rows: KvRow[] = [];
         for (const key of WELL_KNOWN_KEYS) {
           const result = await device.brain.getValue(key);
-          const value = result.isOk() ? result.value : undefined;
-          rows.push({ key, value });
-          table.addRow([
-            key,
-            value === undefined || value === "" ? chalk.dim("(unset)") : value,
-          ]);
+          rows.push({ key, value: result.isOk() ? result.value : undefined });
         }
 
-        if (options.json === true) {
-          console.log(JSON.stringify(toKvJson(rows), null, 2));
-          return;
-        }
-
-        console.log(table.render());
+        if (options.json === true) printJson(toKvJson(rows));
+        else
+          console.log(
+            renderTable(
+              ["key", "value"],
+              rows.map(({ key, value }) => [
+                key,
+                value ? value : chalk.dim("(unset)"),
+              ]),
+            ),
+          );
       });
     });
 
@@ -51,12 +44,8 @@ export default function registerKvCommand(program: Sade) {
       await withV5Device(async (device) => {
         const result = await device.brain.getValue(key);
         const value = result.isOk() ? result.value : undefined;
-        if (options.json === true) {
-          console.log(JSON.stringify({ key, value: value ?? null }, null, 2));
-          return;
-        }
-
-        console.log(value);
+        if (options.json === true) printJson({ key, value: value ?? null });
+        else console.log(value);
       });
     });
 
@@ -64,8 +53,10 @@ export default function registerKvCommand(program: Sade) {
     .command("kv set <key> <value>", "set a system variable on a brain")
     .action(async (key, value) => {
       await withV5Device(async (device) => {
-        const result = await device.brain.setValue(key, value);
-        if (result.isErr()) throw new Error(`failed to set ${key} to ${value}`);
+        unwrap(
+          await device.brain.setValue(key, value),
+          `failed to set ${key} to ${value}`,
+        );
         console.log(`set ${key} to ${value}`);
       });
     });

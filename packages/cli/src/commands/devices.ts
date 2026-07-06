@@ -1,13 +1,9 @@
 import type { Sade } from "sade";
-import { withV5Device } from "../device";
-import { Table } from "cmd-table";
 import { SmartDeviceType, VexFirmwareVersion } from "@v5x/serial";
+import { withV5Device } from "../device";
+import { printJson, renderTable } from "../utils/output";
 
-type SmartDevice = {
-  port: number;
-  type: number;
-  version: number;
-};
+type SmartDevice = { port: number; type: number; version: number };
 
 export const SMART_DEVICE_LABELS: Record<number, string> = {
   [SmartDeviceType.EMPTY]: "empty",
@@ -37,27 +33,29 @@ export function formatSmartDeviceType(type: number): string {
 }
 
 export function formatSmartDeviceVersion(version: number): string {
-  const major = (version >>> 14) & 0xff;
-  const minor = (version >>> 8) & 0x3f;
-  const patch = version & 0xff;
-  return new VexFirmwareVersion(major, minor, patch, 0).toUserString();
+  return new VexFirmwareVersion(
+    (version >>> 14) & 0xff,
+    (version >>> 8) & 0x3f,
+    version & 0xff,
+    0,
+  ).toUserString();
 }
 
-export function formatDeviceRows(smartDevices: SmartDevice[]): string[][] {
-  return smartDevices.map((device) => [
-    device.port.toString(),
-    formatSmartDeviceType(device.type),
-    formatSmartDeviceVersion(device.version),
+export function formatDeviceRows(devices: SmartDevice[]): string[][] {
+  return devices.map(({ port, type, version }) => [
+    port.toString(),
+    formatSmartDeviceType(type),
+    formatSmartDeviceVersion(version),
   ]);
 }
 
-export function toDeviceJson(smartDevices: SmartDevice[]) {
-  return smartDevices.map((device) => ({
-    port: device.port,
-    type: device.type,
-    typeLabel: formatSmartDeviceType(device.type),
-    version: device.version,
-    versionString: formatSmartDeviceVersion(device.version),
+export function toDeviceJson(devices: SmartDevice[]) {
+  return devices.map(({ port, type, version }) => ({
+    port,
+    type,
+    typeLabel: formatSmartDeviceType(type),
+    version,
+    versionString: formatSmartDeviceVersion(version),
   }));
 }
 
@@ -67,18 +65,12 @@ export default function registerDevicesCommand(program: Sade) {
     .option("--json", "print machine-readable JSON")
     .action(async (options: { json?: boolean }) => {
       await withV5Device(async (device) => {
-        const smartDevices = device.devices;
-        if (options.json === true) {
-          console.log(JSON.stringify(toDeviceJson(smartDevices), null, 2));
-          return;
-        }
-
-        const table = new Table({ compact: true });
-        table.addColumn("port");
-        table.addColumn("type");
-        table.addColumn("version");
-        formatDeviceRows(smartDevices).forEach((row) => table.addRow(row));
-        console.log(table.render());
+        const devices = device.devices;
+        if (options.json === true) printJson(toDeviceJson(devices));
+        else
+          console.log(
+            renderTable(["port", "type", "version"], formatDeviceRows(devices)),
+          );
       });
     });
 }

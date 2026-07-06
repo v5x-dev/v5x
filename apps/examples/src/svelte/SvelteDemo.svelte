@@ -11,26 +11,21 @@
   let v5 = $derived(createV5State(environment.client));
   let controlsVersion = $state(0);
 
-  $effect(() => {
-    const unsubscribe = environment.controls.subscribe(() => {
-      controlsVersion += 1;
-    });
-
-    return unsubscribe;
-  });
+  $effect(() => environment.controls.subscribe(() => controlsVersion++));
 
   const controls = $derived.by(() => {
-    controlsVersion;
-    return {
-      mode: environment.controls.mode,
-      stats: environment.controls.stats,
-    };
+    void controlsVersion;
+    const { mode, stats } = environment.controls;
+    return { mode, stats };
   });
-
-  function setMode(value: string): void {
-    environment.controls.setMode(value as FailureMode);
-  }
 </script>
+
+{#snippet row(term: string, detail: string | number)}
+  <div>
+    <dt>{term}</dt>
+    <dd>{detail}</dd>
+  </div>
+{/snippet}
 
 <article class="demo-card">
   <div class="demo-title">
@@ -52,7 +47,8 @@
       <select
         class="select"
         value={controls.mode}
-        onchange={(event) => setMode(event.currentTarget.value)}
+        onchange={(event) =>
+          environment.controls.setMode(event.currentTarget.value as FailureMode)}
       >
         {#each failureModes as mode}
           <option value={mode}>{mode}</option>
@@ -89,33 +85,15 @@
   </div>
 
   <dl class="snapshot">
-    <div>
-      <dt>Supported</dt>
-      <dd>{String(v5.snapshot.supported)}</dd>
-    </div>
-    <div>
-      <dt>Unavailable</dt>
-      <dd>{v5.snapshot.unavailableReason ?? "none"}</dd>
-    </div>
-    <div>
-      <dt>Error</dt>
-      <dd>{v5.snapshot.error?.code ?? "none"}</dd>
-    </div>
+    {@render row("Supported", String(v5.snapshot.supported))}
+    {@render row("Unavailable", v5.snapshot.unavailableReason ?? "none")}
+    {@render row("Error", v5.snapshot.error?.code ?? "none")}
   </dl>
 
   <dl class="stats">
-    <div>
-      <dt>Connects</dt>
-      <dd>{controls.stats.connects}</dd>
-    </div>
-    <div>
-      <dt>Refreshes</dt>
-      <dd>{controls.stats.refreshes}</dd>
-    </div>
-    <div>
-      <dt>Disconnects</dt>
-      <dd>{controls.stats.disconnects}</dd>
-    </div>
+    {@render row("Connects", controls.stats.connects)}
+    {@render row("Refreshes", controls.stats.refreshes)}
+    {@render row("Disconnects", controls.stats.disconnects)}
   </dl>
 
   <p class="error-text">{v5.snapshot.error?.message ?? ""}</p>
@@ -124,9 +102,7 @@
 <button
   class="button support-toggle"
   type="button"
-  onclick={() => {
-    supported = !supported;
-  }}
+  onclick={() => (supported = !supported)}
 >
   Toggle support: {supported ? "supported" : "unsupported"}
 </button>
