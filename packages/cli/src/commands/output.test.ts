@@ -3,6 +3,13 @@ import { err } from "neverthrow";
 import { FileVendor, SmartDeviceType, VexSerialError } from "@v5x/serial";
 import { formatSerialFailure, unwrapSerial } from "../utils/output";
 import {
+  projectOutputFiles,
+  toWorkflowArtifactJson,
+  toWorkflowCreateJson,
+  toWorkflowInstallJson,
+  toWorkflowProjectJson,
+} from "../utils/workflow-json";
+import {
   formatDeviceRows,
   formatSmartDeviceType,
   formatSmartDeviceVersion,
@@ -140,6 +147,61 @@ describe("command output formatting", () => {
       { key: "teamnumber", value: "1234A" },
       { key: "robotname", value: null },
     ]);
+  });
+
+  test("formats workflow project and artifact result objects", () => {
+    expect(
+      toWorkflowProjectJson({
+        path: "/work/robot",
+        type: "pros",
+        name: "robot",
+        description: "match program",
+        artifact: "/work/robot/bin/hot.package.bin",
+      }),
+    ).toEqual({
+      path: "/work/robot",
+      type: "pros",
+      name: "robot",
+      description: "match program",
+      artifactPath: "/work/robot/bin/hot.package.bin",
+    });
+    expect(
+      projectOutputFiles({
+        path: "/work/robot",
+        type: "vexide",
+        name: "robot",
+        description: "",
+      }),
+    ).toEqual([]);
+    expect(
+      toWorkflowArtifactJson({
+        hot: { path: "/work/robot/hot.bin", size: 1024 },
+        cold: { path: "/work/robot/cold.bin", size: 2048 },
+      }),
+    ).toEqual([
+      { role: "hot", path: "/work/robot/hot.bin", size: 1024 },
+      { role: "cold", path: "/work/robot/cold.bin", size: 2048 },
+    ]);
+  });
+
+  test("formats workflow create and install result objects", () => {
+    expect(toWorkflowCreateJson("new", "/work/robot", "vexide")).toEqual({
+      command: "new",
+      projectPath: "/work/robot",
+      projectType: "vexide",
+      created: true,
+    });
+    expect(toWorkflowCreateJson("init", "/work/robot", "pros")).toEqual({
+      command: "init",
+      projectPath: "/work/robot",
+      projectType: "pros",
+      created: true,
+    });
+    expect(toWorkflowInstallJson("pros")).toEqual({
+      command: "install",
+      toolchain: "pros",
+      installed: true,
+    });
   });
 
   test("encodes screenshots as PNG and PPM files", () => {
