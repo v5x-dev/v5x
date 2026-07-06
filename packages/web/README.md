@@ -29,3 +29,9 @@ import { V5Provider, useV5Snapshot } from "@v5x/web/react";
 import { createV5State } from "@v5x/web/svelte";
 import { createV5Snapshot } from "@v5x/web/solid";
 ```
+
+Testing and examples that need a fake device can use the testing subpath:
+
+```ts
+import { createV5ClientWithFactory } from "@v5x/web/testing";
+```
