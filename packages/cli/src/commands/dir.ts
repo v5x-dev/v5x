@@ -1,6 +1,7 @@
 import type { Sade } from "sade";
-import { FileVendor, type IFileHandle } from "@v5x/serial";
+import type { FileVendor, IFileHandle } from "@v5x/serial";
 import { withV5Device } from "../device";
+import { VENDOR_PREFIXES, VENDORS } from "../utils/brainPath";
 import { printJson, renderTable, utcTimestamp } from "../utils/output";
 
 type FileRow = {
@@ -11,34 +12,6 @@ type FileRow = {
   timestamp: number;
   crc32: number;
 };
-
-const VENDOR_PREFIXES: Record<FileVendor, string> = {
-  [FileVendor.USER]: "user/",
-  [FileVendor.SYS]: "sys_/",
-  [FileVendor.DEV1]: "rmsh/",
-  [FileVendor.DEV2]: "pros/",
-  [FileVendor.DEV3]: "mwrk/",
-  [FileVendor.DEV4]: "deva/",
-  [FileVendor.DEV5]: "devb/",
-  [FileVendor.DEV6]: "devc/",
-  [FileVendor.VEXVM]: "vxvm/",
-  [FileVendor.VEX]: "vex_/",
-  [FileVendor.UNDEFINED]: "test/",
-};
-
-const VENDORS = [
-  FileVendor.USER,
-  FileVendor.SYS,
-  FileVendor.DEV1,
-  FileVendor.DEV2,
-  FileVendor.DEV3,
-  FileVendor.DEV4,
-  FileVendor.DEV5,
-  FileVendor.DEV6,
-  FileVendor.VEXVM,
-  FileVendor.VEX,
-  FileVendor.UNDEFINED,
-] as const;
 
 export function formatFileTimestamp(timestamp: number): string {
   return utcTimestamp.format(new Date(timestamp * 1000));
