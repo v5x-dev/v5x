@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { okAsync } from "neverthrow";
-import {
-  createV5ClientWithFactory,
-  type V5DeviceLike,
-} from "./testing.js";
+import { createV5ClientWithFactory, type V5DeviceLike } from "./testing.js";
 
 class FakeSerial extends EventTarget implements Serial {
   onconnect: (event: Event) => void = () => {};
