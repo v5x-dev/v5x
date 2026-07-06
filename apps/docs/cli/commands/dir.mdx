@@ -12,3 +12,29 @@ Alias: `v5x ls`
 The table includes name, size, load address, timestamp, and CRC32. v5x searches the user, system, VEX, VEX VM, PROS, and development vendor areas.
 
 Displayed paths use prefixes such as `user/`, `sys_/`, `pros/`, `vex_/`, and `vxvm/` to identify the file vendor.
+
+## JSON output
+
+```bash
+v5x dir --json
+```
+
+The JSON output is an array of files:
+
+```json
+[
+  {
+    "vendor": 1,
+    "vendorPrefix": "user",
+    "filename": "program.bin",
+    "path": "user/program.bin",
+    "size": 1536,
+    "loadAddress": 58720256,
+    "timestamp": 0,
+    "timestampIso": "1970-01-01T00:00:00.000Z",
+    "crc32": 4660
+  }
+]
+```
+
+Numeric fields preserve the raw values reported by the brain. The table view formats size, load address, timestamp, and CRC32 for display.

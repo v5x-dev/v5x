@@ -68,6 +68,7 @@
             "pages": [
               "cli/commands/devices",
               "cli/commands/dir",
+              "cli/commands/programs",
               "cli/commands/cat",
               "cli/commands/rm",
               "cli/commands/screenshot",

@@ -1,7 +1,18 @@
 import type { Sade } from "sade";
 import { withV5Device } from "../device";
 import { Table } from "cmd-table";
-import { FileVendor } from "@v5x/serial";
+import { FileVendor, type IFileHandle } from "@v5x/serial";
+
+type FileRow = {
+  vendor: FileVendor;
+  filename: string;
+  size: number;
+  loadAddress: number;
+  timestamp: number;
+  crc32: number;
+};
+
+type ListedFile = FileRow & IFileHandle;
 
 const VENDORS = [
   FileVendor.USER,
@@ -70,16 +81,7 @@ export function formatFileSize(bytes: number): string {
   return `${size.toFixed(size < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`;
 }
 
-export function formatFileRows(
-  files: Array<{
-    vendor: FileVendor;
-    filename: string;
-    size: number;
-    loadAddress: number;
-    timestamp: number;
-    crc32: number;
-  }>,
-): string[][] {
+export function formatFileRows(files: FileRow[]): string[][] {
   return files.map(
     ({ vendor, filename, size, loadAddress, timestamp, crc32 }) => [
       vendorPrefix(vendor) + filename,
@@ -91,12 +93,29 @@ export function formatFileRows(
   );
 }
 
+export function toFileJson(files: FileRow[]) {
+  return files.map(
+    ({ vendor, filename, size, loadAddress, timestamp, crc32 }) => ({
+      vendor,
+      vendorPrefix: vendorPrefix(vendor).replace("/", ""),
+      filename,
+      path: vendorPrefix(vendor) + filename,
+      size,
+      loadAddress,
+      timestamp,
+      timestampIso: new Date(timestamp * 1000).toISOString(),
+      crc32,
+    }),
+  );
+}
+
 export default function registerDirCommand(program: Sade) {
   program
     .command("dir", "list files on flash", { alias: "ls" })
-    .action(async () => {
+    .option("--json", "print machine-readable JSON")
+    .action(async (options: { json?: boolean }) => {
       await withV5Device(async (device) => {
-        const files = [];
+        const files: ListedFile[] = [];
         for (const vendor of VENDORS) {
           const result = await device.brain.listFiles(vendor);
           if (result.isErr()) continue;
@@ -107,6 +126,11 @@ export default function registerDirCommand(program: Sade) {
             })),
           );
         }
+        if (options.json === true) {
+          console.log(JSON.stringify(toFileJson(files), null, 2));
+          return;
+        }
+
         const table = new Table({ compact: true });
         table.addColumn("name");
         table.addColumn("size");

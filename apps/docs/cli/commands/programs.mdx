@@ -1,0 +1,47 @@
+---
+title: "programs"
+description: "List, start, and stop programs on the V5 brain."
+---
+
+## List programs
+
+```bash
+v5x programs
+```
+
+The table includes the active slot, requested slot, program name, size, timestamp, and binary file name.
+
+### JSON output
+
+```bash
+v5x programs --json
+```
+
+The JSON output is an array of programs:
+
+```json
+[
+  {
+    "slot": 2,
+    "requestedSlot": 2,
+    "name": "driver",
+    "size": 2048,
+    "time": "2024-01-02T03:04:05.000Z",
+    "binfile": "driver.bin"
+  }
+]
+```
+
+`size`, `slot`, and `requestedSlot` preserve the raw values reported by the brain. `time` is serialized as an ISO 8601 timestamp.
+
+## Start a program
+
+```bash
+v5x start <slot>
+```
+
+## Stop the running program
+
+```bash
+v5x stop
+```

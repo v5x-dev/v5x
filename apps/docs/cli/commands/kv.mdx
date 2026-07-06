@@ -3,10 +3,49 @@ title: "kv"
 description: "Read and write brain system key/value settings."
 ---
 
+## List known values
+
+```bash
+v5x kv
+```
+
+`v5x kv` lists well-known brain system variables such as `teamnumber` and `robotname`.
+
+### JSON output
+
+```bash
+v5x kv --json
+```
+
+```json
+[
+  {
+    "key": "teamnumber",
+    "value": "1234A"
+  },
+  {
+    "key": "robotname",
+    "value": null
+  }
+]
+```
+
+Unset values are `null` in JSON output.
+
 ## Read a value
 
 ```bash
 v5x kv get <key>
+v5x kv get <key> --json
+```
+
+`kv get --json` returns one object:
+
+```json
+{
+  "key": "teamnumber",
+  "value": "1234A"
+}
 ```
 
 ## Write a value
