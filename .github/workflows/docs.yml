@@ -80,7 +80,7 @@ jobs:
           path: apps/docs/.wrangler/site
 
       - name: Deploy documentation
-        run: bunx wrangler deploy
+        run: bun run wrangler deploy
         working-directory: apps/docs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
