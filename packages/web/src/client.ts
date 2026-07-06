@@ -9,6 +9,7 @@ import {
   getDefaultSerial,
   getWebSerialUnavailableReason,
   isWebSerialSupported,
+  type WebSerialUnavailableReason,
 } from "./support.js";
 import {
   createListenerSet,
@@ -27,7 +28,7 @@ export type V5ConnectionStatus =
 export interface V5Snapshot {
   status: V5ConnectionStatus;
   supported: boolean;
-  unavailableReason: string | null;
+  unavailableReason: WebSerialUnavailableReason | null;
   connected: boolean;
   connecting: boolean;
   disconnecting: boolean;
@@ -66,7 +67,7 @@ const createDefaultDevice: V5DeviceFactory = (serial) => {
 class V5WebClient implements V5Client {
   private readonly serial: Serial | undefined;
   private readonly supported: boolean;
-  private readonly unavailableReason: string | null;
+  private readonly unavailableReason: WebSerialUnavailableReason | null;
   private readonly refreshIntervalMs: number | undefined;
   private readonly createDevice: V5DeviceFactory;
   private readonly listeners = createListenerSet();
