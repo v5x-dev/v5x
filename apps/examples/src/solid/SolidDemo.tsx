@@ -17,12 +17,21 @@ function createControlsSnapshot(controls: FakeV5Controls) {
     mode: controls.mode,
     stats: controls.stats,
   });
-  const unsubscribe = controls.subscribe(() => {
-    setSnapshot({ mode: controls.mode, stats: controls.stats });
-  });
-
-  onCleanup(unsubscribe);
+  onCleanup(
+    controls.subscribe(() =>
+      setSnapshot({ mode: controls.mode, stats: controls.stats }),
+    ),
+  );
   return snapshot;
+}
+
+function Row(props: { term: string; detail: string | number }) {
+  return (
+    <div>
+      <dt>{props.term}</dt>
+      <dd>{props.detail}</dd>
+    </div>
+  );
 }
 
 function Panel(props: { controls: FakeV5Controls }) {
@@ -90,33 +99,18 @@ function Panel(props: { controls: FakeV5Controls }) {
       </div>
 
       <dl class="snapshot">
-        <div>
-          <dt>Supported</dt>
-          <dd>{String(snapshot().supported)}</dd>
-        </div>
-        <div>
-          <dt>Unavailable</dt>
-          <dd>{snapshot().unavailableReason ?? "none"}</dd>
-        </div>
-        <div>
-          <dt>Error</dt>
-          <dd>{snapshot().error?.code ?? "none"}</dd>
-        </div>
+        <Row term="Supported" detail={String(snapshot().supported)} />
+        <Row
+          term="Unavailable"
+          detail={snapshot().unavailableReason ?? "none"}
+        />
+        <Row term="Error" detail={snapshot().error?.code ?? "none"} />
       </dl>
 
       <dl class="stats">
-        <div>
-          <dt>Connects</dt>
-          <dd>{controls().stats.connects}</dd>
-        </div>
-        <div>
-          <dt>Refreshes</dt>
-          <dd>{controls().stats.refreshes}</dd>
-        </div>
-        <div>
-          <dt>Disconnects</dt>
-          <dd>{controls().stats.disconnects}</dd>
-        </div>
+        <Row term="Connects" detail={controls().stats.connects} />
+        <Row term="Refreshes" detail={controls().stats.refreshes} />
+        <Row term="Disconnects" detail={controls().stats.disconnects} />
       </dl>
 
       <p class="error-text">{snapshot().error?.message ?? ""}</p>
@@ -132,9 +126,9 @@ export function SolidDemo() {
 
   return (
     <Show keyed when={environment()}>
-      {(currentEnvironment) => (
-        <V5Provider client={currentEnvironment.client}>
-          <Panel controls={currentEnvironment.controls} />
+      {(current) => (
+        <V5Provider client={current.client}>
+          <Panel controls={current.controls} />
           <button
             class="button support-toggle"
             type="button"

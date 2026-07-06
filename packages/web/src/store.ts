@@ -6,17 +6,14 @@ export interface V5Store<TSnapshot> {
   subscribe(listener: V5StoreListener): V5Unsubscribe;
 }
 
-export function createListenerSet(): {
-  emit(): void;
-  subscribe(listener: V5StoreListener): V5Unsubscribe;
-} {
+export function createListenerSet() {
   const listeners = new Set<V5StoreListener>();
 
   return {
-    emit() {
+    emit(): void {
       for (const listener of listeners) listener();
     },
-    subscribe(listener: V5StoreListener) {
+    subscribe(listener: V5StoreListener): V5Unsubscribe {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);

@@ -4,9 +4,8 @@ TypeScript implementation of the VEX V5 serial protocol.
 
 See the [serial library documentation](https://docs.v5x.dev/serial/overview) for browser setup, guides, and high-level API reference.
 
-This package provides helpers for connecting to V5 devices over the Web Serial
-API, reading device state, transferring files, and working with protocol
-packets.
+It covers connecting to V5 devices over the Web Serial API, reading device
+state, transferring files, and working with protocol packets.
 
 ## Install
 
@@ -64,10 +63,9 @@ Linux and macOS. Windows requires a different CLI serial backend.
 
 ## Result-returning async APIs
 
-All public async methods return `ResultAsync<T, VexSerialError>` (or
-`ResultAsync<T, VexSerialError>`-yielding helpers) so failures are explicit in
-the type system rather than thrown. State-changing operations are awaitable and
-report errors through the result channel:
+All public async methods return `ResultAsync<T, VexSerialError>`, so failures
+are explicit in the type system rather than thrown. State-changing operations
+are awaitable and report errors through the result channel:
 
 ```ts
 const r = await device.setMatchMode("disabled");
@@ -97,7 +95,7 @@ transfer is active by default.
 Protocol requests default to a 1,000 ms response timeout. Individual transfer
 phases use longer timeouts where erase, write, or exit operations need them.
 `reconnect(0)` waits indefinitely, while a positive reconnect timeout is a total
-deadline in milliseconds. A timeout or NACK is reported as a `VexProtocolError`
+deadline in milliseconds. A timeout or NACK surfaces as a `VexProtocolError`
 (or a related `VexSerialError` subclass) through the `Result` error channel; it
 does not cancel work already running on the device.
 

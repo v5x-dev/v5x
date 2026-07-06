@@ -5,13 +5,13 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "mint dev",
-    "validate": "mint validate",
-    "links": "mint broken-links",
-    "a11y": "mint a11y",
+    "dev": "bun run --bun mint dev",
+    "validate": "bun run --bun mint validate",
+    "links": "bun run --bun mint broken-links",
+    "a11y": "bun run --bun mint a11y",
     "check": "bun run validate && bun run links && bun run a11y",
     "build": "bun run export",
-    "export": "rm -rf .wrangler && mkdir -p .wrangler && mint export --output .wrangler/export.zip && bun scripts/export.ts",
+    "export": "rm -rf .wrangler && mkdir -p .wrangler && bun run --bun mint export --output .wrangler/export.zip && bun scripts/export.ts",
     "deploy": "bun run export && wrangler deploy",
     "deploy:dry": "bun run export && wrangler deploy --dry-run",
     "typecheck": "tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --target ESNext --module Preserve --moduleResolution bundler --types bun scripts/*.ts",

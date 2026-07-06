@@ -28,29 +28,31 @@ function stringAt(value: unknown, keys: string[]): string | undefined {
 
 async function readProsInfo(path: string) {
   const metadata: unknown = await Bun.file(join(path, "project.pros")).json();
-  const name = stringAt(metadata, ["py/state", "project_name"]);
-  const output = stringAt(metadata, [
-    "py/state",
-    "templates",
-    "kernel",
-    "metadata",
-    "output",
-  ]);
-  const description = stringAt(metadata, [
-    "py/state",
-    "upload_options",
-    "description",
-  ]);
-  return { name, description, output };
+  return {
+    name: stringAt(metadata, ["py/state", "project_name"]),
+    description: stringAt(metadata, [
+      "py/state",
+      "upload_options",
+      "description",
+    ]),
+    output: stringAt(metadata, [
+      "py/state",
+      "templates",
+      "kernel",
+      "metadata",
+      "output",
+    ]),
+  };
 }
 
 async function readVexideInfo(path: string) {
   const manifest = Bun.TOML.parse(
     await Bun.file(join(path, "Cargo.toml")).text(),
   );
-  const name = stringAt(manifest, ["package", "name"]);
-  const description = stringAt(manifest, ["package", "description"]);
-  return { name, description };
+  return {
+    name: stringAt(manifest, ["package", "name"]),
+    description: stringAt(manifest, ["package", "description"]),
+  };
 }
 
 export async function inspectProject(inputPath: string): Promise<ProjectInfo> {
@@ -90,11 +92,9 @@ export async function buildProject(project: ProjectInfo): Promise<void> {
   switch (project.type) {
     case "pros":
     case "vexcode-cpp":
-      await runProcess(["make"], project.path);
-      return;
+      return runProcess(["make"], project.path);
     case "vexide":
-      await runProcess(["cargo", "v5", "build", "--release"], project.path);
-      return;
+      return runProcess(["cargo", "v5", "build", "--release"], project.path);
     case "vexcode-py":
       throw new Error("building VEXcode Python projects is not supported");
     case "unknown":
@@ -106,11 +106,9 @@ export async function cleanProject(project: ProjectInfo): Promise<void> {
   switch (project.type) {
     case "pros":
     case "vexcode-cpp":
-      await runProcess(["make", "clean"], project.path);
-      return;
+      return runProcess(["make", "clean"], project.path);
     case "vexide":
-      await runProcess(["cargo", "clean"], project.path);
-      return;
+      return runProcess(["cargo", "clean"], project.path);
     case "vexcode-py":
       throw new Error("cleaning VEXcode Python projects is not supported");
     case "unknown":
@@ -131,30 +129,32 @@ async function newestNamedBinary(
 ): Promise<string | undefined> {
   if (!(await stat(root).catch(() => undefined))?.isDirectory())
     return undefined;
+
+  let newest: { path: string; modified: number } | undefined;
   const glob = new Bun.Glob(`**/${name}.bin`);
-  const candidates: Array<{ path: string; modified: number }> = [];
   for await (const relativePath of glob.scan({ cwd: root, onlyFiles: true })) {
     const path = resolve(root, relativePath);
-    const info = await stat(path);
-    candidates.push({ path, modified: info.mtimeMs });
+    const { mtimeMs } = await stat(path);
+    if (newest === undefined || mtimeMs > newest.modified) {
+      newest = { path, modified: mtimeMs };
+    }
   }
-  candidates.sort((left, right) => right.modified - left.modified);
-  return candidates[0]?.path;
+  return newest?.path;
 }
 
 export async function findProgramArtifact(
   project: ProjectInfo,
   explicitPath?: string,
 ): Promise<string> {
-  const explicit = await existingFile(
-    explicitPath === undefined ? undefined : resolve(explicitPath),
-  );
-  if (explicitPath !== undefined && explicit === undefined) {
-    throw new Error(
-      `program artifact does not exist: ${resolve(explicitPath)}`,
-    );
+  if (explicitPath !== undefined) {
+    const explicit = await existingFile(resolve(explicitPath));
+    if (explicit === undefined) {
+      throw new Error(
+        `program artifact does not exist: ${resolve(explicitPath)}`,
+      );
+    }
+    return explicit;
   }
-  if (explicit !== undefined) return explicit;
 
   const configured = await existingFile(project.artifact);
   if (configured !== undefined) return configured;
@@ -170,12 +170,10 @@ export async function findProgramArtifact(
     if (candidate !== undefined) return candidate;
   }
 
-  const outputRoot =
-    project.type === "vexide" ? join(project.path, "target") : undefined;
   const artifact =
-    outputRoot === undefined
-      ? undefined
-      : await newestNamedBinary(outputRoot, project.name);
+    project.type === "vexide"
+      ? await newestNamedBinary(join(project.path, "target"), project.name)
+      : undefined;
   if (artifact === undefined) {
     throw new Error(
       `no program artifact found for ${project.name}; build the project or pass --file`,

@@ -8,40 +8,32 @@ export type ProgramType =
   | "vexcode-py"
   | "unknown";
 
-function hasVexideDependency(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (!("dependencies" in value)) return false;
-  const dependencies = value.dependencies;
-  return isRecord(dependencies) && "vexide" in dependencies;
+function hasVexideDependency(manifest: unknown): boolean {
+  return (
+    isRecord(manifest) &&
+    isRecord(manifest.dependencies) &&
+    "vexide" in manifest.dependencies
+  );
 }
 
 export async function detectProgramType(path: string): Promise<ProgramType> {
-  const prosFile = Bun.file(join(path, "project.pros"));
+  if (await Bun.file(join(path, "project.pros")).exists()) return "pros";
+
   const cargoFile = Bun.file(join(path, "Cargo.toml"));
-  const vexPyFile = Bun.file(join(path, "src", "main.py"));
-  const vexMkFiles = [
-    Bun.file(join(path, "vex", "mkenv.mk")),
-    Bun.file(join(path, "vex", "mkrules.mk")),
-  ];
-
-  if (await prosFile.exists()) {
-    return "pros";
-  }
-
   if (await cargoFile.exists()) {
-    const config: unknown = Bun.TOML.parse(await cargoFile.text());
-    if (hasVexideDependency(config)) return "vexide";
+    const manifest: unknown = Bun.TOML.parse(await cargoFile.text());
+    if (hasVexideDependency(manifest)) return "vexide";
   }
 
-  if (
-    (await Promise.all(vexMkFiles.map((file) => file.exists()))).some(Boolean)
-  ) {
-    return "vexcode-cpp";
-  }
+  const makeFiles = await Promise.all(
+    ["mkenv.mk", "mkrules.mk"].map((name) =>
+      Bun.file(join(path, "vex", name)).exists(),
+    ),
+  );
+  if (makeFiles.some(Boolean)) return "vexcode-cpp";
 
-  if (await vexPyFile.exists()) {
+  if (await Bun.file(join(path, "src", "main.py")).exists())
     return "vexcode-py";
-  }
 
   return "unknown";
 }

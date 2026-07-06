@@ -42,9 +42,8 @@ if (!uploaded) throw new Error("Upload failed");
 ## Start and stop a program
 
 Use `setActiveProgram` to load a slot or stop the running program. It
-resolves to `true` when the device acknowledges the command and to
-`false` when the device NACKs, the request times out, or the connection
-is not currently open.
+resolves to `true` on acknowledgement and `false` on NACK, timeout, or
+when the connection isn't open.
 
 ```ts
 await device.brain.setActiveProgram(1); // run the program in slot 1

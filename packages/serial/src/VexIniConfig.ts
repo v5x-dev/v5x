@@ -4,18 +4,20 @@
 // -@meisZWFLZ
 
 import { type ZerobaseSlotNumber } from "./Vex.js";
+
 class BaseIniBuilder {
   protected str = "";
+
   protected addLine(line: string): void {
     this.str += line + "\n";
   }
 
-  public addComment(comment: string): this {
+  addComment(comment: string): this {
     this.addLine("; " + comment);
     return this;
   }
 
-  public getContent(): string {
+  getContent(): string {
     return this.str;
   }
 }
@@ -32,12 +34,11 @@ class IniSectionBuilder<
   }
 
   private addSingleObjProperty(key: keyof O, maxValueLength?: number): void {
-    // if property is empty or nullish, skip it
-    if (this.object[key] == null || this.object[key].toString().length === 0)
-      return;
+    const value = this.object[key];
+    if (value == null || value.toString().length === 0) return;
 
     const formattedKey = this.keyTransform(key).padEnd(12).slice(0, 12);
-    const trimmedVal = this.object[key].toString().slice(0, maxValueLength);
+    const trimmedVal = value.toString().slice(0, maxValueLength);
     const escapedVal = trimmedVal.replace(
       /["\\\u0000-\u001f\u007f]/g,
       (character) =>
@@ -47,32 +48,27 @@ class IniSectionBuilder<
     this.addLine(`${formattedKey} = "${escapedVal}"`);
   }
 
-  public addObjProperty(
-    key: keyof O | Array<keyof O>,
-    maxValueLength?: number,
-  ): this {
-    const keys = Array.isArray(key) ? key : [key];
-    for (const k of keys) {
+  addObjProperty(key: keyof O | Array<keyof O>, maxValueLength?: number): this {
+    for (const k of Array.isArray(key) ? key : [key]) {
       this.addSingleObjProperty(k, maxValueLength);
     }
     return this;
   }
 
-  public addAllObjProps(maxValueLength?: number): this {
-    const keys = Object.keys(this.object);
-    for (const k of keys) {
+  addAllObjProps(maxValueLength?: number): this {
+    for (const k of Object.keys(this.object)) {
       this.addSingleObjProperty(k, maxValueLength);
     }
     return this;
   }
 }
+
 class IniFileBuilder extends BaseIniBuilder {
-  public addSection(
+  addSection(
     section: IniSectionBuilder<Record<number | string, string | number>>,
   ): this {
     this.addLine(`[${section.name}]`);
     this.str += section.getContent();
-
     return this;
   }
 }
@@ -92,28 +88,20 @@ export class ProgramIniConfig {
     timezone: "0",
   };
 
-  config: Record<number, string> = {}; // { port_22: "..." }
+  config: Record<number, string> = { 22: "adi" };
   controller1: Record<string, string> = {};
   controller2: Record<string, string> = {};
-  // private options: { [key: string]: string } = {};
-
-  constructor() {
-    this.config = {
-      22: "adi",
-    };
-  }
 
   setProgramDate(date: Date): void {
-    const d = date;
-    this.program.date = d.toISOString();
-    const tzo = Math.abs(d.getTimezoneOffset());
-    const tzh = (tzo / 60) >>> 0;
-    const tzm = tzo - tzh * 60;
+    this.program.date = date.toISOString();
+    const offset = Math.abs(date.getTimezoneOffset());
+    const hours = (offset / 60) >>> 0;
+    const minutes = offset - hours * 60;
     this.program.timezone =
-      (d.getTimezoneOffset() > 0 ? "-" : "+") +
-      this.dec2(tzh) +
+      (date.getTimezoneOffset() > 0 ? "-" : "+") +
+      this.dec2(hours) +
       ":" +
-      this.dec2(tzm);
+      this.dec2(minutes);
   }
 
   createIni(): string {
@@ -166,7 +154,6 @@ export class ProgramIniConfig {
   }
 
   dec2(value: number): string {
-    const str = ("00" + value.toString(10)).substr(-2, 2);
-    return str.toUpperCase();
+    return (value % 100).toString(10).padStart(2, "0").toUpperCase();
   }
 }

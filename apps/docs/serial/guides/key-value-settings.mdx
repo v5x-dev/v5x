@@ -10,7 +10,7 @@ const updated = await device.brain.setValue("example.key", "value");
 console.log({ current, updated });
 ```
 
-`getValue()` returns `undefined` when no usable reply is received. `setValue()` returns whether the brain acknowledged the write.
+`getValue()` returns `undefined` when the brain doesn't send a usable reply. `setValue()` returns whether the brain acknowledged the write.
 
 <Warning>
   These are system-level values. Only write keys documented for the target VEXos

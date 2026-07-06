@@ -5,73 +5,36 @@ import { fileURLToPath } from "node:url";
 import solid from "vite-plugin-solid";
 import { defineConfig } from "vite";
 
-const root = resolve(import.meta.dirname, "../..");
-const reactRoot = packageRoot("react");
-const reactDomRoot = packageRoot("react-dom");
-
 function packageRoot(name: string): string {
   return fileURLToPath(
     new URL(".", import.meta.resolve(`${name}/package.json`)),
   );
 }
 
+const reactRoot = packageRoot("react");
+const reactDomRoot = packageRoot("react-dom");
+const packages = resolve(import.meta.dirname, "../../packages");
+
 export default defineConfig({
   plugins: [
-    react({
-      exclude: [/src\/solid\//],
-    }),
-    solid({
-      include: [/src\/solid\//],
-    }),
+    react({ exclude: [/src\/solid\//] }),
+    solid({ include: [/src\/solid\//] }),
     svelte(),
   ],
   resolve: {
     dedupe: ["react", "react-dom"],
-    alias: [
-      {
-        find: "react/jsx-dev-runtime",
-        replacement: resolve(reactRoot, "jsx-dev-runtime.js"),
-      },
-      {
-        find: "react/jsx-runtime",
-        replacement: resolve(reactRoot, "jsx-runtime.js"),
-      },
-      {
-        find: "react",
-        replacement: reactRoot,
-      },
-      {
-        find: "react-dom/client",
-        replacement: resolve(reactDomRoot, "client.js"),
-      },
-      {
-        find: "react-dom",
-        replacement: reactDomRoot,
-      },
-      {
-        find: "@v5x/web/client-internal",
-        replacement: resolve(root, "packages/web/src/client.ts"),
-      },
-      {
-        find: "@v5x/web/react",
-        replacement: resolve(root, "packages/web/src/react/index.ts"),
-      },
-      {
-        find: "@v5x/web/solid",
-        replacement: resolve(root, "packages/web/src/solid/index.tsx"),
-      },
-      {
-        find: "@v5x/web/svelte",
-        replacement: resolve(root, "packages/web/src/svelte/index.ts"),
-      },
-      {
-        find: "@v5x/web",
-        replacement: resolve(root, "packages/web/src/index.ts"),
-      },
-      {
-        find: "@v5x/serial",
-        replacement: resolve(root, "packages/serial/src/index.ts"),
-      },
-    ],
+    alias: {
+      "react/jsx-dev-runtime": resolve(reactRoot, "jsx-dev-runtime.js"),
+      "react/jsx-runtime": resolve(reactRoot, "jsx-runtime.js"),
+      react: reactRoot,
+      "react-dom/client": resolve(reactDomRoot, "client.js"),
+      "react-dom": reactDomRoot,
+      "@v5x/web/client-internal": resolve(packages, "web/src/client.ts"),
+      "@v5x/web/react": resolve(packages, "web/src/react/index.ts"),
+      "@v5x/web/solid": resolve(packages, "web/src/solid/index.tsx"),
+      "@v5x/web/svelte": resolve(packages, "web/src/svelte/index.ts"),
+      "@v5x/web": resolve(packages, "web/src/index.ts"),
+      "@v5x/serial": resolve(packages, "serial/src/index.ts"),
+    },
   },
 });

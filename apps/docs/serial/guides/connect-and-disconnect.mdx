@@ -21,6 +21,6 @@ try {
 }
 ```
 
-`disconnect()` closes the current port. `dispose()` also disables automatic refresh and reconnect behavior and clears the internal timer. Use `dispose()` when the instance will not be reused.
+`disconnect()` closes the current port. `dispose()` also disables automatic refresh and reconnect and clears the internal timer. Use `dispose()` when you're done with the instance.
 
-Set `autoReconnect`, `autoRefresh`, or `pauseRefreshOnFileTransfer` before connecting when the defaults do not fit the application.
+If the defaults don't fit, set `autoReconnect`, `autoRefresh`, or `pauseRefreshOnFileTransfer` before connecting.

@@ -1,10 +1,12 @@
 import { AckType, type DataArray } from "./Vex.js";
 import type { PacketEncoder } from "./VexPacketEncoder.js";
 
+// The match-status reply acknowledges with 167 instead of CDC2_ACK.
 const MATCH_STATUS_ALT_ACK = 167;
 
 export abstract class Packet {
-  data: Uint8Array; // the buffer sent to the device or received from the device
+  /** Raw bytes sent to or received from the device. */
+  data: Uint8Array;
 
   static ENCODER: PacketEncoder;
 
@@ -15,6 +17,9 @@ export abstract class Packet {
 }
 
 export class DeviceBoundPacket extends Packet {
+  static COMMAND_ID: number;
+  static COMMAND_EXTENDED_ID: number | undefined;
+
   get commandId(): number {
     return (this.constructor as typeof DeviceBoundPacket).COMMAND_ID;
   }
@@ -23,50 +28,35 @@ export class DeviceBoundPacket extends Packet {
     return (this.constructor as typeof DeviceBoundPacket).COMMAND_EXTENDED_ID;
   }
 
-  static COMMAND_ID: number;
-  static COMMAND_EXTENDED_ID: number | undefined;
-
   constructor(payload?: Uint8Array) {
-    super(new Uint8Array());
-    const me = this.constructor as typeof DeviceBoundPacket;
-
-    if (me.COMMAND_EXTENDED_ID === undefined) {
-      if (payload === undefined) {
-        this.data = Packet.ENCODER.cdcCommand(me.COMMAND_ID);
-      } else {
-        this.data = Packet.ENCODER.cdcCommandWithData(me.COMMAND_ID, payload);
-      }
-    } else {
-      if (payload === undefined) {
-        this.data = Packet.ENCODER.cdc2Command(
-          me.COMMAND_ID,
-          me.COMMAND_EXTENDED_ID,
-        );
-      } else {
-        this.data = Packet.ENCODER.cdc2CommandWithData(
-          me.COMMAND_ID,
-          me.COMMAND_EXTENDED_ID,
-          payload,
-        );
-      }
-    }
+    const { COMMAND_ID: cmd, COMMAND_EXTENDED_ID: ext } =
+      new.target as typeof DeviceBoundPacket;
+    const encoder = Packet.ENCODER;
+    super(
+      ext === undefined
+        ? payload === undefined
+          ? encoder.cdcCommand(cmd)
+          : encoder.cdcCommandWithData(cmd, payload)
+        : payload === undefined
+          ? encoder.cdc2Command(cmd, ext)
+          : encoder.cdc2CommandWithData(cmd, ext, payload),
+    );
   }
 }
 
 export class HostBoundPacket extends Packet {
-  ack: AckType = AckType.CDC2_NACK;
+  static COMMAND_ID: number;
+  static COMMAND_EXTENDED_ID: number | undefined;
+
+  ack: AckType;
   payloadSize: number;
   ackIndex: number;
 
   constructor(data: DataArray) {
     super(data);
-
     this.payloadSize = Packet.ENCODER.getPayloadSize(this.data);
-    const n = Packet.ENCODER.getHostHeaderLength(this.data);
-
-    // skip command id check
-
-    this.ack = this.data[(this.ackIndex = n + 1)]!;
+    this.ackIndex = Packet.ENCODER.getHostHeaderLength(this.data) + 1;
+    this.ack = this.data[this.ackIndex]!;
   }
 
   static isValidPacket(data: Uint8Array, n: number): boolean {

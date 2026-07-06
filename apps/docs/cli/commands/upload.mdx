@@ -24,4 +24,4 @@ v5x upload ./robot --slot 2 --name "Driver"
 v5x upload ./robot --slot 2 --no-build --file ./bin/robot.bin
 ```
 
-The command reports transfer progress on standard error and always disposes the device connection after the transfer attempt.
+Transfer progress prints to standard error. The device connection is always disposed after the attempt, whether or not it succeeds.

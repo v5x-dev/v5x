@@ -19,6 +19,6 @@ await client.connect();
 
 The package has no required React, Svelte, or Solid dependency. Use it directly for vanilla browser code, or import a framework binding from `@v5x/web/react`, `@v5x/web/svelte`, or `@v5x/web/solid` when your app already uses that framework.
 
-Web Serial requires a browser that implements the API and a secure context such as HTTPS or `localhost`. Browser permission prompts must be triggered from a user gesture, so call `connect()` from a click or similar interaction.
+Web Serial requires a browser that implements the API and a secure context such as HTTPS or `localhost`. The permission prompt must come from a user gesture, so call `connect()` from a click handler or similar.
 
 `@v5x/web` does not replace `@v5x/serial`; it builds a small application-state contract on top of the serial device API.

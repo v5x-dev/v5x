@@ -23,15 +23,11 @@ export class PacketView extends DataView<ArrayBuffer> {
   }
 
   nextInt8(): number {
-    const result = this.getInt8(this.position);
-    this.position += 1;
-    return result;
+    return this.getInt8(this.position++);
   }
 
   nextUint8(): number {
-    const result = this.getUint8(this.position);
-    this.position += 1;
-    return result;
+    return this.getUint8(this.position++);
   }
 
   nextInt16(littleEndian = this.littleEndianDefault): number {
@@ -66,22 +62,16 @@ export class PacketView extends DataView<ArrayBuffer> {
     return result;
   }
 
+  /** Read a null-terminated string from a fixed-width `length`-byte field. */
   nextNTBS(length: number): string {
-    // this length is different from the document
-    let result = "";
-    const lastPosition = this.position;
-    for (let i = 0; i < length; i++) {
-      if (this.byteLength <= this.position) break;
-      const g = this.nextUint8();
-      if (g === 0) break;
-      result += String.fromCharCode(g);
-    }
-    this.position = lastPosition + length;
+    const start = this.position;
+    const result = this.nextVarNTBS(length);
+    this.position = start + length;
     return result;
   }
 
+  /** Read a null-terminated string of at most `length` bytes. */
   nextVarNTBS(length: number): string {
-    // this length is different from the document
     let result = "";
     for (let i = 0; i < length; i++) {
       if (this.byteLength <= this.position) break;
