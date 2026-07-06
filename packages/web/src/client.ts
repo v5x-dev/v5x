@@ -33,7 +33,7 @@ export interface V5Snapshot {
    * detach and dispose the stale device, and leave recovery to an explicit
    * `connect()` call. Calling `disconnect()` from `error` clears the error and
    * returns the client to `idle`.
-  */
+   */
   status: V5ConnectionStatus;
   supported: boolean;
   unavailableReason: WebSerialUnavailableReason | null;
