@@ -36,3 +36,40 @@ Before a release, pack all publishable packages and run the same artifact
 checks as CI. The checks install the tarballs outside the workspace and verify
 ESM, CommonJS, declarations, the CLI executable, web package artifacts, source
 maps, and package contents.
+
+## Publishing packages
+
+Publishable packages are released independently with package-version tags:
+
+```sh
+git tag @v5x/cli@0.0.22
+git push origin @v5x/cli@0.0.22
+
+git tag @v5x/serial@0.5.5
+git push origin @v5x/serial@0.5.5
+
+git tag @v5x/web@0.1.1
+git push origin @v5x/web@0.1.1
+```
+
+Pushing one of those tags starts the release workflow for that package only.
+The tag version must match the selected package's `package.json` version. The
+workflow installs dependencies with Bun, packs the selected package, runs
+`bun scripts/verify-package-tarballs.ts` against the generated tarball, and
+publishes from that package directory with `npm publish --provenance --access
+public`.
+
+Before pushing a tag, move the released package's notes out of the Unreleased
+section and into a dated heading using this exact format:
+
+```md
+### @v5x/serial 0.5.5 - 2026-07-06
+```
+
+The release workflow fails if `CHANGELOG.md` does not contain a heading for the
+tagged package and version dated with the UTC date of the workflow run.
+
+The workflow requests `id-token: write` for npm provenance and trusted
+publishing. If trusted publishing is not configured for the package on npm, add
+an `NPM_TOKEN` repository secret with publish access; the workflow will use it
+when present.

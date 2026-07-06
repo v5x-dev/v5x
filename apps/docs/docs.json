@@ -59,6 +59,7 @@
               "cli/commands/new",
               "cli/commands/init",
               "cli/commands/install",
+              "cli/commands/doctor",
               "cli/commands/upload",
               "cli/commands/run"
             ]

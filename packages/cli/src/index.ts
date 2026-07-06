@@ -7,6 +7,7 @@ import cat from "./commands/cat";
 import clean from "./commands/clean";
 import devices from "./commands/devices";
 import dir from "./commands/dir";
+import doctor from "./commands/doctor";
 import init from "./commands/init";
 import install from "./commands/install";
 import kv from "./commands/kv";
@@ -28,6 +29,7 @@ const commands = [
   newProject,
   init,
   dir,
+  doctor,
   cat,
   rm,
   devices,

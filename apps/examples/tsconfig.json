@@ -15,10 +15,10 @@
     "paths": {
       "@v5x/serial": ["../../packages/serial/src/index.ts"],
       "@v5x/web": ["../../packages/web/src/index.ts"],
-      "@v5x/web/client-internal": ["../../packages/web/src/client.ts"],
       "@v5x/web/react": ["../../packages/web/src/react/index.ts"],
       "@v5x/web/solid": ["../../packages/web/src/solid/index.tsx"],
-      "@v5x/web/svelte": ["../../packages/web/src/svelte/index.ts"]
+      "@v5x/web/svelte": ["../../packages/web/src/svelte/index.ts"],
+      "@v5x/web/testing": ["../../packages/web/src/testing.ts"]
     }
   },
   "include": ["src/**/*", "*.ts"],

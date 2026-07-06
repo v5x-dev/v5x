@@ -26,12 +26,29 @@ export type V5ConnectionStatus =
   | "error";
 
 export interface V5Snapshot {
+  /**
+   * Current connection lifecycle state.
+   *
+   * Refresh failures move the client to `error`, stop background refresh,
+   * detach and dispose the stale device, and leave recovery to an explicit
+   * `connect()` call. Calling `disconnect()` from `error` clears the error and
+   * returns the client to `idle`.
+  */
   status: V5ConnectionStatus;
   supported: boolean;
   unavailableReason: WebSerialUnavailableReason | null;
+  /**
+   * True only while the client has a live attached device. Refresh failures
+   * clear the attached device before publishing the `error` snapshot.
+   */
   connected: boolean;
   connecting: boolean;
   disconnecting: boolean;
+  /**
+   * Normalized lifecycle error for the current `error` snapshot. Refresh
+   * failures use `refresh-error` and remain visible until `connect()` starts a
+   * fresh attempt or `disconnect()` returns the client to `idle`.
+   */
   error: V5WebError | null;
 }
 
@@ -48,7 +65,7 @@ export interface V5Client extends V5Store<V5Snapshot> {
   refresh(): Promise<void>;
 }
 
-interface V5DeviceLike {
+export interface V5DeviceLike {
   autoRefresh: boolean;
   connect(): ResultAsync<void, VexSerialError>;
   disconnect(): Promise<void>;
@@ -56,7 +73,7 @@ interface V5DeviceLike {
   refresh(): ResultAsync<boolean, VexSerialError>;
 }
 
-type V5DeviceFactory = (serial: Serial) => V5DeviceLike;
+export type V5DeviceFactory = (serial: Serial) => V5DeviceLike;
 
 const createDefaultDevice: V5DeviceFactory = (serial) => {
   const device = new V5SerialDevice(serial);
@@ -189,13 +206,15 @@ class V5WebClient implements V5Client {
     try {
       const result = await this.device.refresh();
       if (result.isErr()) {
-        this.fail("refresh-error", result.error, "V5 device refresh failed.");
+        await this.handleRefreshFailure(
+          result.error,
+          "V5 device refresh failed.",
+        );
       } else {
         this.listeners.emit();
       }
     } catch (error: unknown) {
-      this.fail(
-        "refresh-error",
+      await this.handleRefreshFailure(
         error,
         "V5 device refresh threw an unknown error.",
       );
@@ -210,6 +229,28 @@ class V5WebClient implements V5Client {
 
   private fail(code: V5WebErrorCode, error: unknown, fallback: string): void {
     this.setState("error", normalizeV5WebError(code, error, fallback));
+  }
+
+  private async handleRefreshFailure(
+    error: unknown,
+    fallback: string,
+  ): Promise<void> {
+    const normalizedError = normalizeV5WebError(
+      "refresh-error",
+      error,
+      fallback,
+    );
+    const device = this.device;
+
+    this.generation++;
+    this.device = null;
+    this.stopRefreshTimer();
+
+    if (device !== null) {
+      await this.tryDisposeDevice(device);
+    }
+
+    this.setState("error", normalizedError);
   }
 
   private startRefreshTimer(): void {

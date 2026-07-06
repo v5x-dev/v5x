@@ -18,4 +18,6 @@ if (!(await client.connect())) {
 
 Each error has a stable `code`, a message, and an optional `cause`. Right now the client reports support, connect, disconnect, and refresh errors; workflow errors for files, programs, screenshots, and key-value settings will land with those workflows.
 
+Refresh errors mean the existing connection is no longer considered usable. The client stops background refresh, disconnects or disposes the stale device, clears the attached device reference, and leaves the snapshot in `error` with `error.code === "refresh-error"`. Call `connect()` to retry with a fresh device. Call `disconnect()` to clear the error and return to `idle` without starting another connection attempt.
+
 When Web Serial is unavailable, the snapshot status is `unsupported` and `unavailableReason` is `web-serial-unavailable`.

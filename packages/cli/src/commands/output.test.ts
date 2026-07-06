@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { FileVendor, SmartDeviceType } from "@v5x/serial";
+import { err } from "neverthrow";
+import { FileVendor, SmartDeviceType, VexSerialError } from "@v5x/serial";
+import { formatSerialFailure, unwrapSerial } from "../utils/output";
 import {
   formatDeviceRows,
   formatSmartDeviceType,
@@ -7,6 +9,11 @@ import {
   toDeviceJson,
 } from "./devices";
 import { formatFileRows, formatFileTimestamp, toFileJson } from "./dir";
+import {
+  compareVersions,
+  createDoctorReport,
+  formatDoctorRows,
+} from "./doctor";
 import { toKvJson } from "./kv";
 import { assertProjectNameArgument } from "./new";
 import {
@@ -168,4 +175,109 @@ test("parses start command slot arguments", () => {
   expect(parseSlotArgument("8")).toBe(8);
   expect(() => parseSlotArgument("0")).toThrow("slot must be");
   expect(() => parseSlotArgument("program.bin")).toThrow("slot must be");
+});
+
+test("compares Bun-style versions", () => {
+  expect(compareVersions("1.3.14", "1.3.14")).toBe(0);
+  expect(compareVersions("1.3.15", "1.3.14")).toBe(1);
+  expect(compareVersions("1.2.9", "1.3.14")).toBe(-1);
+});
+
+test("reports doctor checks without requiring hardware", async () => {
+  const report = await createDoctorReport({
+    bunVersion: "1.3.14",
+    os: "linux",
+    which: (command) =>
+      ["git", "cargo", "python3", "pros", "make"].includes(command)
+        ? `/bin/${command}`
+        : null,
+    serial: {
+      onconnect: () => {},
+      ondisconnect: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => true,
+      getPorts: async () => [],
+      requestPort: async () => {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  expect(report.status).toBe("ok");
+  expect(formatDoctorRows(report)).toContainEqual([
+    "ok",
+    "Serial ports",
+    "none visible",
+    "Connect a powered V5 brain only when running hardware commands.",
+  ]);
+});
+
+describe("serial command failures", () => {
+  test("includes serial kind and message for file operation failures", () => {
+    const error = new VexSerialError("protocol", "timed out waiting for ack");
+
+    expect(() =>
+      unwrapSerial(err(error), "failed to read user/log.txt"),
+    ).toThrow(
+      "failed to read user/log.txt: protocol: timed out waiting for ack",
+    );
+    expect(() =>
+      unwrapSerial(err(error), "failed to erase user/log.txt"),
+    ).toThrow(
+      "failed to erase user/log.txt: protocol: timed out waiting for ack",
+    );
+  });
+
+  test("includes serial details for program control failures", () => {
+    expect(() =>
+      unwrapSerial(
+        err(new VexSerialError("io", "serial port disconnected")),
+        "failed to list programs",
+      ),
+    ).toThrow("failed to list programs: io: serial port disconnected");
+    expect(() =>
+      unwrapSerial(
+        err(
+          new VexSerialError("not-connected", "no connection to a V5 device"),
+        ),
+        "failed to start slot 2",
+      ),
+    ).toThrow(
+      "failed to start slot 2: not-connected: no connection to a V5 device",
+    );
+    expect(() =>
+      unwrapSerial(
+        err(new VexSerialError("transfer", "file transfer exit failed")),
+        "failed to stop program",
+      ),
+    ).toThrow("failed to stop program: transfer: file transfer exit failed");
+  });
+
+  test("includes serial details for screenshot and upload failures", () => {
+    expect(() =>
+      unwrapSerial(
+        err(new VexSerialError("protocol", "screen capture timed out")),
+        "failed to capture screenshot",
+      ),
+    ).toThrow(
+      "failed to capture screenshot: protocol: screen capture timed out",
+    );
+    expect(
+      formatSerialFailure(
+        "the brain rejected the program upload",
+        new VexSerialError("io", "write EIO"),
+      ),
+    ).toBe("the brain rejected the program upload: io: write EIO");
+  });
+
+  test("does not expose stack traces for expected serial failures", () => {
+    const message = formatSerialFailure(
+      "failed to list programs",
+      new VexSerialError("protocol", "unexpected reply"),
+    );
+
+    expect(message).not.toContain("VexSerialError:");
+    expect(message).not.toContain(" at ");
+  });
 });
