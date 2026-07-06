@@ -9,6 +9,11 @@ import {
   toDeviceJson,
 } from "./devices";
 import { formatFileRows, formatFileTimestamp, toFileJson } from "./dir";
+import {
+  compareVersions,
+  createDoctorReport,
+  formatDoctorRows,
+} from "./doctor";
 import { toKvJson } from "./kv";
 import { assertProjectNameArgument } from "./new";
 import {
@@ -170,6 +175,42 @@ test("parses start command slot arguments", () => {
   expect(parseSlotArgument("8")).toBe(8);
   expect(() => parseSlotArgument("0")).toThrow("slot must be");
   expect(() => parseSlotArgument("program.bin")).toThrow("slot must be");
+});
+
+test("compares Bun-style versions", () => {
+  expect(compareVersions("1.3.14", "1.3.14")).toBe(0);
+  expect(compareVersions("1.3.15", "1.3.14")).toBe(1);
+  expect(compareVersions("1.2.9", "1.3.14")).toBe(-1);
+});
+
+test("reports doctor checks without requiring hardware", async () => {
+  const report = await createDoctorReport({
+    bunVersion: "1.3.14",
+    os: "linux",
+    which: (command) =>
+      ["git", "cargo", "python3", "pros", "make"].includes(command)
+        ? `/bin/${command}`
+        : null,
+    serial: {
+      onconnect: () => {},
+      ondisconnect: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => true,
+      getPorts: async () => [],
+      requestPort: async () => {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  expect(report.status).toBe("ok");
+  expect(formatDoctorRows(report)).toContainEqual([
+    "ok",
+    "Serial ports",
+    "none visible",
+    "Connect a powered V5 brain only when running hardware commands.",
+  ]);
 });
 
 describe("serial command failures", () => {

@@ -1,0 +1,34 @@
+---
+title: "doctor"
+description: "Check local v5x environment status."
+---
+
+```bash
+v5x doctor
+```
+
+Checks the local environment before project code or hardware-specific commands are involved. It reports Bun version, CLI platform support, project toolchains, and visible serial ports when the operating system allows them to be listed.
+
+The command does not require a connected V5 brain. If no serial ports are visible, hardware commands may still work after connecting and powering on a brain.
+
+## JSON output
+
+```bash
+v5x doctor --json
+```
+
+The JSON output includes an overall status and each check's status, value, and suggested next action:
+
+```json
+{
+  "status": "warn",
+  "checks": [
+    {
+      "name": "Serial ports",
+      "status": "ok",
+      "value": "none visible",
+      "action": "Connect a powered V5 brain only when running hardware commands."
+    }
+  ]
+}
+```
