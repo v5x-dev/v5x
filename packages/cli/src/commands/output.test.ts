@@ -21,7 +21,11 @@ import {
   parseSlotArgument,
   toProgramJson,
 } from "./programs";
-import { encodeScreenshotPng, encodeScreenshotPpm } from "./screenshot";
+import {
+  encodeScreenshotPng,
+  encodeScreenshotPpm,
+  toScreenshotJson,
+} from "./screenshot";
 
 describe("command output formatting", () => {
   test("formats smart devices with stable unknown labels and serial versions", () => {
@@ -162,6 +166,16 @@ describe("command output formatting", () => {
     expect(() => encodeScreenshotPpm(new Uint8Array([0]))).toThrow(
       "bad screenshot size: 1",
     );
+  });
+
+  test("formats screenshot JSON metadata", () => {
+    expect(toScreenshotJson("screen.png", "png", 12345)).toEqual({
+      output: "screen.png",
+      format: "png",
+      width: 480,
+      height: 272,
+      bytes: 12345,
+    });
   });
 });
 
