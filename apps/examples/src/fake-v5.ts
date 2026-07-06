@@ -1,7 +1,4 @@
-import {
-  createV5ClientWithFactory,
-  type V5Client,
-} from "@v5x/web/client-internal";
+import { createV5ClientWithFactory, type V5Client } from "@v5x/web/testing";
 import { err, ok, ResultAsync, type Result } from "neverthrow";
 import { VexSerialError } from "@v5x/serial";
 

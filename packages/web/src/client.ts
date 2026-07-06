@@ -64,7 +64,7 @@ export interface V5Client extends V5Store<V5Snapshot> {
   refresh(): Promise<void>;
 }
 
-interface V5DeviceLike {
+export interface V5DeviceLike {
   autoRefresh: boolean;
   connect(): ResultAsync<void, VexSerialError>;
   disconnect(): Promise<void>;
@@ -72,7 +72,7 @@ interface V5DeviceLike {
   refresh(): ResultAsync<boolean, VexSerialError>;
 }
 
-type V5DeviceFactory = (serial: Serial) => V5DeviceLike;
+export type V5DeviceFactory = (serial: Serial) => V5DeviceLike;
 
 const createDefaultDevice: V5DeviceFactory = (serial) => {
   const device = new V5SerialDevice(serial);
