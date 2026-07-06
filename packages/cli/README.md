@@ -67,6 +67,9 @@ v5x kv get key
 v5x kv set key value
 ```
 
+Hardware commands accept `--port <path-or-id>` to target a specific serial
+device. Set `V5X_PORT` to use the same selector without repeating the flag.
+
 ## Development
 
 ```sh

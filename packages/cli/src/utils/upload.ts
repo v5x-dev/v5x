@@ -1,5 +1,5 @@
-import { withV5Device } from "../device";
-import { formatSerialFailure } from "./output";
+import { type PortSelectionOptions, withSelectedV5Device } from "../device";
+import { formatSerialFailure, printJson } from "./output";
 import {
   buildProject,
   createProgramConfig,
@@ -7,8 +7,13 @@ import {
   inspectProject,
   validateProgramArtifacts,
 } from "./project";
+import {
+  toWorkflowArtifactJson,
+  toWorkflowProjectJson,
+  type WorkflowUploadJson,
+} from "./workflow-json";
 
-export interface UploadOptions {
+export interface UploadOptions extends PortSelectionOptions {
   path: string;
   slot: number;
   name?: string;
@@ -17,9 +22,11 @@ export interface UploadOptions {
   artifact?: string;
   build: boolean;
   run: boolean;
+  command: WorkflowUploadJson["command"];
+  json?: boolean;
 }
 
-export interface UploadCommandOptions {
+export interface UploadCommandOptions extends PortSelectionOptions {
   slot: string;
   name?: string;
   description?: string;
@@ -27,6 +34,7 @@ export interface UploadCommandOptions {
   file?: string;
   build?: boolean;
   run?: boolean;
+  json?: boolean;
 }
 
 export async function uploadProgramFromCommand(
@@ -43,6 +51,9 @@ export async function uploadProgramFromCommand(
     artifact: options.file,
     build: options.build ?? true,
     run: options.run ?? runDefault,
+    port: options.port,
+    command: runDefault ? "run" : "upload",
+    json: options.json,
   });
 }
 
@@ -65,9 +76,14 @@ function reportProgress() {
   return report;
 }
 
-export async function uploadProgram(options: UploadOptions): Promise<void> {
+export async function uploadProgram(
+  options: UploadOptions,
+): Promise<WorkflowUploadJson> {
   const project = await inspectProject(options.path);
-  if (options.build) await buildProject(project);
+  if (options.build)
+    await buildProject(project, {
+      stdout: options.json === true ? "ignore" : "inherit",
+    });
   const artifacts = await findProgramArtifacts(project, options.artifact);
   const config = createProgramConfig({
     slot: options.slot,
@@ -83,7 +99,7 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
     ? await Bun.file(validated.cold.path).bytes()
     : undefined;
 
-  await withV5Device(async (device) => {
+  await withSelectedV5Device(options, async (device) => {
     const progress = reportProgress();
     const uploaded = await device.brain.uploadProgram(
       config,
@@ -102,8 +118,24 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
     }
     if (!uploaded.value)
       throw new Error("the brain rejected the program upload");
-    console.log(
-      `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,
-    );
+    if (options.json !== true) {
+      console.log(
+        `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,
+      );
+    }
   });
+  const result: WorkflowUploadJson = {
+    command: options.command,
+    project: toWorkflowProjectJson(project),
+    slot: options.slot,
+    name: config.program.name,
+    description: config.program.description,
+    icon: config.program.icon,
+    artifactPath: validated.hot.path,
+    artifacts: toWorkflowArtifactJson(validated),
+    built: options.build,
+    started: options.run,
+  };
+  if (options.json === true) printJson(result);
+  return result;
 }

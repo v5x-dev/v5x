@@ -5,12 +5,17 @@ description: "Read and update system configuration values."
 
 ```ts
 const current = await device.brain.getValue("example.key");
-const updated = await device.brain.setValue("example.key", "value");
+if (current.isErr()) throw current.error;
 
-console.log({ current, updated });
+const updated = await device.brain.setValue("example.key", "value");
+if (updated.isErr()) throw updated.error;
+
+console.log({ current: current.value });
 ```
 
-`getValue()` returns `undefined` when the brain doesn't send a usable reply. `setValue()` returns whether the brain acknowledged the write.
+`getValue()` returns `Ok(undefined)` when the brain doesn't send a usable reply.
+`setValue()` returns `Ok(undefined)` when the brain acknowledges the write. Use
+`.isErr()` and `.error` to handle connection or protocol failures.
 
 <Warning>
   These are system-level values. Only write keys documented for the target VEXos

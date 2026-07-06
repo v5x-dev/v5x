@@ -88,13 +88,24 @@ export async function inspectProject(inputPath: string): Promise<ProjectInfo> {
   }
 }
 
-export async function buildProject(project: ProjectInfo): Promise<void> {
+interface ProjectProcessOptions {
+  stdout?: "inherit" | "ignore";
+}
+
+export async function buildProject(
+  project: ProjectInfo,
+  options: ProjectProcessOptions = {},
+): Promise<void> {
   switch (project.type) {
     case "pros":
     case "vexcode-cpp":
-      return runProcess(["make"], project.path);
+      return runProcess(["make"], project.path, options);
     case "vexide":
-      return runProcess(["cargo", "v5", "build", "--release"], project.path);
+      return runProcess(
+        ["cargo", "v5", "build", "--release"],
+        project.path,
+        options,
+      );
     case "vexcode-py":
       throw new Error("building VEXcode Python projects is not supported");
     case "unknown":
@@ -102,13 +113,16 @@ export async function buildProject(project: ProjectInfo): Promise<void> {
   }
 }
 
-export async function cleanProject(project: ProjectInfo): Promise<void> {
+export async function cleanProject(
+  project: ProjectInfo,
+  options: ProjectProcessOptions = {},
+): Promise<void> {
   switch (project.type) {
     case "pros":
     case "vexcode-cpp":
-      return runProcess(["make", "clean"], project.path);
+      return runProcess(["make", "clean"], project.path, options);
     case "vexide":
-      return runProcess(["cargo", "clean"], project.path);
+      return runProcess(["cargo", "clean"], project.path, options);
     case "vexcode-py":
       throw new Error("cleaning VEXcode Python projects is not supported");
     case "unknown":

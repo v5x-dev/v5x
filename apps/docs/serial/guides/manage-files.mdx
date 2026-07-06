@@ -7,7 +7,10 @@ description: "List, read, write, and remove files in brain storage."
 import { FileDownloadTarget, FileVendor } from "@v5x/serial";
 
 const files = await device.brain.listFiles(FileVendor.USER);
+if (files.isErr()) throw files.error;
+
 const data = await device.brain.readFile("slot_1.ini");
+if (data.isErr()) throw data.error;
 
 const written = await device.brain.writeFile({
   filename: "example.txt",
@@ -17,8 +20,10 @@ const written = await device.brain.writeFile({
   autoRun: false,
 });
 
-if (!written) throw new Error("Write failed");
-console.log(files, data && new TextDecoder().decode(data));
+if (written.isErr()) throw written.error;
+if (!written.value) throw new Error("Write was not acknowledged");
+
+console.log(files.value, new TextDecoder().decode(data.value));
 ```
 
 Remove one user file with `removeFile("example.txt")`. `removeAllFiles()` clears the user vendor.

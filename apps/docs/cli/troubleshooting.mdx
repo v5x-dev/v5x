@@ -22,6 +22,11 @@ description: "Resolve project detection, toolchain, and serial connection failur
     Turn on the brain, reconnect its USB cable, close competing serial
     applications, and verify operating-system permissions.
   </Accordion>
+  <Accordion title="The wrong brain is selected">
+    Pass `--port <path-or-id>` to hardware commands such as `upload`, `run`,
+    `devices`, `programs`, `dir`, and `screenshot`. Set `V5X_PORT` to reuse the
+    same selector across commands.
+  </Accordion>
   <Accordion title="An upload artifact cannot be found">
     Build the project first. When using `--no-build`, pass the intended `.bin`
     file with `--file`.

@@ -64,6 +64,8 @@ describe("WebSerialAdapter", () => {
 
     expect(second[0]).toBe(first[0]);
     expect(first[0]?.getInfo()).toEqual({
+      path: "/dev/ttyACM0",
+      id: "/dev/ttyACM0",
       usbVendorId: 10376,
       usbProductId: 1281,
     });
@@ -77,6 +79,8 @@ describe("WebSerialAdapter", () => {
     const ports = await adapter.getPorts();
 
     expect(ports[0]?.getInfo()).toEqual({
+      path: "/dev/cu.usbmodem01",
+      id: "/dev/cu.usbmodem01",
       usbVendorId: 10376,
       usbProductId: undefined,
     });

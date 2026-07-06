@@ -8,18 +8,19 @@ import { RadioChannelType } from "@v5x/serial";
 
 console.log(device.matchMode);
 const updated = await device.setMatchMode("disabled");
-if (!updated) throw new Error("Unable to update match mode");
+if (updated.isErr()) throw updated.error;
 
 if (device.radio.isAvailable) {
   console.log(device.radio.channel, device.radio.latency);
-  await device.radio.changeChannel(RadioChannelType.PIT);
+  const changed = await device.radio.changeChannel(RadioChannelType.PIT);
+  if (changed.isErr()) throw changed.error;
 }
 ```
 
 `matchMode` is `"driver"`, `"autonomous"`, or `"disabled"`. Radio channels include `PIT` and `DOWNLOAD`.
 
-`device.setMatchMode(mode)` resolves to `true` on acknowledgement and
-`false` on NACK, timeout, or when the connection isn't open. The
+`device.setMatchMode(mode)` returns `Ok(undefined)` on acknowledgement and
+`Err(VexSerialError)` on NACK, timeout, or when the connection isn't open. The
 `device.matchMode` setter is deprecated and will be removed in a future
 breaking release.
 

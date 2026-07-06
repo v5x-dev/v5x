@@ -1,6 +1,7 @@
 export async function runProcess(
   command: string[],
   cwd: string,
+  options: { stdout?: "inherit" | "ignore" } = {},
 ): Promise<void> {
   const [program, ...args] = command;
   if (program === undefined) throw new Error("cannot run an empty command");
@@ -13,7 +14,7 @@ export async function runProcess(
     cmd: [executable, ...args],
     cwd,
     stdin: "inherit",
-    stdout: "inherit",
+    stdout: options.stdout ?? "inherit",
     stderr: "inherit",
   });
   const exitCode = await process.exited;

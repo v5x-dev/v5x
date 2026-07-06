@@ -1,6 +1,6 @@
 import type { Sade } from "sade";
 import { SmartDeviceType, VexFirmwareVersion } from "@v5x/serial";
-import { withV5Device } from "../device";
+import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { printJson, renderTable } from "../utils/output";
 
 type SmartDevice = { port: number; type: number; version: number };
@@ -63,8 +63,9 @@ export default function registerDevicesCommand(program: Sade) {
   program
     .command("devices", "list devices connected to brain", { alias: "lsdev" })
     .option("--json", "print machine-readable JSON")
-    .action(async (options: { json?: boolean }) => {
-      await withV5Device(async (device) => {
+    .option("--port", "serial port path or id, defaults to V5X_PORT")
+    .action(async (options: { json?: boolean } & PortSelectionOptions) => {
+      await withSelectedV5Device(options, async (device) => {
         const devices = device.devices;
         if (options.json === true) printJson(toDeviceJson(devices));
         else

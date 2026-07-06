@@ -25,8 +25,8 @@ description: "Resolve Web Serial, connection, refresh, and transfer problems."
     Call `dispose()` when abandoning a device instance. `disconnect()` closes
     the port but does not clear the refresh timer.
   </Accordion>
-  <Accordion title="A transfer returns undefined">
-    Confirm the connection is still active. High-level methods commonly return
-    `undefined` when there is no usable connection or reply.
+  <Accordion title="A transfer returns Err">
+    Confirm the connection is still active. High-level methods return
+    `Err(VexSerialError)` when there is no usable connection or protocol reply.
   </Accordion>
 </AccordionGroup>
