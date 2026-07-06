@@ -80,7 +80,9 @@ function worstStatus(statuses: DoctorStatus[]): DoctorStatus {
   return "ok";
 }
 
-function formatSerialPortSummary(ports: Awaited<ReturnType<Serial["getPorts"]>>): string {
+function formatSerialPortSummary(
+  ports: Awaited<ReturnType<Serial["getPorts"]>>,
+): string {
   if (ports.length === 0) return "none visible";
 
   const usbIds = ports
@@ -124,7 +126,8 @@ async function checkSerialPorts(serialAdapter: Serial): Promise<DoctorCheck> {
       name: "Serial ports",
       status: "warn",
       value: error instanceof Error ? error.message : String(error),
-      action: "Check serial permissions and close applications that may own the port.",
+      action:
+        "Check serial permissions and close applications that may own the port.",
     };
   }
 }
@@ -133,7 +136,10 @@ export async function createDoctorReport(
   options: DoctorOptions = {},
 ): Promise<DoctorReport> {
   const bunVersion =
-    options.bunVersion ?? process.versions.bun ?? globalThis.Bun?.version ?? "unknown";
+    options.bunVersion ??
+    process.versions.bun ??
+    globalThis.Bun?.version ??
+    "unknown";
   const os = options.os ?? platform();
   const which = options.which ?? Bun.which;
   const minimumBun = minimumBunVersion();
@@ -141,13 +147,17 @@ export async function createDoctorReport(
 
   checks.push({
     name: "Bun",
-    status: bunVersion !== "unknown" && compareVersions(bunVersion, minimumBun) >= 0 ? "ok" : "error",
+    status:
+      bunVersion !== "unknown" && compareVersions(bunVersion, minimumBun) >= 0
+        ? "ok"
+        : "error",
     value: bunVersion,
-    action: bunVersion !== "unknown" && compareVersions(bunVersion, minimumBun) >= 0
-      ? "No action needed."
-      : bunVersion === "unknown"
-        ? `Run v5x with Bun ${minimumBun} or newer.`
-        : `Install Bun ${minimumBun} or newer.`,
+    action:
+      bunVersion !== "unknown" && compareVersions(bunVersion, minimumBun) >= 0
+        ? "No action needed."
+        : bunVersion === "unknown"
+          ? `Run v5x with Bun ${minimumBun} or newer.`
+          : `Install Bun ${minimumBun} or newer.`,
   });
 
   checks.push({
