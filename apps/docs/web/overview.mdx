@@ -21,4 +21,6 @@ The package has no required React, Svelte, or Solid dependency. Use it directly 
 
 Web Serial requires a browser that implements the API and a secure context such as HTTPS or `localhost`. The permission prompt must come from a user gesture, so call `connect()` from a click handler or similar.
 
+Refresh failures are treated as stale or lost connections. When `refresh()` fails, the client stops background refresh, disconnects or disposes the current device, clears the attached device reference, and publishes an `error` snapshot with a normalized `refresh-error`. To retry, call `connect()` again; the client creates a fresh device and restarts background refresh only after that connection succeeds. To dismiss the error without retrying, call `disconnect()` and the client returns to `idle`.
+
 `@v5x/web` does not replace `@v5x/serial`; it builds a small application-state contract on top of the serial device API.
