@@ -1,6 +1,6 @@
 import type { Sade } from "sade";
 import { deflateSync } from "node:zlib";
-import { withV5Device } from "../device";
+import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { unwrapSerial } from "../utils/output";
 
 const WIDTH = 480;
@@ -92,24 +92,29 @@ export default function registerScreenshotCommand(program: Sade) {
     })
     .option("-o, --output", "write the screenshot to a file")
     .option("--format", "file format for --output: png or ppm", "png")
-    .action(async (options: { output?: string; format?: string }) => {
-      await withV5Device(async (device) => {
-        const frame = unwrapSerial(
-          await device.brain.captureScreen(),
-          "failed to capture screenshot",
-        );
-        if (options.output === undefined) {
-          printKittyRgb(frame);
-          return;
-        }
+    .option("--port", "serial port path or id, defaults to V5X_PORT")
+    .action(
+      async (
+        options: { output?: string; format?: string } & PortSelectionOptions,
+      ) => {
+        await withSelectedV5Device(options, async (device) => {
+          const frame = unwrapSerial(
+            await device.brain.captureScreen(),
+            "failed to capture screenshot",
+          );
+          if (options.output === undefined) {
+            printKittyRgb(frame);
+            return;
+          }
 
-        const format = parseScreenshotFormat(options.format);
-        const data =
-          format === "png"
-            ? encodeScreenshotPng(frame)
-            : encodeScreenshotPpm(frame);
-        await Bun.write(options.output, data);
-        console.log(`wrote ${options.output}`);
-      });
-    });
+          const format = parseScreenshotFormat(options.format);
+          const data =
+            format === "png"
+              ? encodeScreenshotPng(frame)
+              : encodeScreenshotPpm(frame);
+          await Bun.write(options.output, data);
+          console.log(`wrote ${options.output}`);
+        });
+      },
+    );
 }

@@ -1,4 +1,4 @@
-import { withV5Device } from "../device";
+import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { formatSerialFailure } from "./output";
 import {
   buildProject,
@@ -8,7 +8,7 @@ import {
   validateProgramArtifacts,
 } from "./project";
 
-export interface UploadOptions {
+export interface UploadOptions extends PortSelectionOptions {
   path: string;
   slot: number;
   name?: string;
@@ -19,7 +19,7 @@ export interface UploadOptions {
   run: boolean;
 }
 
-export interface UploadCommandOptions {
+export interface UploadCommandOptions extends PortSelectionOptions {
   slot: string;
   name?: string;
   description?: string;
@@ -43,6 +43,7 @@ export async function uploadProgramFromCommand(
     artifact: options.file,
     build: options.build ?? true,
     run: options.run ?? runDefault,
+    port: options.port,
   });
 }
 
@@ -83,7 +84,7 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
     ? await Bun.file(validated.cold.path).bytes()
     : undefined;
 
-  await withV5Device(async (device) => {
+  await withSelectedV5Device(options, async (device) => {
     const progress = reportProgress();
     const uploaded = await device.brain.uploadProgram(
       config,

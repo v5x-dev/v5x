@@ -10,6 +10,7 @@ v5x programs
 ```
 
 The table includes the active slot, requested slot, program name, size, timestamp, and binary file name.
+Pass `--port <path-or-id>` or set `V5X_PORT` to target a specific brain.
 
 ### JSON output
 
@@ -40,8 +41,12 @@ The JSON output is an array of programs:
 v5x start <slot>
 ```
 
+`v5x start` accepts `--port <path-or-id>`.
+
 ## Stop the running program
 
 ```bash
 v5x stop
 ```
+
+`v5x stop` accepts `--port <path-or-id>`.
