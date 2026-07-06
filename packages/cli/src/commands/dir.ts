@@ -1,6 +1,6 @@
 import type { Sade } from "sade";
 import type { FileVendor, IFileHandle } from "@v5x/serial";
-import { withV5Device } from "../device";
+import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { VENDOR_PREFIXES, VENDORS } from "../utils/brainPath";
 import { printJson, renderTable, utcTimestamp } from "../utils/output";
 
@@ -60,8 +60,9 @@ export default function registerDirCommand(program: Sade) {
   program
     .command("dir", "list files on flash", { alias: "ls" })
     .option("--json", "print machine-readable JSON")
-    .action(async (options: { json?: boolean }) => {
-      await withV5Device(async (device) => {
+    .option("--port", "serial port path or id, defaults to V5X_PORT")
+    .action(async (options: { json?: boolean } & PortSelectionOptions) => {
+      await withSelectedV5Device(options, async (device) => {
         const files: (FileRow & IFileHandle)[] = [];
         for (const vendor of VENDORS) {
           const result = await device.brain.listFiles(vendor);

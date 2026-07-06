@@ -11,6 +11,9 @@ export interface SerialPortFilter {
 export interface SerialPortInfo {
   usbVendorId?: number;
   usbProductId?: number;
+  path?: string;
+  id?: string;
+  serialNumber?: string;
 }
 
 export interface SerialPort extends EventTarget {
@@ -35,6 +38,7 @@ export interface AdapterPortInfo {
   path: string;
   vendorId?: string;
   productId?: string;
+  serialNumber?: string;
 }
 
 async function listPorts(): Promise<AdapterPortInfo[]> {
@@ -197,10 +201,13 @@ export class WebSerialAdapter extends EventTarget implements Serial {
         this.ports.delete(path);
     }
 
-    return ports.map(({ path, vendorId, productId }) => {
+    return ports.map(({ path, vendorId, productId, serialNumber }) => {
       let adapter = this.ports.get(path);
       if (!adapter) {
         adapter = new WebSerialPortAdapter(path, {
+          path,
+          id: serialNumber ?? path,
+          serialNumber,
           usbVendorId: vendorId
             ? parseInt(vendorId, 16)
             : this.os === "darwin"

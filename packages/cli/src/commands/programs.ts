@@ -1,6 +1,6 @@
 import type { IProgramInfo, SlotNumber } from "@v5x/serial";
 import type { Sade } from "sade";
-import { withV5Device } from "../device";
+import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import {
   printJson,
   renderTable,
@@ -45,8 +45,9 @@ export default function registerProgramsCommand(program: Sade) {
   program
     .command("programs", "list programs on the V5 brain")
     .option("--json", "print machine-readable JSON")
-    .action(async (options: { json?: boolean }) => {
-      await withV5Device(async (device) => {
+    .option("--port", "serial port path or id, defaults to V5X_PORT")
+    .action(async (options: { json?: boolean } & PortSelectionOptions) => {
+      await withSelectedV5Device(options, async (device) => {
         const programs = unwrapSerial(
           await device.brain.listProgram(),
           "failed to list programs",
@@ -64,9 +65,10 @@ export default function registerProgramsCommand(program: Sade) {
 
   program
     .command("start <slot>", "start a program slot on the V5 brain")
-    .action(async (slot: string) => {
+    .option("--port", "serial port path or id, defaults to V5X_PORT")
+    .action(async (slot: string, options: PortSelectionOptions) => {
       const slotNumber = parseSlotArgument(slot);
-      await withV5Device(async (device) => {
+      await withSelectedV5Device(options, async (device) => {
         unwrapSerial(
           await device.brain.runProgram(slotNumber),
           `failed to start slot ${slot}`,
@@ -77,8 +79,9 @@ export default function registerProgramsCommand(program: Sade) {
 
   program
     .command("stop", "stop the running program on the V5 brain")
-    .action(async () => {
-      await withV5Device(async (device) => {
+    .option("--port", "serial port path or id, defaults to V5X_PORT")
+    .action(async (options: PortSelectionOptions) => {
+      await withSelectedV5Device(options, async (device) => {
         unwrapSerial(
           await device.brain.stopProgram(),
           "failed to stop program",

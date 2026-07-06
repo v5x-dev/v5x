@@ -1,6 +1,6 @@
 import type { Sade } from "sade";
 import { deflateSync } from "node:zlib";
-import { withV5Device } from "../device";
+import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { printJson, unwrapSerial } from "../utils/output";
 
 const WIDTH = 480;
@@ -107,10 +107,17 @@ export default function registerScreenshotCommand(program: Sade) {
     })
     .option("-o, --output", "write the screenshot to a file")
     .option("--format", "file format for --output: png or ppm", "png")
+    .option("--port", "serial port path or id, defaults to V5X_PORT")
     .option("--json", "print machine-readable JSON")
     .action(
-      async (options: { output?: string; format?: string; json?: boolean }) => {
-        await withV5Device(async (device) => {
+      async (
+        options: {
+          output?: string;
+          format?: string;
+          json?: boolean;
+        } & PortSelectionOptions,
+      ) => {
+        await withSelectedV5Device(options, async (device) => {
           const frame = unwrapSerial(
             await device.brain.captureScreen(),
             "failed to capture screenshot",
