@@ -1,7 +1,7 @@
 import type { Sade } from "sade";
 import chalk from "chalk";
 import { withV5Device } from "../device";
-import { printJson, renderTable, unwrap } from "../utils/output";
+import { printJson, renderTable, unwrapSerial } from "../utils/output";
 
 const WELL_KNOWN_KEYS = ["teamnumber", "robotname"] as const;
 
@@ -53,7 +53,7 @@ export default function registerKvCommand(program: Sade) {
     .command("kv set <key> <value>", "set a system variable on a brain")
     .action(async (key, value) => {
       await withV5Device(async (device) => {
-        unwrap(
+        unwrapSerial(
           await device.brain.setValue(key, value),
           `failed to set ${key} to ${value}`,
         );

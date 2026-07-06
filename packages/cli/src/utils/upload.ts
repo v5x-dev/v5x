@@ -1,4 +1,5 @@
 import { withV5Device } from "../device";
+import { formatSerialFailure } from "./output";
 import {
   buildProject,
   createProgramConfig,
@@ -91,7 +92,15 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
       progress,
     );
     progress.finish();
-    if (uploaded.isErr() || !uploaded.value)
+    if (uploaded.isErr()) {
+      throw new Error(
+        formatSerialFailure(
+          "the brain rejected the program upload",
+          uploaded.error,
+        ),
+      );
+    }
+    if (!uploaded.value)
       throw new Error("the brain rejected the program upload");
     console.log(
       `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,

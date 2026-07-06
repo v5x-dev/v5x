@@ -22,10 +22,22 @@ if (connected) {
 
 Web Serial is browser-only and requires HTTPS or `localhost`. Call `connect()` from a user gesture so the browser can show the permission prompt.
 
+If a background or explicit `refresh()` fails, the snapshot moves to `error`
+with a normalized `refresh-error`. The stale device is disconnected or disposed,
+background refresh stops, and the attached device is cleared. Call `connect()`
+again to make a fresh connection attempt; call `disconnect()` from the error
+state to clear the error and return to `idle` without retrying.
+
 Framework bindings are available as subpath exports:
 
 ```ts
 import { V5Provider, useV5Snapshot } from "@v5x/web/react";
 import { createV5State } from "@v5x/web/svelte";
 import { createV5Snapshot } from "@v5x/web/solid";
+```
+
+Testing and examples that need a fake device can use the testing subpath:
+
+```ts
+import { createV5ClientWithFactory } from "@v5x/web/testing";
 ```
