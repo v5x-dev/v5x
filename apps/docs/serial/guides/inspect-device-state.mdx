@@ -6,7 +6,8 @@ description: "Read brain, controller, radio, and smart-port state."
 `V5SerialDevice` refreshes its state views every 200 milliseconds by default.
 
 ```ts
-await device.refresh();
+const refreshed = await device.refresh();
+if (refreshed.isErr()) throw refreshed.error;
 
 console.log({
   brainAvailable: device.brain.isAvailable,

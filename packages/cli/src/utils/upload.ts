@@ -1,5 +1,5 @@
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
-import { formatSerialFailure } from "./output";
+import { formatSerialFailure, printJson } from "./output";
 import {
   buildProject,
   createProgramConfig,
@@ -7,6 +7,11 @@ import {
   inspectProject,
   validateProgramArtifacts,
 } from "./project";
+import {
+  toWorkflowArtifactJson,
+  toWorkflowProjectJson,
+  type WorkflowUploadJson,
+} from "./workflow-json";
 
 export interface UploadOptions extends PortSelectionOptions {
   path: string;
@@ -17,6 +22,8 @@ export interface UploadOptions extends PortSelectionOptions {
   artifact?: string;
   build: boolean;
   run: boolean;
+  command: WorkflowUploadJson["command"];
+  json?: boolean;
 }
 
 export interface UploadCommandOptions extends PortSelectionOptions {
@@ -27,6 +34,7 @@ export interface UploadCommandOptions extends PortSelectionOptions {
   file?: string;
   build?: boolean;
   run?: boolean;
+  json?: boolean;
 }
 
 export async function uploadProgramFromCommand(
@@ -44,6 +52,8 @@ export async function uploadProgramFromCommand(
     build: options.build ?? true,
     run: options.run ?? runDefault,
     port: options.port,
+    command: runDefault ? "run" : "upload",
+    json: options.json,
   });
 }
 
@@ -66,9 +76,14 @@ function reportProgress() {
   return report;
 }
 
-export async function uploadProgram(options: UploadOptions): Promise<void> {
+export async function uploadProgram(
+  options: UploadOptions,
+): Promise<WorkflowUploadJson> {
   const project = await inspectProject(options.path);
-  if (options.build) await buildProject(project);
+  if (options.build)
+    await buildProject(project, {
+      stdout: options.json === true ? "ignore" : "inherit",
+    });
   const artifacts = await findProgramArtifacts(project, options.artifact);
   const config = createProgramConfig({
     slot: options.slot,
@@ -103,8 +118,24 @@ export async function uploadProgram(options: UploadOptions): Promise<void> {
     }
     if (!uploaded.value)
       throw new Error("the brain rejected the program upload");
-    console.log(
-      `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,
-    );
+    if (options.json !== true) {
+      console.log(
+        `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,
+      );
+    }
   });
+  const result: WorkflowUploadJson = {
+    command: options.command,
+    project: toWorkflowProjectJson(project),
+    slot: options.slot,
+    name: config.program.name,
+    description: config.program.description,
+    icon: config.program.icon,
+    artifactPath: validated.hot.path,
+    artifacts: toWorkflowArtifactJson(validated),
+    built: options.build,
+    started: options.run,
+  };
+  if (options.json === true) printJson(result);
+  return result;
 }

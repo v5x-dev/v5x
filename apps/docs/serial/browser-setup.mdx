@@ -18,7 +18,8 @@ const connectButton = document.querySelector<HTMLButtonElement>("#connect");
 connectButton?.addEventListener("click", async () => {
   const device = new V5SerialDevice(navigator.serial);
   const connected = await device.connect();
-  console.log({ connected });
+
+  console.log({ connected: connected.isOk() });
 });
 ```
 

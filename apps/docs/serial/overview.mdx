@@ -11,7 +11,9 @@ import { V5SerialDevice } from "@v5x/serial";
 const device = new V5SerialDevice(navigator.serial);
 
 try {
-  if (!(await device.connect())) throw new Error("V5 device not found");
+  const connected = await device.connect();
+  if (connected.isErr()) throw connected.error;
+
   console.log(device.brain.systemVersion.toUserString());
 } finally {
   await device.dispose();

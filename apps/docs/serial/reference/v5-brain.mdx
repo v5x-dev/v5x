@@ -19,8 +19,8 @@ Access this view through `device.brain`.
 - `listProgram()` and `uploadProgram()`
 - `setActiveProgram(slot)`, `setMatchMode(mode)`, and the lower-level
   `runProgram(slot)`/`stopProgram()` aliases for program and competition
-  state. Each resolves to `true` on acknowledgement and `false` on NACK,
-  timeout, or disconnect.
+  state. Each returns `Ok(undefined)` on acknowledgement or
+  `Err(VexSerialError)` on NACK, timeout, or disconnect.
 - `captureScreen()`
 - `uploadFirmware()`
 
@@ -34,7 +34,7 @@ Access this view through `device.brain`.
 
 `activeProgram` is read-only state. Use `await setActiveProgram(slot)` to load
 slots 1 through 8 and `await setActiveProgram(0)` to stop the running program.
-The method resolves to `false` when the device is disconnected or does not
-acknowledge the command.
+The method returns `Err(VexSerialError)` when the device is disconnected or
+does not acknowledge the command.
 
 [View source](https://github.com/v5x-dev/v5x/blob/main/packages/serial/src/VexDevice.ts)

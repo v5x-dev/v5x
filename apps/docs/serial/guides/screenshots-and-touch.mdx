@@ -8,12 +8,14 @@ const pixels = await device.brain.captureScreen((current, total) => {
   console.log(`${current}/${total}`);
 });
 
-if (pixels) {
-  console.log(pixels.length);
-}
+if (pixels.isErr()) throw pixels.error;
+console.log(pixels.value.length);
 
-await device.mockTouch(240, 136, true);
-await device.mockTouch(240, 136, false);
+const pressed = await device.mockTouch(240, 136, true);
+if (pressed.isErr()) throw pressed.error;
+
+const released = await device.mockTouch(240, 136, false);
+if (released.isErr()) throw released.error;
 ```
 
 The screenshot is a 480×272 RGB buffer. Each pixel uses three consecutive bytes in red, green, blue order.

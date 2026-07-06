@@ -17,6 +17,7 @@ export default function registerUploadCommand(program: Sade) {
     .option("--no-build", "skip building the project")
     .option("--run", "start the program after uploading")
     .option("--port", "serial port path or id, defaults to V5X_PORT")
+    .option("--json", "print machine-readable JSON")
     .action((path: string | undefined, options: UploadCommandOptions) =>
       uploadProgramFromCommand(path, options, false),
     );

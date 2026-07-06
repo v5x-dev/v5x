@@ -1,11 +1,12 @@
 import type { Sade } from "sade";
 import { deflateSync } from "node:zlib";
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
-import { unwrapSerial } from "../utils/output";
+import { printJson, unwrapSerial } from "../utils/output";
 
 const WIDTH = 480;
 const HEIGHT = 272;
 const ROW_BYTES = WIDTH * 3;
+type ScreenshotFormat = "png" | "ppm";
 
 function assertScreenshotSize(bytes: Uint8Array): void {
   if (bytes.length !== ROW_BYTES * HEIGHT) {
@@ -70,11 +71,25 @@ export function encodeScreenshotPpm(bytes: Uint8Array): Buffer {
   ]);
 }
 
-function parseScreenshotFormat(format: string | undefined): "png" | "ppm" {
+function parseScreenshotFormat(format: string | undefined): ScreenshotFormat {
   if (format === undefined || format === "png" || format === "ppm") {
     return format ?? "png";
   }
   throw new Error("--format must be png or ppm");
+}
+
+export function toScreenshotJson(
+  output: string,
+  format: ScreenshotFormat,
+  bytes: number,
+) {
+  return {
+    output,
+    format,
+    width: WIDTH,
+    height: HEIGHT,
+    bytes,
+  };
 }
 
 function printKittyRgb(bytes: Uint8Array): void {
@@ -93,9 +108,14 @@ export default function registerScreenshotCommand(program: Sade) {
     .option("-o, --output", "write the screenshot to a file")
     .option("--format", "file format for --output: png or ppm", "png")
     .option("--port", "serial port path or id, defaults to V5X_PORT")
+    .option("--json", "print machine-readable JSON")
     .action(
       async (
-        options: { output?: string; format?: string } & PortSelectionOptions,
+        options: {
+          output?: string;
+          format?: string;
+          json?: boolean;
+        } & PortSelectionOptions,
       ) => {
         await withSelectedV5Device(options, async (device) => {
           const frame = unwrapSerial(
@@ -113,7 +133,9 @@ export default function registerScreenshotCommand(program: Sade) {
               ? encodeScreenshotPng(frame)
               : encodeScreenshotPpm(frame);
           await Bun.write(options.output, data);
-          console.log(`wrote ${options.output}`);
+          if (options.json === true)
+            printJson(toScreenshotJson(options.output, format, data.length));
+          else console.log(`wrote ${options.output}`);
         });
       },
     );
