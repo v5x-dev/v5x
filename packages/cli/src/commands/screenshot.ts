@@ -1,7 +1,7 @@
 import type { Sade } from "sade";
 import { deflateSync } from "node:zlib";
 import { withV5Device } from "../device";
-import { unwrap } from "../utils/output";
+import { unwrapSerial } from "../utils/output";
 
 const WIDTH = 480;
 const HEIGHT = 272;
@@ -94,7 +94,7 @@ export default function registerScreenshotCommand(program: Sade) {
     .option("--format", "file format for --output: png or ppm", "png")
     .action(async (options: { output?: string; format?: string }) => {
       await withV5Device(async (device) => {
-        const frame = unwrap(
+        const frame = unwrapSerial(
           await device.brain.captureScreen(),
           "failed to capture screenshot",
         );

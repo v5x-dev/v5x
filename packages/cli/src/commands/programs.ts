@@ -1,7 +1,12 @@
 import type { IProgramInfo, SlotNumber } from "@v5x/serial";
 import type { Sade } from "sade";
 import { withV5Device } from "../device";
-import { printJson, renderTable, unwrap, utcTimestamp } from "../utils/output";
+import {
+  printJson,
+  renderTable,
+  unwrapSerial,
+  utcTimestamp,
+} from "../utils/output";
 import { formatFileSize } from "./dir";
 
 export function parseSlotArgument(slot: string): SlotNumber {
@@ -42,7 +47,7 @@ export default function registerProgramsCommand(program: Sade) {
     .option("--json", "print machine-readable JSON")
     .action(async (options: { json?: boolean }) => {
       await withV5Device(async (device) => {
-        const programs = unwrap(
+        const programs = unwrapSerial(
           await device.brain.listProgram(),
           "failed to list programs",
         );
@@ -62,7 +67,7 @@ export default function registerProgramsCommand(program: Sade) {
     .action(async (slot: string) => {
       const slotNumber = parseSlotArgument(slot);
       await withV5Device(async (device) => {
-        unwrap(
+        unwrapSerial(
           await device.brain.runProgram(slotNumber),
           `failed to start slot ${slot}`,
         );
@@ -74,7 +79,10 @@ export default function registerProgramsCommand(program: Sade) {
     .command("stop", "stop the running program on the V5 brain")
     .action(async () => {
       await withV5Device(async (device) => {
-        unwrap(await device.brain.stopProgram(), "failed to stop program");
+        unwrapSerial(
+          await device.brain.stopProgram(),
+          "failed to stop program",
+        );
         console.log("stopped program");
       });
     });
