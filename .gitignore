@@ -17,6 +17,7 @@ apps/website/.wrangler
 
 # Local agent skills
 .agents
+.claude/
 skills-lock.json
 
 # TypeScript
