@@ -12,10 +12,11 @@ const device = new V5SerialDevice(navigator.serial);
 
 try {
   const connected = await device.connect();
-  if (!connected) throw new Error("Connection was not established");
+  if (connected.isErr()) throw connected.error;
 
   console.log(device.isConnected);
-  await device.refresh();
+  const refreshed = await device.refresh();
+  if (refreshed.isErr()) throw refreshed.error;
 } finally {
   await device.dispose();
 }

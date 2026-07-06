@@ -7,8 +7,9 @@ description: "List, upload, start, and stop V5 programs."
 
 ```ts
 const programs = await device.brain.listProgram();
+if (programs.isErr()) throw programs.error;
 
-for (const program of programs ?? []) {
+for (const program of programs.value) {
   console.log(program.name, program.slot, program.size);
 }
 ```
@@ -34,7 +35,8 @@ const uploaded = await device.brain.uploadProgram(
   (state, current, total) => console.log(state, current, total),
 );
 
-if (!uploaded) throw new Error("Upload failed");
+if (uploaded.isErr()) throw uploaded.error;
+if (!uploaded.value) throw new Error("Upload was not acknowledged");
 ```
 
 `ProgramIniConfig.program.slot` is zero-based. The first brain slot is `0` in this metadata object.
@@ -42,12 +44,15 @@ if (!uploaded) throw new Error("Upload failed");
 ## Start and stop a program
 
 Use `setActiveProgram` to load a slot or stop the running program. It
-resolves to `true` on acknowledgement and `false` on NACK, timeout, or
-when the connection isn't open.
+returns `Ok(undefined)` on acknowledgement or `Err(VexSerialError)` on NACK,
+timeout, or when the connection isn't open.
 
 ```ts
-await device.brain.setActiveProgram(1); // run the program in slot 1
-await device.brain.setActiveProgram(0); // stop the currently running program
+const started = await device.brain.setActiveProgram(1);
+if (started.isErr()) throw started.error;
+
+const stopped = await device.brain.setActiveProgram(0);
+if (stopped.isErr()) throw stopped.error;
 ```
 
 The `device.brain.activeProgram` setter is deprecated and will be removed
