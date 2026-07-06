@@ -158,6 +158,13 @@ function verifyManifest(
     verifyExport(
       parsed,
       packageName,
+      "./testing",
+      "./dist/testing.d.ts",
+      "./dist/testing.js",
+    );
+    verifyExport(
+      parsed,
+      packageName,
       "./react",
       "./dist/react/index.d.ts",
       "./dist/react/index.js",
@@ -268,6 +275,9 @@ function getRequiredFiles(packageName: PackageName): string[] {
     "dist/solid/provider.d.ts",
     "dist/store.d.ts",
     "dist/support.d.ts",
+    "dist/testing.js",
+    "dist/testing.d.ts",
+    "dist/testing.js.map",
   ];
 }
 
@@ -282,6 +292,7 @@ function getRequiredMaps(packageName: PackageName): string[] {
 
   return [
     "dist/index.js.map",
+    "dist/testing.js.map",
     "dist/react/index.js.map",
     "dist/svelte/index.js.map",
     "dist/solid/index.js.map",
