@@ -9,6 +9,7 @@ import {
   getDefaultSerial,
   getWebSerialUnavailableReason,
   isWebSerialSupported,
+  type WebSerialUnavailableReason,
 } from "./support.js";
 import {
   createListenerSet,
@@ -32,10 +33,10 @@ export interface V5Snapshot {
    * detach and dispose the stale device, and leave recovery to an explicit
    * `connect()` call. Calling `disconnect()` from `error` clears the error and
    * returns the client to `idle`.
-   */
+  */
   status: V5ConnectionStatus;
   supported: boolean;
-  unavailableReason: string | null;
+  unavailableReason: WebSerialUnavailableReason | null;
   /**
    * True only while the client has a live attached device. Refresh failures
    * clear the attached device before publishing the `error` snapshot.
@@ -83,7 +84,7 @@ const createDefaultDevice: V5DeviceFactory = (serial) => {
 class V5WebClient implements V5Client {
   private readonly serial: Serial | undefined;
   private readonly supported: boolean;
-  private readonly unavailableReason: string | null;
+  private readonly unavailableReason: WebSerialUnavailableReason | null;
   private readonly refreshIntervalMs: number | undefined;
   private readonly createDevice: V5DeviceFactory;
   private readonly listeners = createListenerSet();

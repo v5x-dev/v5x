@@ -63,7 +63,7 @@ describe("createV5Client", () => {
     expect(client.getSnapshot()).toMatchObject({
       status: "unsupported",
       supported: false,
-      unavailableReason: "web-serial-unavailable",
+      unavailableReason: "non-browser-runtime",
       connected: false,
     });
   });
