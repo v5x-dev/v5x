@@ -10,6 +10,7 @@
         "prettier": "^3.8.5",
         "turbo": "^2.9.18",
         "typescript": "^5.9.3",
+        "yaml": "^2.9.0",
       },
     },
     "apps/docs": {

@@ -27,6 +27,7 @@
     "website:check": "bun run --cwd apps/website check",
     "website:build": "bun run --cwd apps/website build",
     "website:deploy": "bun run --cwd apps/website deploy",
+    "labels:sync": "bun scripts/sync-dependabot-labels.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint packages apps --type-aware",
@@ -38,7 +39,8 @@
     "oxlint-tsgolint": "^0.23.0",
     "prettier": "^3.8.5",
     "turbo": "^2.9.18",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "yaml": "^2.9.0"
   },
   "patchedDependencies": {
     "front-matter@4.0.2": "patches/front-matter@4.0.2.patch"
