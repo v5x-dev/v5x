@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { FileVendor, SmartDeviceType } from "@v5x/serial";
+import { err } from "neverthrow";
+import { FileVendor, SmartDeviceType, VexSerialError } from "@v5x/serial";
+import { formatSerialFailure, unwrapSerial } from "../utils/output";
 import {
   formatDeviceRows,
   formatSmartDeviceType,
@@ -168,4 +170,73 @@ test("parses start command slot arguments", () => {
   expect(parseSlotArgument("8")).toBe(8);
   expect(() => parseSlotArgument("0")).toThrow("slot must be");
   expect(() => parseSlotArgument("program.bin")).toThrow("slot must be");
+});
+
+describe("serial command failures", () => {
+  test("includes serial kind and message for file operation failures", () => {
+    const error = new VexSerialError("protocol", "timed out waiting for ack");
+
+    expect(() =>
+      unwrapSerial(err(error), "failed to read user/log.txt"),
+    ).toThrow(
+      "failed to read user/log.txt: protocol: timed out waiting for ack",
+    );
+    expect(() =>
+      unwrapSerial(err(error), "failed to erase user/log.txt"),
+    ).toThrow(
+      "failed to erase user/log.txt: protocol: timed out waiting for ack",
+    );
+  });
+
+  test("includes serial details for program control failures", () => {
+    expect(() =>
+      unwrapSerial(
+        err(new VexSerialError("io", "serial port disconnected")),
+        "failed to list programs",
+      ),
+    ).toThrow("failed to list programs: io: serial port disconnected");
+    expect(() =>
+      unwrapSerial(
+        err(
+          new VexSerialError("not-connected", "no connection to a V5 device"),
+        ),
+        "failed to start slot 2",
+      ),
+    ).toThrow(
+      "failed to start slot 2: not-connected: no connection to a V5 device",
+    );
+    expect(() =>
+      unwrapSerial(
+        err(new VexSerialError("transfer", "file transfer exit failed")),
+        "failed to stop program",
+      ),
+    ).toThrow("failed to stop program: transfer: file transfer exit failed");
+  });
+
+  test("includes serial details for screenshot and upload failures", () => {
+    expect(() =>
+      unwrapSerial(
+        err(new VexSerialError("protocol", "screen capture timed out")),
+        "failed to capture screenshot",
+      ),
+    ).toThrow(
+      "failed to capture screenshot: protocol: screen capture timed out",
+    );
+    expect(
+      formatSerialFailure(
+        "the brain rejected the program upload",
+        new VexSerialError("io", "write EIO"),
+      ),
+    ).toBe("the brain rejected the program upload: io: write EIO");
+  });
+
+  test("does not expose stack traces for expected serial failures", () => {
+    const message = formatSerialFailure(
+      "failed to list programs",
+      new VexSerialError("protocol", "unexpected reply"),
+    );
+
+    expect(message).not.toContain("VexSerialError:");
+    expect(message).not.toContain(" at ");
+  });
 });
