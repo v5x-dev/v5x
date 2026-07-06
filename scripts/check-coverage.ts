@@ -7,9 +7,54 @@ const targets = [
   },
   { name: "CLI adapter", path: "packages/cli/src/adapter.ts", minimum: 70 },
   {
+    name: "CLI device command output",
+    path: "packages/cli/src/commands/devices.ts",
+    minimum: 75,
+  },
+  {
+    name: "CLI dir command output",
+    path: "packages/cli/src/commands/dir.ts",
+    minimum: 60,
+  },
+  {
+    name: "CLI doctor command output",
+    path: "packages/cli/src/commands/doctor.ts",
+    minimum: 70,
+  },
+  {
+    name: "CLI screenshot command output",
+    path: "packages/cli/src/commands/screenshot.ts",
+    minimum: 55,
+  },
+  {
+    name: "CLI output helpers",
+    path: "packages/cli/src/utils/output.ts",
+    minimum: 70,
+  },
+  {
+    name: "CLI project workflows",
+    path: "packages/cli/src/utils/project.ts",
+    minimum: 65,
+  },
+  {
+    name: "CLI scaffold workflows",
+    path: "packages/cli/src/utils/scaffold.ts",
+    minimum: 85,
+  },
+  {
     name: "Device state",
     path: "packages/serial/src/VexDeviceState.ts",
     minimum: 60,
+  },
+  {
+    name: "Web client",
+    path: "packages/web/src/client.ts",
+    minimum: 90,
+  },
+  {
+    name: "Web support",
+    path: "packages/web/src/support.ts",
+    minimum: 95,
   },
 ];
 
