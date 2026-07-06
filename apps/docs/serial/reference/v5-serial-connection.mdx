@@ -12,8 +12,14 @@ const connection = new V5SerialConnection(navigator.serial);
 
 try {
   const opened = await connection.open();
-  if (!opened) throw new Error("Unable to open a compatible port");
-  console.log(await connection.getSystemStatus());
+  if (opened.isErr()) throw opened.error;
+  if (opened.value !== true)
+    throw new Error("Unable to open a compatible port");
+
+  const status = await connection.getSystemStatus();
+  if (status.isErr()) throw status.error;
+
+  console.log(status.value);
 } finally {
   await connection.close();
 }
@@ -26,6 +32,8 @@ uploads and downloads are serialized per connection and use longer timeouts for
 specific transfer phases. The timeout resolves with `AckType.TIMEOUT`; it does
 not cancel work already executing on the device.
 
-`open(use, askUser)` returns `true` for success, `false` for an unusable selected port, or `undefined` when no port is available or selected.
+`open(use, askUser)` returns `Ok(true)` for success, `Ok(false)` for an
+unusable selected port, or `Ok(undefined)` when no port is available or
+selected. It returns `Err(VexSerialError)` for serial open failures.
 
 [View source](https://github.com/v5x-dev/v5x/blob/main/packages/serial/src/VexConnection.ts)
