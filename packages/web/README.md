@@ -23,12 +23,15 @@ if (connected) {
 Web Serial is browser-only and requires HTTPS or `localhost`. Call `connect()` from a user gesture so the browser can show the permission prompt.
 
 When Web Serial is unavailable, `V5Snapshot.unavailableReason` and
-`getWebSerialUnavailableReason()` return one of these stable strings:
+`getWebSerialUnavailableReason()` return one of these stable strings, in this
+detection order:
 
 - `non-browser-runtime`: `window` or `navigator` is not available.
 - `insecure-context`: the page is not running in a secure context.
-- `unsupported-browser`: the current browser is known not to support Web Serial.
-- `web-serial-unavailable`: stable fallback for a missing Serial implementation.
+- `unsupported-browser`: the current browser is known not to support Web Serial,
+  such as Firefox or Safari.
+- `web-serial-unavailable`: `navigator.serial` is still missing after the
+  runtime, security, and known-browser checks pass.
 
 If a background or explicit `refresh()` fails, the snapshot moves to `error`
 with a normalized `refresh-error`. The stale device is disconnected or disposed,
