@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "@v5x/cli@*"
+      - "@v5x/serial@*"
+      - "@v5x/web@*"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Resolve release tag
+        id: release
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          package_name="${tag%@*}"
+          version="${tag##*@}"
+
+          case "$package_name" in
+            @v5x/cli)
+              package_dir="packages/cli"
+              tarball_glob="v5x-cli-*.tgz"
+              ;;
+            @v5x/serial)
+              package_dir="packages/serial"
+              tarball_glob="v5x-serial-*.tgz"
+              ;;
+            @v5x/web)
+              package_dir="packages/web"
+              tarball_glob="v5x-web-*.tgz"
+              ;;
+            *)
+              echo "Unsupported release tag: $tag" >&2
+              exit 1
+              ;;
+          esac
+
+          package_json_version="$(bun -e 'const packageJson = await Bun.file(process.argv[2]).json(); console.log(packageJson.version);' "$package_dir/package.json")"
+          if [ "$package_json_version" != "$version" ]; then
+            echo "$package_name tag version $version does not match $package_dir/package.json version $package_json_version" >&2
+            exit 1
+          fi
+
+          {
+            echo "package_name=$package_name"
+            echo "package_dir=$package_dir"
+            echo "tarball_glob=$tarball_glob"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+      - name: Check changelog entry
+        run: |
+          set -euo pipefail
+          package_name="${{ steps.release.outputs.package_name }}"
+          version="${{ steps.release.outputs.version }}"
+          today="$(date -u +%F)"
+          heading="^### ${package_name} ${version} - ${today}$"
+
+          if ! grep -Eq "$heading" CHANGELOG.md; then
+            echo "CHANGELOG.md must contain a dated release heading for ${package_name} ${version}:"
+            echo "### ${package_name} ${version} - ${today}"
+            exit 1
+          fi
+      - name: Pack and verify package
+        run: |
+          set -euo pipefail
+          smoke_dir="$(mktemp -d)"
+          cd "${{ steps.release.outputs.package_dir }}"
+          bun pm pack --destination "$smoke_dir"
+          cd "$GITHUB_WORKSPACE"
+          bun scripts/verify-package-tarballs.ts "$smoke_dir"/${{ steps.release.outputs.tarball_glob }}
+      - name: Configure npm
+        run: |
+          set -euo pipefail
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          fi
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        working-directory: ${{ steps.release.outputs.package_dir }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
