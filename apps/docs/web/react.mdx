@@ -29,3 +29,22 @@ export function App() {
 ```
 
 `useV5Snapshot()` uses React's external-store API, so components update when the shared client snapshot changes. `V5Provider` creates one client by default, or you can pass an existing client for tests and advanced app composition.
+
+## Client lifecycle
+
+Keep a stable shared client for each app or tool surface. Mount one `V5Provider` around the part of the React tree that should share connection state, and avoid recreating the provider `options` object during normal renders because changed options create a new implicit client.
+
+Pass an explicit client when tests, dependency injection, or nested composition need to own the client lifecycle:
+
+```tsx
+import { createV5Client } from "@v5x/web";
+import { V5Provider } from "@v5x/web/react";
+
+const client = createV5Client();
+
+export function App() {
+  return <V5Provider client={client}>{/* routes */}</V5Provider>;
+}
+```
+
+Call `disconnect()` when a route, tool surface, or abandoned workflow should release the V5 device. This stops the web client's background refresh timer and disposes the underlying `@v5x/serial` device when one is connected.

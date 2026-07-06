@@ -37,3 +37,22 @@ export function App() {
 ```
 
 `createV5Snapshot()` mirrors the client snapshot into a Solid signal and automatically unsubscribes when its owner is cleaned up.
+
+## Client lifecycle
+
+Keep a stable shared client for each app or tool surface. Mount one `V5Provider` around the part of the Solid tree that should share connection state, and avoid remounting the provider during ordinary navigation when the same V5 connection should stay available.
+
+Pass an explicit client when tests, dependency injection, or nested composition need to own the client lifecycle:
+
+```tsx
+import { createV5Client } from "@v5x/web";
+import { V5Provider } from "@v5x/web/solid";
+
+const client = createV5Client();
+
+export function App() {
+  return <V5Provider client={client}>{/* routes */}</V5Provider>;
+}
+```
+
+Call `disconnect()` when a route, tool surface, or abandoned workflow should release the V5 device. This stops the web client's background refresh timer and disposes the underlying `@v5x/serial` device when one is connected. Solid signal cleanup only unsubscribes snapshot listeners; it does not disconnect the shared client for you.
