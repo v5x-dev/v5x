@@ -95,11 +95,17 @@ export interface ConnectionWarning {
   details?: unknown;
 }
 
+export interface VexSerialConnectionEvents {
+  connected: undefined;
+  disconnected: undefined;
+  warning: ConnectionWarning;
+}
+
 /**
  * A connection to a V5 device.
  * Emit events: connected, disconnected, warning
  */
-export class VexSerialConnection extends VexEventTarget {
+export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvents> {
   filters: SerialPortFilter[] = [{ usbVendorId: 10376 }];
 
   writer: WritableStreamDefaultWriter<unknown> | undefined;

@@ -60,6 +60,21 @@ describe("VexEventEmitter", () => {
     expect(values).toEqual([1]);
   });
 
+  test("continues emitting after a listener throws", () => {
+    const emitter = new VexEventEmitter<{ update: number }>();
+    const values: number[] = [];
+
+    emitter.on("update", () => {
+      throw new Error("listener failed");
+    });
+    emitter.on("update", (value) => {
+      values.push(value);
+    });
+
+    expect(() => emitter.emit("update", 7)).toThrow("listener failed");
+    expect(values).toEqual([7]);
+  });
+
   test("normalizes symbol event names through VexEventTarget", () => {
     const target = new VexEventTarget();
     const event = Symbol("update");
