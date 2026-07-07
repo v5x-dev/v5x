@@ -15,7 +15,14 @@ import {
   formatSmartDeviceVersion,
   toDeviceJson,
 } from "./devices";
-import { formatFileRows, formatFileTimestamp, toFileJson } from "./dir";
+import {
+  formatFileRows,
+  formatFileTimestamp,
+  formatVendorListFailure,
+  toDirectoryJson,
+  toFileJson,
+} from "./dir";
+import { decodeCatText, formatCatText } from "./cat";
 import {
   compareVersions,
   createDoctorReport,
@@ -101,6 +108,57 @@ describe("command output formatting", () => {
         crc32: 0x1234,
       },
     ]);
+  });
+
+  test("formats directory JSON with vendor listing errors", () => {
+    const failure = formatVendorListFailure(
+      FileVendor.SYS,
+      new VexSerialError("protocol", "directory unavailable"),
+    );
+
+    expect(failure).toEqual({
+      vendor: FileVendor.SYS,
+      vendorPrefix: "sys_",
+      message: "failed to list sys_/ files: protocol: directory unavailable",
+    });
+    expect(
+      toDirectoryJson(
+        [
+          {
+            vendor: FileVendor.USER,
+            filename: "program.bin",
+            size: 1536,
+            loadAddress: 0x3800000,
+            timestamp: 0,
+            crc32: 0x1234,
+          },
+        ],
+        [failure],
+      ),
+    ).toEqual({
+      files: [
+        {
+          vendor: FileVendor.USER,
+          vendorPrefix: "user",
+          filename: "program.bin",
+          path: "user/program.bin",
+          size: 1536,
+          loadAddress: 0x3800000,
+          timestamp: 0,
+          timestampIso: "1970-01-01T00:00:00.000Z",
+          crc32: 0x1234,
+        },
+      ],
+      errors: [failure],
+    });
+  });
+
+  test("formats cat output for interactive text without changing bytes helper", () => {
+    const bytes = new Uint8Array([0x68, 0x69]);
+
+    expect(decodeCatText(bytes)).toBe("hi");
+    expect(formatCatText(bytes)).toBe("hi\n");
+    expect(formatCatText(new Uint8Array([0x68, 0x69, 0x0a]))).toBe("hi\n");
   });
 
   test("formats listed programs with slots and UTC timestamps", () => {
