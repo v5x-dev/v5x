@@ -39,18 +39,6 @@ export interface DownloadFileFromInternetOptions {
 }
 
 /**
- * Lift an async function that returns `Promise<Result<T, VexSerialError>>`
- * into a {@link ResultAsync}. Used by the public exports so they read as
- * synchronous Result-returning APIs while keeping the implementation in
- * plain async helpers.
- */
-function fromAsyncFn<T>(
-  fn: () => Promise<Result<T, VexSerialError>>,
-): ResultAsync<T, VexSerialError> {
-  return new ResultAsync(fn());
-}
-
-/**
  * Download a remote resource while enforcing a maximum body size. The
  * declared `Content-Length` header is validated up front, and the body
  * is streamed so an oversized payload is rejected before it is fully
@@ -71,7 +59,7 @@ export function downloadFileFromInternet(
       new VexInvalidArgumentError("timeout must be non-negative"),
     );
   }
-  return fromAsyncFn(() => runDownload(link, maxBytes, timeout));
+  return new ResultAsync(runDownload(link, maxBytes, timeout));
 }
 
 async function runDownload(
@@ -176,7 +164,7 @@ export function sleepUntilAsync(
   if (interval <= 0) {
     return errAsync(new VexInvalidArgumentError("interval must be positive"));
   }
-  return fromAsyncFn(() => runSleepUntilAsync(f, timeout, interval));
+  return new ResultAsync(runSleepUntilAsync(f, timeout, interval));
 }
 
 async function runSleepUntilAsync(
@@ -218,7 +206,7 @@ export function sleepUntil(
   if (interval <= 0) {
     return errAsync(new VexInvalidArgumentError("interval must be positive"));
   }
-  return fromAsyncFn(() => runSleepUntil(f, timeout, interval));
+  return new ResultAsync(runSleepUntil(f, timeout, interval));
 }
 
 async function runSleepUntil(
@@ -334,7 +322,7 @@ export function uploadFirmware(
   usingVersion?: string,
   progressCallback?: (state: string, current: number, total: number) => void,
 ): ResultAsync<boolean, VexSerialError> {
-  return fromAsyncFn(() =>
+  return new ResultAsync(
     runUploadFirmware(state, publicUrl, usingVersion, progressCallback),
   );
 }
