@@ -27,7 +27,10 @@ export class PacketEncoder {
   vexVersion = 0;
 
   crcgen = new CrcGenerator();
-  allPacketsTable: Record<string, typeof HostBoundPacket> = {};
+  allPacketsTable = new Map<
+    number,
+    Map<number | undefined, typeof HostBoundPacket>
+  >();
 
   static getInstance(): PacketEncoder {
     Packet.ENCODER ??= new PacketEncoder();
@@ -41,10 +44,23 @@ export class PacketEncoder {
         packet.prototype instanceof HostBoundPacket
       ) {
         const type = packet as typeof HostBoundPacket;
-        this.allPacketsTable[`${type.COMMAND_ID} ${type.COMMAND_EXTENDED_ID}`] =
-          type;
+        let byExtendedId = this.allPacketsTable.get(type.COMMAND_ID);
+        if (byExtendedId === undefined) {
+          byExtendedId = new Map();
+          this.allPacketsTable.set(type.COMMAND_ID, byExtendedId);
+        }
+        byExtendedId.set(type.COMMAND_EXTENDED_ID, type);
       }
     }
+  }
+
+  /** Look up the reply class registered for a command ID pair. */
+  getPacketType(
+    commandId: number | undefined,
+    commandExtendedId: number | undefined,
+  ): typeof HostBoundPacket | undefined {
+    if (commandId === undefined) return undefined;
+    return this.allPacketsTable.get(commandId)?.get(commandExtendedId);
   }
 
   /** Create the vex CDC header. */

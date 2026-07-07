@@ -78,9 +78,21 @@ const SCREEN_CAPTURE_CHANNELS = 3;
 const SCREEN_CAPTURE_MESSAGE_WIDTH = 512;
 const SCREEN_CAPTURE_MESSAGE_CHANNELS = 4;
 
+/** Outcome of {@link VexSerialConnection.open}. */
+export type OpenResult = "opened" | "busy" | "no-port";
+
+/**
+ * Payload of the `warning` event: a non-fatal condition the library
+ * recovered from, surfaced so embedders can log or ignore it.
+ */
+export interface ConnectionWarning {
+  message: string;
+  details?: unknown;
+}
+
 /**
  * A connection to a V5 device.
- * Emit events: connected, disconnected
+ * Emit events: connected, disconnected, warning
  */
 export class VexSerialConnection extends VexEventTarget {
   filters: SerialPortFilter[] = [{ usbVendorId: 10376 }];
@@ -112,6 +124,10 @@ export class VexSerialConnection extends VexEventTarget {
   constructor(serial: Serial) {
     super();
     this.serial = serial;
+  }
+
+  protected reportWarning(message: string, details?: unknown): void {
+    this.emit("warning", { message, details } satisfies ConnectionWarning);
   }
 
   async close(): Promise<void> {
@@ -210,7 +226,7 @@ export class VexSerialConnection extends VexEventTarget {
       try {
         await port.close();
       } catch (e) {
-        console.warn("Close port error.", e);
+        this.reportWarning("failed to close the serial port", e);
       }
     }
 
@@ -223,43 +239,45 @@ export class VexSerialConnection extends VexEventTarget {
   }
 
   /**
-   * Open a port. The result is `Err` only when a connection is already
-   * open (programmer error); otherwise the underlying `boolean |
-   * undefined` semantics are preserved: `true` = opened, `false` =
-   * the port was busy, `undefined` = no matching port was selected.
+   * Open a port. Resolves `"opened"` when a connection is established,
+   * `"busy"` when the matching port is already held elsewhere, and
+   * `"no-port"` when no matching port was selected. The result is `Err`
+   * when a connection is already open (programmer error) or when the
+   * port fails to open (permissions, dead device, ...).
    */
   open(
-    use: number | undefined = 0,
+    use: number = 0,
     askUser: boolean = true,
-  ): ResultAsync<boolean | undefined, VexSerialError> {
-    if (this.port !== undefined) {
-      return errAsyncVex(new VexIoError("Already connected."));
-    }
+  ): ResultAsync<OpenResult, VexSerialError> {
     return new ResultAsync(this._open(use, askUser));
   }
 
   private async _open(
-    use: number | undefined,
+    use: number,
     askUser: boolean,
-  ): Promise<Result<boolean | undefined, VexSerialError>> {
-    let port: SerialPort | undefined;
+  ): Promise<Result<OpenResult, VexSerialError>> {
+    // Serialize behind an in-flight close so its teardown tail cannot
+    // partially dismantle the connection opened here.
+    if (this._closePromise !== null) await this._closePromise;
 
-    if (use !== undefined) {
-      const ports = (await this.serial.getPorts())
-        .filter((p) => {
-          const info = p.getInfo();
-          return this.filters.find(
-            (f) =>
-              (f.usbVendorId === undefined ||
-                f.usbVendorId === info.usbVendorId) &&
-              (f.usbProductId === undefined ||
-                f.usbProductId === info.usbProductId),
-          );
-        })
-        .filter((candidate) => candidate.readable === null);
-
-      port = ports[use];
+    if (this.port !== undefined) {
+      return err(new VexIoError("Already connected."));
     }
+
+    const ports = (await this.serial.getPorts())
+      .filter((p) => {
+        const info = p.getInfo();
+        return this.filters.find(
+          (f) =>
+            (f.usbVendorId === undefined ||
+              f.usbVendorId === info.usbVendorId) &&
+            (f.usbProductId === undefined ||
+              f.usbProductId === info.usbProductId),
+        );
+      })
+      .filter((candidate) => candidate.readable === null);
+
+    let port: SerialPort | undefined = ports[use];
 
     if (port == null && askUser) {
       try {
@@ -269,9 +287,9 @@ export class VexSerialConnection extends VexEventTarget {
       }
     }
 
-    if (port == null) return ok(undefined);
+    if (port == null) return ok("no-port");
 
-    if (port.readable != null) return ok(false);
+    if (port.readable != null) return ok("busy");
 
     try {
       this.port = port;
@@ -288,10 +306,10 @@ export class VexSerialConnection extends VexEventTarget {
       this._wasConnected = true;
       this.emit("connected", undefined);
 
-      return ok(true);
-    } catch {
+      return ok("opened");
+    } catch (e) {
       await this.close();
-      return ok(false);
+      return err(toVexSerialError(e, "io"));
     }
   }
 
@@ -404,35 +422,58 @@ export class VexSerialConnection extends VexEventTarget {
             throw new Error("Invalid message CDC");
         }
 
-        let callbackInfo: IPacketCallback | undefined;
-        let wantedCmdId: number | undefined;
-        let wantedCmdExId: number | undefined;
-        let tryIdx = 0;
-        while ((callbackInfo = this.callbacksQueue[tryIdx++]) !== undefined) {
-          wantedCmdId = callbackInfo?.wantedCommandId;
-          wantedCmdExId = callbackInfo?.wantedCommandExId;
-
+        // Route the reply to the first callback wanting these command
+        // IDs. Untyped callbacks (raw writes, which want nothing in
+        // particular) are only used as a fallback so they cannot steal
+        // a reply from a typed request that is also in flight.
+        let matchIdx = -1;
+        let untypedIdx = -1;
+        for (let i = 0; i < this.callbacksQueue.length; i++) {
+          const candidate = this.callbacksQueue[i]!;
           if (
-            (wantedCmdId !== undefined && wantedCmdId !== cmdId) ||
-            (wantedCmdExId !== undefined && wantedCmdExId !== cmdExId)
+            candidate.wantedCommandId === undefined &&
+            candidate.wantedCommandExId === undefined
           ) {
+            if (untypedIdx === -1) untypedIdx = i;
             continue;
           }
-          break;
+          if (
+            (candidate.wantedCommandId === undefined ||
+              candidate.wantedCommandId === cmdId) &&
+            (candidate.wantedCommandExId === undefined ||
+              candidate.wantedCommandExId === cmdExId)
+          ) {
+            matchIdx = i;
+            break;
+          }
         }
+        if (matchIdx === -1) matchIdx = untypedIdx;
 
-        if (callbackInfo === undefined) {
-          console.warn("Unexpected command", cmdId, cmdExId, ack);
+        if (matchIdx === -1) {
+          this.reportWarning("received a reply with no matching request", {
+            commandId: cmdId,
+            commandExtendedId: cmdExId,
+            ack,
+          });
           continue;
         }
 
+        const callbackInfo: IPacketCallback = this.callbacksQueue[matchIdx]!;
+        const wantedCmdId = callbackInfo.wantedCommandId;
+        const wantedCmdExId = callbackInfo.wantedCommandExId;
+
         const data = cache.slice(0, sliceIdx);
-        const PackageType =
-          thePacketEncoder.allPacketsTable[wantedCmdId + " " + wantedCmdExId];
-        if (
-          (wantedCmdId === undefined && wantedCmdExId === undefined) ||
-          PackageType === undefined
-        ) {
+        const PackageType = thePacketEncoder.getPacketType(
+          wantedCmdId,
+          wantedCmdExId,
+        );
+        if (wantedCmdId === undefined || PackageType === undefined) {
+          if (wantedCmdId !== undefined) {
+            this.reportWarning(
+              "no packet class is registered for the wanted command",
+              { commandId: wantedCmdId, commandExtendedId: wantedCmdExId },
+            );
+          }
           callbackInfo.callback(
             data.buffer.slice(
               data.byteOffset,
@@ -443,7 +484,10 @@ export class VexSerialConnection extends VexEventTarget {
           if (!hasExtId || PackageType.isValidPacket(data, n)) {
             callbackInfo.callback(new PackageType(data));
           } else {
-            console.warn("ack", ack);
+            this.reportWarning(
+              "reply failed packet validation; delivering its ack instead",
+              { commandId: cmdId, commandExtendedId: cmdExId, ack },
+            );
 
             callbackInfo.callback(ack!);
           }
@@ -451,10 +495,13 @@ export class VexSerialConnection extends VexEventTarget {
 
         clearTimeout(callbackInfo.timeout);
 
-        this.callbacksQueue.splice(tryIdx - 1, 1);
+        this.callbacksQueue.splice(matchIdx, 1);
       } catch (e) {
         if (!(e instanceof Error && e.message === "No data")) {
-          console.warn("Read error.", e, cache);
+          this.reportWarning("reader loop stopped by a read error", {
+            error: e,
+            pendingBytes: cache,
+          });
         }
 
         await this.close();
@@ -893,15 +940,16 @@ export class V5SerialConnection extends VexSerialConnection {
         if (!(p2 instanceof WriteFileReplyD2HPacket))
           throw new VexTransferError("WriteFileReplyD2DPacket failed");
 
-        if (progressCallback != null)
-          progressCallback(bufferOffset, buf.byteLength);
-
         // next chunk
         bufferOffset += bufferChunkSize;
         nextAddress += bufferChunkSize;
+
+        progressCallback?.(
+          Math.min(bufferOffset, buf.byteLength),
+          buf.byteLength,
+        );
       }
 
-      progressCallback?.(buf.byteLength, buf.byteLength);
       transferFailed = false;
     } catch (e) {
       result = err(
@@ -967,14 +1015,27 @@ export class V5SerialConnection extends VexSerialConnection {
               : err(new VexProtocolError("removeFile was not acknowledged"));
         } catch (e) {
           result = err(toVexSerialError(e, "io"));
-        } finally {
-          try {
-            await this.writeDataAsync(
-              new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+        }
+        // Always exit file-transfer mode; a failed exit only overrides
+        // the result when the erase itself succeeded, so callers see
+        // the root cause rather than the cleanup failure.
+        try {
+          const exitReply = await this.writeDataAsync(
+            new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+            30000,
+          );
+          if (
+            result.isOk() &&
+            !(exitReply instanceof ExitFileTransferReplyD2HPacket)
+          ) {
+            result = err(
+              new VexTransferError(
+                "ExitFileTransfer was not acknowledged after removeFile",
+              ),
             );
-          } catch {
-            // Preserve the original error.
           }
+        } catch (e) {
+          if (result.isOk()) result = err(toVexSerialError(e, "io"));
         }
         return result;
       }),
@@ -1002,14 +1063,27 @@ export class V5SerialConnection extends VexSerialConnection {
                 );
         } catch (e) {
           result = err(toVexSerialError(e, "io"));
-        } finally {
-          try {
-            await this.writeDataAsync(
-              new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+        }
+        // Always exit file-transfer mode; a failed exit only overrides
+        // the result when the clear itself succeeded, so callers see
+        // the root cause rather than the cleanup failure.
+        try {
+          const exitReply = await this.writeDataAsync(
+            new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
+            30000,
+          );
+          if (
+            result.isOk() &&
+            !(exitReply instanceof ExitFileTransferReplyD2HPacket)
+          ) {
+            result = err(
+              new VexTransferError(
+                "ExitFileTransfer was not acknowledged after removeAllFiles",
+              ),
             );
-          } catch {
-            // Preserve the original error.
           }
+        } catch (e) {
+          if (result.isOk()) result = err(toVexSerialError(e, "io"));
         }
         return result;
       }),
@@ -1217,11 +1291,4 @@ function wrapTransfer<T>(
       }
     }),
   );
-}
-
-// Eager async-rejection helper used by synchronous entry points.
-function errAsyncVex<E extends VexSerialError>(
-  error: E,
-): ResultAsync<never, VexSerialError> {
-  return new ResultAsync<never, VexSerialError>(Promise.resolve(err(error)));
 }

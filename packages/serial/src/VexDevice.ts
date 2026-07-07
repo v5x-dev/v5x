@@ -182,7 +182,7 @@ export class V5SerialDevice extends VexSerialDevice {
     if (conn != null) {
       if (!conn.isConnected) {
         const opened = await conn.open();
-        if (opened.isErr() || opened.value !== true) {
+        if (opened.isErr() || opened.value !== "opened") {
           return err(new VexIoError("failed to open the supplied connection"));
         }
       }
@@ -202,11 +202,10 @@ export class V5SerialDevice extends VexSerialDevice {
           await c.close();
           return err(result.error);
         }
-        if (result.value === undefined) {
+        if (result.value === "no-port") {
           return err(new VexNotConnectedError("no V5 device was found"));
         }
-        if (!result.value) {
-          // The port was already in use elsewhere; try the next index.
+        if (result.value === "busy") {
           await c.close();
           continue;
         }
@@ -295,9 +294,8 @@ export class V5SerialDevice extends VexSerialDevice {
             await c.close();
             return err(result.error);
           }
-          if (result.value === undefined) break; // no port left
-          if (!result.value) {
-            // has been opened
+          if (result.value === "no-port") break;
+          if (result.value === "busy") {
             await c.close();
             continue;
           }

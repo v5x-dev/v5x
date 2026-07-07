@@ -98,7 +98,7 @@ test("open discovers unopened authorized ports and emits connected when ready", 
     connectedState = connection.isConnected;
   });
 
-  expect((await connection.open(0, false))._unsafeUnwrap()).toBe(true);
+  expect((await connection.open(0, false))._unsafeUnwrap()).toBe("opened");
   expect(connectedState).toBe(true);
   await connection.close();
 });
@@ -161,6 +161,48 @@ test("downloads accept short chunks, report completion, and exit", async () => {
     [5, 5],
   ]);
   expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+});
+
+test("upload progress advances with each acknowledged chunk", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  connection.writeDataAsync = async (packet) => {
+    if (packet instanceof InitFileTransferH2DPacket) return initReply(2, 0);
+    if (packet instanceof WriteFileH2DPacket)
+      return protocolReply(WriteFileReplyD2HPacket);
+    return protocolReply(ExitFileTransferReplyD2HPacket);
+  };
+  const progress: Array<[number, number]> = [];
+
+  const result = await connection.uploadFileToDevice(
+    {
+      filename: "f.bin",
+      buf: new Uint8Array([1, 2, 3, 4]),
+      downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+      autoRun: false,
+    },
+    (current, total) => progress.push([current, total]),
+  );
+
+  expect(result._unsafeUnwrap()).toBe(true);
+  expect(progress).toEqual([
+    [2, 4],
+    [4, 4],
+  ]);
+});
+
+test("removeFile fails when the exit reply is not acknowledged", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  connection.writeDataAsync = async (packet) => {
+    if (packet instanceof EraseFileH2DPacket)
+      return Object.create(
+        EraseFileReplyD2HPacket.prototype,
+      ) as EraseFileReplyD2HPacket;
+    return AckType.CDC2_NACK;
+  };
+
+  const result = await connection.removeFile("f.bin");
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr().message).toContain("ExitFileTransfer");
 });
 
 test("download failures still exit file transfer mode", async () => {
@@ -330,6 +372,97 @@ test("concurrent closes await one cleanup operation", async () => {
   writerClosed.resolve();
   await Promise.all([first, second]);
   expect(portCloseCount).toBe(1);
+});
+
+test("open reports real port failures as errors, not as busy", async () => {
+  const port = {
+    readable: null,
+    writable: null,
+    getInfo: () => ({ usbVendorId: 10376, usbProductId: 1281 }),
+    open: async () => {
+      throw new Error("EACCES: permission denied");
+    },
+    close: async () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as unknown as SerialPort;
+  const serial = {
+    getPorts: async () => [port],
+  } as unknown as Serial;
+  const connection = new V5SerialConnection(serial);
+
+  const result = await connection.open(0, false);
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr().message).toContain("EACCES");
+});
+
+test("open resolves no-port when nothing matches and the user is not asked", async () => {
+  const connection = new V5SerialConnection({
+    getPorts: async () => [],
+  } as unknown as Serial);
+  expect((await connection.open(0, false))._unsafeUnwrap()).toBe("no-port");
+});
+
+test("typed replies are not stolen by an earlier raw write", async () => {
+  class ReadableConnection extends V5SerialConnection {
+    start(): Promise<void> {
+      return this.startReader();
+    }
+  }
+
+  const packet = new Uint8Array([0xaa, 0x55, 33, 8, 0, 0, 1, 2, 0, 0, 3, 4]);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(packet);
+    },
+  });
+  const connection = new ReadableConnection({} as Serial);
+  connection.reader = stream.getReader();
+  connection.writer = {
+    write: async () => {},
+    close: async () => {},
+    releaseLock: () => {},
+  } as unknown as WritableStreamDefaultWriter<unknown>;
+
+  // The raw write sits ahead of the typed request in the queue but
+  // must not consume the typed request's reply.
+  const rawWrite = connection.writeDataAsync(new Uint8Array([1]), 200);
+  const typed = connection.query1();
+  const reading = connection.start();
+
+  expect((await typed).isOk()).toBe(true);
+  await connection.close();
+  expect(await rawWrite).toBe(AckType.CDC2_NACK);
+  await reading;
+});
+
+test("unmatched replies emit a warning event instead of logging", async () => {
+  class ReadableConnection extends V5SerialConnection {
+    start(): Promise<void> {
+      return this.startReader();
+    }
+  }
+
+  const packet = new Uint8Array([0xaa, 0x55, 33, 8, 0, 0, 1, 2, 0, 0, 3, 4]);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(packet);
+    },
+  });
+  const connection = new ReadableConnection({} as Serial);
+  connection.reader = stream.getReader();
+  const warnings: unknown[] = [];
+  connection.on("warning", (warning) => warnings.push(warning));
+
+  const reading = connection.start();
+  for (let i = 0; i < 100 && warnings.length === 0; i++) await Bun.sleep(0);
+  await connection.close();
+  await reading;
+
+  expect(warnings).toContainEqual({
+    message: "received a reply with no matching request",
+    details: { commandId: 33, commandExtendedId: undefined, ack: 0 },
+  });
 });
 
 test("reader resynchronizes after leading garbage", async () => {
@@ -721,7 +854,7 @@ describe("lifecycle hardening", () => {
     const { serial, listeners } = buildLifecycleConnection();
     const connection = new V5SerialConnection(serial);
     for (let i = 0; i < 3; i++) {
-      expect((await connection.open(0, false))._unsafeUnwrap()).toBe(true);
+      expect((await connection.open(0, false))._unsafeUnwrap()).toBe("opened");
       expect((listeners["disconnect"] ?? []).length).toBe(1);
       await connection.close();
       expect((listeners["disconnect"] ?? []).length).toBe(0);
@@ -763,7 +896,7 @@ describe("lifecycle hardening", () => {
     } as unknown as Serial;
 
     const connection = new V5SerialConnection(wrappedSerial);
-    expect((await connection.open(0, false))._unsafeUnwrap()).toBe(true);
+    expect((await connection.open(0, false))._unsafeUnwrap()).toBe("opened");
 
     let disconnects = 0;
     connection.on("disconnected", () => disconnects++);

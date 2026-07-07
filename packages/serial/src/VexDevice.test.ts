@@ -259,7 +259,7 @@ test("connect opens and retains a supplied connection", async () => {
     open: () => {
       opened = true;
       connected = true;
-      return okAsync<boolean>(true);
+      return okAsync("opened" as const);
     },
     query1: () => okAsync({} as never),
     on: () => {},
