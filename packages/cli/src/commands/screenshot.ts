@@ -71,7 +71,9 @@ export function encodeScreenshotPpm(bytes: Uint8Array): Buffer {
   ]);
 }
 
-function parseScreenshotFormat(format: string | undefined): ScreenshotFormat {
+export function parseScreenshotFormat(
+  format: string | undefined,
+): ScreenshotFormat {
   if (format === undefined || format === "png" || format === "ppm") {
     return format ?? "png";
   }
@@ -79,7 +81,7 @@ function parseScreenshotFormat(format: string | undefined): ScreenshotFormat {
 }
 
 export function toScreenshotJson(
-  output: string,
+  output: string | null,
   format: ScreenshotFormat,
   bytes: number,
 ) {
@@ -90,6 +92,21 @@ export function toScreenshotJson(
     height: HEIGHT,
     bytes,
   };
+}
+
+/**
+ * Whether the current stdout is a terminal that understands the Kitty
+ * graphics protocol. Piping stdout, or running in a terminal that doesn't
+ * advertise Kitty support, means the escape sequence would just be noise.
+ */
+export function isKittyCapableTerminal(
+  env: Record<string, string | undefined> = process.env,
+  isTTY: boolean = process.stdout.isTTY === true,
+): boolean {
+  if (!isTTY) return false;
+  return (
+    env.KITTY_WINDOW_ID !== undefined || (env.TERM ?? "").includes("kitty")
+  );
 }
 
 function printKittyRgb(bytes: Uint8Array): void {
@@ -117,17 +134,31 @@ export default function registerScreenshotCommand(program: Sade) {
           json?: boolean;
         } & PortSelectionOptions,
       ) => {
+        // Validate up front, before connecting to the device, so bad
+        // invocations fail fast regardless of the other flags.
+        const format = parseScreenshotFormat(options.format);
+
         await withSelectedV5Device(options, async (device) => {
           const frame = unwrapSerial(
             await device.brain.captureScreen(),
             "failed to capture screenshot",
           );
+
           if (options.output === undefined) {
-            printKittyRgb(frame);
+            if (options.json === true) {
+              printJson(toScreenshotJson(null, format, frame.length));
+              return;
+            }
+            if (isKittyCapableTerminal()) {
+              printKittyRgb(frame);
+            } else {
+              console.error(
+                "not a Kitty-capable terminal; use --output <file> to save the screenshot",
+              );
+            }
             return;
           }
 
-          const format = parseScreenshotFormat(options.format);
           const data =
             format === "png"
               ? encodeScreenshotPng(frame)

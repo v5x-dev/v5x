@@ -2,7 +2,12 @@ import type { Sade } from "sade";
 import type { FileVendor, IFileHandle } from "@v5x/serial";
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { VENDOR_PREFIXES, VENDORS } from "../utils/brainPath";
-import { printJson, renderTable, utcTimestamp } from "../utils/output";
+import {
+  formatSerialFailure,
+  printJson,
+  renderTable,
+  utcTimestamp,
+} from "../utils/output";
 
 type FileRow = {
   vendor: FileVendor;
@@ -56,6 +61,10 @@ export function toFileJson(files: FileRow[]) {
   );
 }
 
+export function toDirJson(files: FileRow[], vendorsFailed: FileVendor[]) {
+  return { files: toFileJson(files), vendorsFailed };
+}
+
 export default function registerDirCommand(program: Sade) {
   program
     .command("dir", "list files on flash", { alias: "ls" })
@@ -64,12 +73,19 @@ export default function registerDirCommand(program: Sade) {
     .action(async (options: { json?: boolean } & PortSelectionOptions) => {
       await withSelectedV5Device(options, async (device) => {
         const files: (FileRow & IFileHandle)[] = [];
+        const vendorsFailed: FileVendor[] = [];
         for (const vendor of VENDORS) {
           const result = await device.brain.listFiles(vendor);
           if (result.isOk())
             files.push(...result.value.map((file) => ({ ...file, vendor })));
+          else {
+            vendorsFailed.push(vendor);
+            console.error(
+              `warning: ${formatSerialFailure(`failed to list ${vendor} files`, result.error)}`,
+            );
+          }
         }
-        if (options.json === true) printJson(toFileJson(files));
+        if (options.json === true) printJson(toDirJson(files, vendorsFailed));
         else
           console.log(
             renderTable(

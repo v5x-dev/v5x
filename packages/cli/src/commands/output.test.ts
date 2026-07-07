@@ -9,13 +9,19 @@ import {
   toWorkflowInstallJson,
   toWorkflowProjectJson,
 } from "../utils/workflow-json";
+import { looksBinary } from "./cat";
 import {
   formatDeviceRows,
   formatSmartDeviceType,
   formatSmartDeviceVersion,
   toDeviceJson,
 } from "./devices";
-import { formatFileRows, formatFileTimestamp, toFileJson } from "./dir";
+import {
+  formatFileRows,
+  formatFileTimestamp,
+  toDirJson,
+  toFileJson,
+} from "./dir";
 import {
   compareVersions,
   createDoctorReport,
@@ -31,6 +37,8 @@ import {
 import {
   encodeScreenshotPng,
   encodeScreenshotPpm,
+  isKittyCapableTerminal,
+  parseScreenshotFormat,
   toScreenshotJson,
 } from "./screenshot";
 
@@ -148,9 +156,61 @@ describe("command output formatting", () => {
         { key: "robotname", value: undefined },
       ]),
     ).toEqual([
-      { key: "teamnumber", value: "1234A" },
-      { key: "robotname", value: null },
+      { key: "teamnumber", value: "1234A", error: null },
+      { key: "robotname", value: null, error: null },
     ]);
+  });
+
+  test("surfaces per-key read failures instead of conflating them with unset values", () => {
+    expect(
+      toKvJson([
+        {
+          key: "teamnumber",
+          value: undefined,
+          error: "failed to read teamnumber: io: timed out",
+        },
+      ]),
+    ).toEqual([
+      {
+        key: "teamnumber",
+        value: null,
+        error: "failed to read teamnumber: io: timed out",
+      },
+    ]);
+  });
+
+  test("includes a vendorsFailed list in dir JSON output", () => {
+    expect(toDirJson([], [])).toEqual({ files: [], vendorsFailed: [] });
+    expect(
+      toDirJson(
+        [
+          {
+            vendor: FileVendor.USER,
+            filename: "program.bin",
+            size: 10,
+            loadAddress: 0,
+            timestamp: 0,
+            crc32: 0,
+          },
+        ],
+        [FileVendor.SYS],
+      ),
+    ).toEqual({
+      files: [
+        {
+          vendor: FileVendor.USER,
+          vendorPrefix: "user",
+          filename: "program.bin",
+          path: "user/program.bin",
+          size: 10,
+          loadAddress: 0,
+          timestamp: 0,
+          timestampIso: "1970-01-01T00:00:00.000Z",
+          crc32: 0,
+        },
+      ],
+      vendorsFailed: [FileVendor.SYS],
+    });
   });
 
   test("formats workflow project and artifact result objects", () => {
@@ -238,6 +298,44 @@ describe("command output formatting", () => {
       height: 272,
       bytes: 12345,
     });
+  });
+
+  test("formats screenshot JSON metadata for the inline (no --output) path", () => {
+    expect(toScreenshotJson(null, "png", 12345)).toEqual({
+      output: null,
+      format: "png",
+      width: 480,
+      height: 272,
+      bytes: 12345,
+    });
+  });
+
+  test("validates --format up front, independent of --output", () => {
+    expect(parseScreenshotFormat(undefined)).toBe("png");
+    expect(parseScreenshotFormat("png")).toBe("png");
+    expect(parseScreenshotFormat("ppm")).toBe("ppm");
+    expect(() => parseScreenshotFormat("jpeg")).toThrow(
+      "--format must be png or ppm",
+    );
+  });
+
+  test("only treats Kitty-capable TTYs as graphics-capable", () => {
+    expect(isKittyCapableTerminal({}, false)).toBe(false);
+    expect(isKittyCapableTerminal({}, true)).toBe(false);
+    expect(isKittyCapableTerminal({ KITTY_WINDOW_ID: "1" }, true)).toBe(true);
+    expect(isKittyCapableTerminal({ KITTY_WINDOW_ID: "1" }, false)).toBe(false);
+    expect(isKittyCapableTerminal({ TERM: "xterm-kitty" }, true)).toBe(true);
+    expect(isKittyCapableTerminal({ TERM: "xterm-256color" }, true)).toBe(
+      false,
+    );
+  });
+});
+
+describe("cat binary detection", () => {
+  test("treats NUL and low control bytes as binary", () => {
+    expect(looksBinary(new Uint8Array([0, 1, 2]))).toBe(true);
+    expect(looksBinary(new TextEncoder().encode("hello\nworld\n"))).toBe(false);
+    expect(looksBinary(new Uint8Array([0x50, 0x4b, 0x03, 0x04]))).toBe(true);
   });
 });
 
