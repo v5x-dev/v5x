@@ -30,6 +30,8 @@ function isSameSnapshot(left: V5Snapshot, right: V5Snapshot): boolean {
     left.connected === right.connected &&
     left.connecting === right.connecting &&
     left.disconnecting === right.disconnecting &&
-    left.error === right.error
+    left.error === right.error &&
+    left.device === right.device &&
+    left.deviceVersion === right.deviceVersion
   );
 }

@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { type V5Client, type V5Snapshot } from "../client.js";
 import { V5WebError } from "../errors.js";
-import { V5Provider } from "./provider.js";
+import { V5Provider, useV5Client } from "./provider.js";
 import { useV5Snapshot } from "./use-v5-snapshot.js";
 
 const window = new Window();
@@ -29,6 +29,8 @@ function createSnapshot(status: V5Snapshot["status"]): V5Snapshot {
       status === "error"
         ? new V5WebError("connect-error", "connect failed")
         : null,
+    device: null,
+    deviceVersion: 0,
   };
 }
 
@@ -90,3 +92,39 @@ test("useV5Snapshot reads updates from a provided client and unsubscribes", asyn
 
   expect(client.listenerCount()).toBe(0);
 });
+
+test("V5Provider keeps an owned client stable for equivalent inline options", async () => {
+  const seen: V5Client[] = [];
+  const container = document.createElement("div");
+  const root = createRoot(container);
+
+  function Probe() {
+    seen.push(useV5ClientForTest());
+    return null;
+  }
+
+  await act(async () => {
+    root.render(
+      <V5Provider options={{ refreshIntervalMs: 500 }}>
+        <Probe />
+      </V5Provider>,
+    );
+  });
+  await act(async () => {
+    root.render(
+      <V5Provider options={{ refreshIntervalMs: 500 }}>
+        <Probe />
+      </V5Provider>,
+    );
+  });
+  await act(async () => {
+    root.unmount();
+  });
+
+  expect(seen).toHaveLength(2);
+  expect(seen[0]).toBe(seen[1]);
+});
+
+function useV5ClientForTest(): V5Client {
+  return useV5Client();
+}

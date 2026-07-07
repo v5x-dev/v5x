@@ -383,7 +383,9 @@ export class V5SerialDevice extends VexSerialDevice {
     if (this.connection == null) return;
 
     this.connection.on("disconnected", (_data) => {
-      if (this.autoReconnect && !this._isDisconnecting) {
+      if (this._isDisconnecting) return;
+      this.emit("disconnected", undefined);
+      if (this.autoReconnect) {
         void this.reconnect().mapErr((e) => this.emit("error", e));
       }
     });

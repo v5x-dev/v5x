@@ -1,4 +1,10 @@
-import { V5SerialDevice, type VexSerialError } from "@v5x/serial";
+import {
+  V5SerialDevice,
+  type ISmartDeviceInfo,
+  type MatchMode,
+  type V5SerialDeviceState,
+  type VexSerialError,
+} from "@v5x/serial";
 import { ResultAsync } from "neverthrow";
 import {
   V5WebError,
@@ -50,6 +56,57 @@ export interface V5Snapshot {
    * fresh attempt or `disconnect()` returns the client to `idle`.
    */
   error: V5WebError | null;
+  device: V5DeviceSnapshot | null;
+  deviceVersion: number;
+}
+
+export interface V5DeviceSnapshot {
+  matchMode: MatchMode;
+  isFieldControllerConnected: boolean;
+  brain: {
+    activeProgram: number;
+    battery: {
+      batteryPercent: number;
+      isCharging: boolean;
+    };
+    button: {
+      isPressed: boolean;
+      isDoublePressed: boolean;
+    };
+    cpu0Version: string;
+    cpu1Version: string;
+    isAvailable: boolean;
+    settings: {
+      isScreenReversed: boolean;
+      isWhiteTheme: boolean;
+      usingLanguage: number;
+    };
+    systemVersion: string;
+    uniqueId: number;
+  };
+  controllers: [
+    {
+      battery: number;
+      isAvailable: boolean;
+      isCharging: boolean;
+    },
+    {
+      battery: number;
+      isAvailable: boolean;
+      isCharging: boolean;
+    },
+  ];
+  radio: {
+    channel: number;
+    isAvailable: boolean;
+    isConnected: boolean;
+    isRadioData: boolean;
+    isVexNet: boolean;
+    latency: number;
+    signalQuality: number;
+    signalStrength: number;
+  };
+  devices: ISmartDeviceInfo[];
 }
 
 export interface V5ClientOptions {
@@ -67,13 +124,35 @@ export interface V5Client extends V5Store<V5Snapshot> {
 
 export interface V5DeviceLike {
   autoRefresh: boolean;
+  autoReconnect?: boolean;
+  state?: V5ReadableDeviceState;
   connect(): ResultAsync<void, VexSerialError>;
   disconnect(): Promise<void>;
   dispose?: () => Promise<void>;
   refresh(): ResultAsync<boolean, VexSerialError>;
+  on?: <TEventName extends V5DeviceEventName>(
+    eventName: TEventName,
+    listener: V5DeviceEventListener<TEventName>,
+  ) => void;
+  remove?: <TEventName extends V5DeviceEventName>(
+    eventName: TEventName,
+    listener: V5DeviceEventListener<TEventName>,
+  ) => void;
 }
 
 export type V5DeviceFactory = (serial: Serial) => V5DeviceLike;
+
+type V5DeviceEventName = "disconnected" | "error";
+
+type V5DeviceEventListener<TEventName extends V5DeviceEventName> =
+  TEventName extends "disconnected" ? () => void : (error: unknown) => void;
+
+type V5ReadableDeviceState = Pick<
+  V5SerialDeviceState,
+  "brain" | "controllers" | "devices" | "radio" | "matchMode"
+> & {
+  isFieldControllerConnected: boolean;
+};
 
 const createDefaultDevice: V5DeviceFactory = (serial) => {
   const device = new V5SerialDevice(serial);
@@ -91,8 +170,12 @@ class V5WebClient implements V5Client {
   private status: V5ConnectionStatus;
   private error: V5WebError | null = null;
   private device: V5DeviceLike | null = null;
+  private deviceSnapshot: V5DeviceSnapshot | null = null;
+  private deviceVersion = 0;
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
+  private refreshPromise: Promise<void> | null = null;
   private generation = 0;
+  private detachDeviceListeners: (() => void) | null = null;
 
   constructor(options: V5ClientOptions, createDevice: V5DeviceFactory) {
     this.serial = options.serial ?? getDefaultSerial();
@@ -113,6 +196,8 @@ class V5WebClient implements V5Client {
       connecting: status === "connecting",
       disconnecting: status === "disconnecting",
       error: this.error,
+      device: this.deviceSnapshot,
+      deviceVersion: this.deviceVersion,
     };
   }
 
@@ -123,15 +208,18 @@ class V5WebClient implements V5Client {
   async connect(): Promise<boolean> {
     if (!this.supported || this.serial === undefined) return false;
     if (this.status === "connected") return true;
-    if (this.status === "connecting") return false;
+    if (this.status === "connecting" || this.status === "disconnecting") {
+      return false;
+    }
 
     const generation = ++this.generation;
-    this.setState("connecting", null);
+    this.setState("connecting", null, null);
     let device: V5DeviceLike | null = null;
 
     try {
       device = this.device ?? this.createDevice(this.serial);
       device.autoRefresh = false;
+      device.autoReconnect = false;
       const result = await device.connect();
 
       // A disconnect() during the in-flight connect supersedes this attempt.
@@ -147,12 +235,14 @@ class V5WebClient implements V5Client {
         this.setState(
           "error",
           new V5WebError("connect-failed", "V5 device connection failed."),
+          null,
         );
         return false;
       }
 
       this.device = device;
-      this.setState("connected", null);
+      this.attachDeviceListeners(device, generation);
+      this.setState("connected", null, createDeviceSnapshot(device.state));
       this.startRefreshTimer();
       return true;
     } catch (error: unknown) {
@@ -179,19 +269,24 @@ class V5WebClient implements V5Client {
     this.generation++;
     const device = this.device;
     this.device = null;
+    this.refreshPromise = null;
+    this.detachDeviceListeners?.();
+    this.detachDeviceListeners = null;
     this.stopRefreshTimer();
 
     if (device === null) {
-      if (this.status !== "idle") this.setState("idle", null);
+      if (this.status !== "idle") this.setState("idle", null, null);
       return;
     }
 
-    this.setState("disconnecting", null);
+    const generation = this.generation;
+    this.setState("disconnecting", null, null);
 
     try {
       await this.disposeDevice(device);
-      this.setState("idle", null);
+      if (generation === this.generation) this.setState("idle", null, null);
     } catch (error: unknown) {
+      if (generation !== this.generation) return;
       this.fail(
         "disconnect-error",
         error,
@@ -202,55 +297,144 @@ class V5WebClient implements V5Client {
 
   async refresh(): Promise<void> {
     if (this.device === null || this.status !== "connected") return;
+    if (this.refreshPromise !== null) return this.refreshPromise;
+
+    const refreshPromise = this.runRefresh();
+    this.refreshPromise = refreshPromise;
+    try {
+      await refreshPromise;
+    } finally {
+      if (this.refreshPromise === refreshPromise) this.refreshPromise = null;
+    }
+  }
+
+  private async runRefresh(): Promise<void> {
+    const device = this.device;
+    const generation = this.generation;
+    if (device === null || this.status !== "connected") return;
 
     try {
-      const result = await this.device.refresh();
+      const result = await device.refresh();
+      if (generation !== this.generation || this.device !== device) return;
       if (result.isErr()) {
         await this.handleRefreshFailure(
           result.error,
           "V5 device refresh failed.",
+          device,
+          generation,
         );
       } else {
-        this.listeners.emit();
+        this.publishDeviceSnapshot(device);
       }
     } catch (error: unknown) {
+      if (generation !== this.generation || this.device !== device) return;
       await this.handleRefreshFailure(
         error,
         "V5 device refresh threw an unknown error.",
+        device,
+        generation,
       );
     }
   }
 
-  private setState(status: V5ConnectionStatus, error: V5WebError | null): void {
+  private setState(
+    status: V5ConnectionStatus,
+    error: V5WebError | null,
+    deviceSnapshot: V5DeviceSnapshot | null,
+  ): void {
     this.status = status;
     this.error = error;
+    this.setDeviceSnapshot(deviceSnapshot);
     this.listeners.emit();
   }
 
   private fail(code: V5WebErrorCode, error: unknown, fallback: string): void {
-    this.setState("error", normalizeV5WebError(code, error, fallback));
+    this.setState("error", normalizeV5WebError(code, error, fallback), null);
   }
 
   private async handleRefreshFailure(
     error: unknown,
     fallback: string,
+    device: V5DeviceLike | null = this.device,
+    generation: number = this.generation,
   ): Promise<void> {
+    if (generation !== this.generation || device !== this.device) return;
     const normalizedError = normalizeV5WebError(
       "refresh-error",
       error,
       fallback,
     );
-    const device = this.device;
 
     this.generation++;
     this.device = null;
+    this.refreshPromise = null;
+    this.detachDeviceListeners?.();
+    this.detachDeviceListeners = null;
     this.stopRefreshTimer();
 
     if (device !== null) {
       await this.tryDisposeDevice(device);
     }
 
-    this.setState("error", normalizedError);
+    this.setState("error", normalizedError, null);
+  }
+
+  private attachDeviceListeners(
+    device: V5DeviceLike,
+    generation: number,
+  ): void {
+    this.detachDeviceListeners?.();
+
+    const onDisconnected = (): void => {
+      if (generation !== this.generation || this.device !== device) return;
+      void this.handleDeviceDisconnect(device, generation);
+    };
+    const onError = (error: unknown): void => {
+      if (generation !== this.generation || this.device !== device) return;
+      void this.handleRefreshFailure(
+        error,
+        "V5 device emitted an unknown error.",
+        device,
+        generation,
+      );
+    };
+
+    device.on?.("disconnected", onDisconnected);
+    device.on?.("error", onError);
+    this.detachDeviceListeners = () => {
+      device.remove?.("disconnected", onDisconnected);
+      device.remove?.("error", onError);
+    };
+  }
+
+  private async handleDeviceDisconnect(
+    device: V5DeviceLike,
+    generation: number,
+  ): Promise<void> {
+    if (generation !== this.generation || this.device !== device) return;
+
+    this.generation++;
+    this.device = null;
+    this.refreshPromise = null;
+    this.detachDeviceListeners?.();
+    this.detachDeviceListeners = null;
+    this.stopRefreshTimer();
+    await this.tryDisposeDevice(device);
+    this.setState(
+      "error",
+      new V5WebError("disconnect-error", "V5 device disconnected."),
+      null,
+    );
+  }
+
+  private publishDeviceSnapshot(device: V5DeviceLike): void {
+    this.setDeviceSnapshot(createDeviceSnapshot(device.state));
+    this.listeners.emit();
+  }
+
+  private setDeviceSnapshot(snapshot: V5DeviceSnapshot | null): void {
+    this.deviceSnapshot = snapshot;
+    this.deviceVersion++;
   }
 
   private startRefreshTimer(): void {
@@ -277,6 +461,60 @@ class V5WebClient implements V5Client {
       // Preserve the original lifecycle error when cleanup also fails.
     }
   }
+}
+
+function createDeviceSnapshot(
+  state: V5ReadableDeviceState | undefined,
+): V5DeviceSnapshot | null {
+  if (state === undefined) return null;
+  return {
+    matchMode: state.matchMode,
+    isFieldControllerConnected: state.isFieldControllerConnected,
+    brain: {
+      activeProgram: state.brain.activeProgram,
+      battery: {
+        batteryPercent: state.brain.battery.batteryPercent,
+        isCharging: state.brain.battery.isCharging,
+      },
+      button: {
+        isPressed: state.brain.button.isPressed,
+        isDoublePressed: state.brain.button.isDoublePressed,
+      },
+      cpu0Version: state.brain.cpu0Version.toInternalString(),
+      cpu1Version: state.brain.cpu1Version.toInternalString(),
+      isAvailable: state.brain.isAvailable,
+      settings: {
+        isScreenReversed: state.brain.settings.isScreenReversed,
+        isWhiteTheme: state.brain.settings.isWhiteTheme,
+        usingLanguage: state.brain.settings.usingLanguage,
+      },
+      systemVersion: state.brain.systemVersion.toInternalString(),
+      uniqueId: state.brain.uniqueId,
+    },
+    controllers: [
+      {
+        battery: state.controllers[0]?.battery ?? 0,
+        isAvailable: state.controllers[0]?.isAvailable ?? false,
+        isCharging: state.controllers[0]?.isCharging ?? false,
+      },
+      {
+        battery: state.controllers[1]?.battery ?? 0,
+        isAvailable: state.controllers[1]?.isAvailable ?? false,
+        isCharging: state.controllers[1]?.isCharging ?? false,
+      },
+    ],
+    radio: {
+      channel: state.radio.channel,
+      isAvailable: state.radio.isAvailable,
+      isConnected: state.radio.isConnected,
+      isRadioData: state.radio.isRadioData,
+      isVexNet: state.radio.isVexNet,
+      latency: state.radio.latency,
+      signalQuality: state.radio.signalQuality,
+      signalStrength: state.radio.signalStrength,
+    },
+    devices: state.devices.filter((device) => device !== undefined),
+  };
 }
 
 export function createV5Client(options: V5ClientOptions = {}): V5Client {
