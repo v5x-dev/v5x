@@ -21,7 +21,12 @@ export async function detectProgramType(path: string): Promise<ProgramType> {
 
   const cargoFile = Bun.file(join(path, "Cargo.toml"));
   if (await cargoFile.exists()) {
-    const manifest: unknown = Bun.TOML.parse(await cargoFile.text());
+    let manifest: unknown;
+    try {
+      manifest = Bun.TOML.parse(await cargoFile.text());
+    } catch {
+      manifest = undefined;
+    }
     if (hasVexideDependency(manifest)) return "vexide";
   }
 

@@ -34,6 +34,15 @@ describe("project detection", () => {
     expect(await detectProgramType(path)).toBe("vexcode-cpp");
   });
 
+  test("ignores malformed Cargo manifests during detection", async () => {
+    const path = await temporaryDirectory();
+    await writeFile(join(path, "Cargo.toml"), "[package");
+    await mkdir(join(path, "vex"));
+    await writeFile(join(path, "vex", "mkrules.mk"), "");
+
+    expect(await detectProgramType(path)).toBe("vexcode-cpp");
+  });
+
   test("reads PROS metadata and its configured artifact", async () => {
     const path = await temporaryDirectory();
     await writeFile(
@@ -54,6 +63,16 @@ describe("project detection", () => {
     expect(project.description).toBe("test program");
     expect(await findProgramArtifact(project)).toBe(
       join(path, "bin", "program.bin"),
+    );
+  });
+
+  test("reports malformed PROS metadata with its file path", async () => {
+    const path = await temporaryDirectory();
+    const metadataPath = join(path, "project.pros");
+    await writeFile(metadataPath, "{");
+
+    await expect(inspectProject(path)).rejects.toThrow(
+      `invalid project.pros at ${metadataPath}:`,
     );
   });
 });

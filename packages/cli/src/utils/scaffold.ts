@@ -49,7 +49,14 @@ const DEFAULT_PROS_TEMPLATE: ProsTemplateSource = {
 
 export function parseToolchain(type: unknown): ProjectToolchain {
   if (type === "pros" || type === "vexide") return type;
-  throw new Error("--type must be either pros or vexide");
+  if (type === undefined) {
+    throw new Error(
+      "--type is required; use --type pros or --type vexide (for example: v5x new robot --type vexide)",
+    );
+  }
+  throw new Error(
+    `unsupported --type ${String(type)}; expected pros or vexide`,
+  );
 }
 
 function validateDisplayName(name: string): void {
