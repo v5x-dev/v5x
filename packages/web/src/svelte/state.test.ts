@@ -15,6 +15,8 @@ function createSnapshot(status: V5Snapshot["status"]): V5Snapshot {
       status === "error"
         ? new V5WebError("connect-error", "connect failed")
         : null,
+    device: null,
+    deviceVersion: 0,
   };
 }
 

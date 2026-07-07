@@ -1,4 +1,10 @@
-import { createComponent, createContext, useContext, type JSX } from "solid-js";
+import {
+  createComponent,
+  createContext,
+  onCleanup,
+  useContext,
+  type JSX,
+} from "solid-js";
 import {
   createV5Client,
   type V5Client,
@@ -15,6 +21,11 @@ export interface V5ProviderProps {
 
 export function V5Provider(props: V5ProviderProps): JSX.Element {
   const client = props.client ?? createV5Client(props.options);
+  const ownsClient = props.client === undefined;
+
+  onCleanup(() => {
+    if (ownsClient) void client.disconnect();
+  });
 
   return createComponent(V5Context.Provider, {
     value: client,

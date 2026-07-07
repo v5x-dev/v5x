@@ -31,6 +31,7 @@ import * as firmware from "./VexFirmware.js";
 import * as transfers from "./VexTransfers.js";
 
 export interface VexSerialDeviceEvents {
+  disconnected: undefined;
   error: unknown;
 }
 

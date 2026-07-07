@@ -1,18 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { errAsync, okAsync, ResultAsync } from "neverthrow";
-import { VexSerialError } from "@v5x/serial";
+import { VexFirmwareVersion, VexSerialError } from "@v5x/serial";
 import {
   createV5ClientWithFactory,
   type V5ConnectionStatus,
+  type V5DeviceLike,
 } from "./client.js";
 import { V5WebError } from "./errors.js";
 
 interface FakeDevice {
   autoRefresh: boolean;
+  autoReconnect?: boolean;
+  state?: V5DeviceLike["state"];
   connect(): ResultAsync<void, VexSerialError>;
   disconnect(): Promise<void>;
   dispose?: () => Promise<void>;
   refresh(): ResultAsync<boolean, VexSerialError>;
+  on?: V5DeviceLike["on"];
+  remove?: V5DeviceLike["remove"];
 }
 
 class FakeSerial extends EventTarget implements Serial {
@@ -49,6 +54,57 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function createFakeDeviceState(): NonNullable<V5DeviceLike["state"]> {
+  return {
+    brain: {
+      activeProgram: 0,
+      battery: {
+        batteryPercent: 0,
+        isCharging: false,
+      },
+      button: {
+        isPressed: false,
+        isDoublePressed: false,
+      },
+      cpu0Version: VexFirmwareVersion.allZero(),
+      cpu1Version: VexFirmwareVersion.allZero(),
+      isAvailable: false,
+      settings: {
+        isScreenReversed: false,
+        isWhiteTheme: false,
+        usingLanguage: 0,
+      },
+      systemVersion: VexFirmwareVersion.allZero(),
+      uniqueId: 0,
+    },
+    controllers: [
+      {
+        battery: 0,
+        isAvailable: false,
+        isCharging: false,
+      },
+      {
+        battery: 0,
+        isAvailable: false,
+        isCharging: false,
+      },
+    ],
+    devices: [],
+    isFieldControllerConnected: false,
+    matchMode: "disabled",
+    radio: {
+      channel: 0,
+      isAvailable: false,
+      isConnected: false,
+      isVexNet: false,
+      isRadioData: false,
+      latency: 0,
+      signalQuality: 0,
+      signalStrength: 0,
+    },
+  };
 }
 
 describe("createV5Client", () => {
@@ -244,6 +300,39 @@ describe("createV5Client", () => {
     expect(disposes).toBe(1);
   });
 
+  test("connect while disconnecting does not clobber the disconnect lifecycle", async () => {
+    const disconnectDeferred = createDeferred<void>();
+    let connects = 0;
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => {
+        connects++;
+        return okAsync(undefined);
+      },
+      disconnect: async () => {
+        await disconnectDeferred.promise;
+      },
+      refresh: () => okAsync(true),
+    });
+
+    await client.connect();
+    const disconnectPromise = client.disconnect();
+    expect(client.getSnapshot().status).toBe("disconnecting");
+
+    const connected = await client.connect();
+    expect(connected).toBe(false);
+    expect(client.getSnapshot().status).toBe("disconnecting");
+
+    disconnectDeferred.resolve(undefined);
+    await disconnectPromise;
+
+    expect(connects).toBe(1);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "idle",
+      connected: false,
+    });
+  });
+
   test("failed connect reports the error from the result channel", async () => {
     const client = createClient({
       autoRefresh: true,
@@ -285,6 +374,100 @@ describe("createV5Client", () => {
     expect(snapshot.error?.code).toBe("refresh-error");
     expect(snapshot.error?.cause).toBe(refreshError);
     expect(disposes).toBe(1);
+  });
+
+  test("refresh calls coalesce while a refresh is already in flight", async () => {
+    const refreshDeferred = createDeferred<boolean>();
+    let refreshes = 0;
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      refresh: () => {
+        refreshes++;
+        return ResultAsync.fromPromise(
+          refreshDeferred.promise,
+          () => new VexSerialError("io", "refresh failed"),
+        );
+      },
+    });
+
+    await client.connect();
+    const firstRefresh = client.refresh();
+    const secondRefresh = client.refresh();
+
+    expect(refreshes).toBe(1);
+
+    refreshDeferred.resolve(true);
+    await Promise.all([firstRefresh, secondRefresh]);
+
+    expect(refreshes).toBe(1);
+    expect(client.getSnapshot().status).toBe("connected");
+  });
+
+  test("successful refresh publishes updated device state in the snapshot", async () => {
+    const state = createFakeDeviceState();
+    const client = createClient({
+      autoRefresh: true,
+      state,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      refresh: () => {
+        state.brain.battery.batteryPercent = 82;
+        state.brain.activeProgram = 3;
+        state.radio.isConnected = true;
+        return okAsync(true);
+      },
+    });
+
+    await client.connect();
+    const initialVersion = client.getSnapshot().deviceVersion;
+
+    await client.refresh();
+    const snapshot = client.getSnapshot();
+
+    expect(snapshot.deviceVersion).toBeGreaterThan(initialVersion);
+    expect(snapshot.device?.brain.battery.batteryPercent).toBe(82);
+    expect(snapshot.device?.brain.activeProgram).toBe(3);
+    expect(snapshot.device?.radio.isConnected).toBe(true);
+  });
+
+  test("device disconnected events detach the device and publish an error snapshot", async () => {
+    let disconnected: (() => void) | undefined;
+    let disposes = 0;
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      dispose: async () => {
+        disposes++;
+      },
+      refresh: () => okAsync(true),
+      on: (eventName, listener) => {
+        if (eventName === "disconnected") {
+          disconnected = () => {
+            const onDisconnected = listener as () => void;
+            onDisconnected();
+          };
+        }
+      },
+      remove: (eventName, listener) => {
+        if (eventName === "disconnected" && listener !== undefined) {
+          disconnected = undefined;
+        }
+      },
+    });
+
+    await client.connect();
+    disconnected?.();
+    await delay(0);
+    const snapshot = client.getSnapshot();
+
+    expect(snapshot.status).toBe("error");
+    expect(snapshot.connected).toBe(false);
+    expect(snapshot.error?.code).toBe("disconnect-error");
+    expect(disposes).toBe(1);
+    expect(disconnected).toBeUndefined();
   });
 
   test("thrown refresh errors follow the refresh failure lifecycle", async () => {
