@@ -27,7 +27,9 @@ export interface UploadOptions extends PortSelectionOptions {
 }
 
 export interface UploadCommandOptions extends PortSelectionOptions {
-  slot: string;
+  // sade/mri parse a flag given without a value (e.g. a bare `--slot`) as the
+  // boolean `true` rather than the declared default, so this must accept both.
+  slot: string | boolean;
   name?: string;
   description?: string;
   icon: string;
@@ -37,6 +39,37 @@ export interface UploadCommandOptions extends PortSelectionOptions {
   json?: boolean;
 }
 
+/**
+ * Resolves the raw `--slot` CLI option into a slot number.
+ *
+ * A bare `--slot` flag (no value) is parsed by sade/mri as the boolean
+ * `true`, which would silently become slot 1 via `Number(true)`. Reject that
+ * case explicitly instead of uploading to the wrong slot.
+ */
+export function resolveSlotOption(slot: string | boolean): number {
+  if (typeof slot === "boolean") {
+    throw new Error(
+      "--slot requires a value (e.g. --slot 1); it cannot be passed as a bare flag",
+    );
+  }
+  return Number(slot);
+}
+
+/**
+ * Resolves whether the project should be built before uploading.
+ *
+ * When `--file` is given the caller is uploading a pre-built artifact, so
+ * the build step is skipped by default. Passing `--build` (or omitting
+ * `--file`) explicitly opts back into building; `--no-build` always skips it.
+ */
+export function resolveBuildOption(
+  build: boolean | undefined,
+  file: string | undefined,
+): boolean {
+  if (build !== undefined) return build;
+  return file === undefined;
+}
+
 export async function uploadProgramFromCommand(
   path: string | undefined,
   options: UploadCommandOptions,
@@ -44,12 +77,12 @@ export async function uploadProgramFromCommand(
 ): Promise<void> {
   await uploadProgram({
     path: path ?? process.cwd(),
-    slot: Number(options.slot),
+    slot: resolveSlotOption(options.slot),
     name: options.name,
     description: options.description,
     icon: options.icon,
     artifact: options.file,
-    build: options.build ?? true,
+    build: resolveBuildOption(options.build, options.file),
     run: options.run ?? runDefault,
     port: options.port,
     command: runDefault ? "run" : "upload",
@@ -57,17 +90,24 @@ export async function uploadProgramFromCommand(
   });
 }
 
-function reportProgress() {
+export function reportProgress() {
   let previousState = "";
+  // Track the longest state label seen so far so short state names (e.g.
+  // "bin") are padded wide enough to fully overwrite a longer previous one
+  // (e.g. "channel") when redrawing the same TTY line.
+  let maxStateWidth = 0;
   const report = (state: string, current: number, total: number) => {
     if (state !== previousState) {
       if (previousState !== "") process.stderr.write("\n");
       previousState = state;
     }
+    maxStateWidth = Math.max(maxStateWidth, state.length);
     const percent = total === 0 ? 0 : Math.floor((current / total) * 100);
-    const message = `${state.toLowerCase().padEnd(5)} ${percent}%`;
+    const message = `${state.toLowerCase().padEnd(maxStateWidth)} ${percent}%`;
     process.stderr.write(
-      process.stderr.isTTY ? `\r${message}` : `${message}\n`,
+      // "\x1b[K" clears from the cursor to the end of the line, so residue
+      // from a longer previous message on the same line never lingers.
+      process.stderr.isTTY ? `\r\x1b[K${message}` : `${message}\n`,
     );
   };
   report.finish = () => {
