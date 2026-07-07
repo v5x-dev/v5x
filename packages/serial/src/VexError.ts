@@ -1,3 +1,5 @@
+import { type AckType } from "./Vex.js";
+
 /**
  * Typed error hierarchy for the serial protocol package.
  *
@@ -18,6 +20,7 @@ export type VexSerialErrorKind =
 /** Base class for every failure surfaced by the serial package. */
 export class VexSerialError extends Error {
   readonly kind: VexSerialErrorKind;
+  readonly ackType: AckType | undefined = undefined;
 
   constructor(kind: VexSerialErrorKind, message: string) {
     super(message);
@@ -44,9 +47,12 @@ export class VexInvalidArgumentError extends VexSerialError {
 
 /** The device refused, timed out, or replied unexpectedly to a command. */
 export class VexProtocolError extends VexSerialError {
-  constructor(message: string) {
+  readonly ackType: AckType | undefined;
+
+  constructor(message: string, ackType?: AckType) {
     super("protocol", message);
     this.name = "VexProtocolError";
+    this.ackType = ackType;
   }
 }
 

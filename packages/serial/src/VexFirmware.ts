@@ -483,7 +483,7 @@ async function runUploadFirmware(
   }
   pcb("UNZIP VEXOS", 1, 1);
 
-  return state.withFileTransfer(async () => {
+  return state.withRefreshPaused(async () => {
     const boot = images.find((image) => image.name.endsWith("BOOT.bin"));
     if (boot === undefined) {
       return err(new VexFirmwareError("VEXos archive is missing BOOT.bin"));

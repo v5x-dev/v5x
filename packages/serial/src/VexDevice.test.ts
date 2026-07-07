@@ -9,7 +9,7 @@ import {
   sleepUntilAsync,
 } from "./VexDevice";
 import { V5SerialConnection } from "./VexConnection";
-import { VexIoError, VexProtocolError } from "./VexError";
+import { VexIoError, VexNotConnectedError, VexProtocolError } from "./VexError";
 import { type ProgramIniConfig } from "./VexIniConfig";
 import {
   GetDeviceStatusReplyD2HPacket as GetDeviceStatusReplyD2HPacketClass,
@@ -119,7 +119,7 @@ test("successful file reads resume automatic refresh", async () => {
       await device.brain.readFile({ filename: "test", vendor: FileVendor.USER })
     )._unsafeUnwrap(),
   ).toEqual(new Uint8Array([1, 2, 3]));
-  expect(device.state.isFileTransferring).toBe(false);
+  expect(device.state.isRefreshPaused).toBe(false);
 });
 
 test("concurrent file operations keep automatic refresh paused", async () => {
@@ -141,15 +141,15 @@ test("concurrent file operations keep automatic refresh paused", async () => {
 
   const firstRead = device.brain.readFile("first");
   const secondRead = device.brain.readFile("second");
-  expect(device.state.isFileTransferring).toBe(true);
+  expect(device.state.isRefreshPaused).toBe(true);
 
   resolveFirst(new Uint8Array([1]));
   await firstRead;
-  expect(device.state.isFileTransferring).toBe(true);
+  expect(device.state.isRefreshPaused).toBe(true);
 
   resolveSecond(new Uint8Array([2]));
   await secondRead;
-  expect(device.state.isFileTransferring).toBe(false);
+  expect(device.state.isRefreshPaused).toBe(false);
 });
 
 test("state-changing methods wait for acknowledgement before updating state", async () => {
@@ -245,6 +245,32 @@ test("automatic refresh failures are emitted instead of left unhandled", async (
     });
   });
   expect(await emitted).toBeInstanceOf(Error);
+});
+
+test("disabled automatic refresh does not schedule polling", async () => {
+  const device = new V5SerialDevice(serial, false);
+  devices.push(device);
+  let refreshes = 0;
+  device.connection = {
+    isConnected: true,
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+  device.refresh = () => {
+    refreshes++;
+    return okAsync<boolean>(true);
+  };
+
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  expect(refreshes).toBe(0);
+
+  device.autoRefresh = true;
+  const refreshed = await sleepUntil(() => refreshes === 1, 1000, 20);
+  expect(refreshed._unsafeUnwrap()).toBe(true);
+  expect(refreshes).toBe(1);
+
+  device.autoRefresh = false;
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  expect(refreshes).toBe(1);
 });
 
 test("connect opens and retains a supplied connection", async () => {
@@ -477,6 +503,29 @@ function buildReply(args: {
 }
 
 describe("refresh snapshot safety", () => {
+  test("refresh populates partner-controller charging state", async () => {
+    const device = new V5SerialDevice(serial);
+    devices.push(device);
+    device.connection = {
+      isConnected: true,
+      ...buildReply({
+        system: {
+          sysflags: [0, 0, 0b10000000, 0, 0, 0, 0],
+        },
+        flags: {
+          flags: 8192,
+          partnerControllerBatteryPercent: 88,
+        },
+      }),
+      close: async () => {},
+    } as unknown as V5SerialConnection;
+
+    expect((await device.refresh())._unsafeUnwrap()).toBe(true);
+    expect(device.controllers[1].batteryPercent).toBe(88);
+    expect(device.controllers[1].isAvailable).toBe(true);
+    expect(device.controllers[1].isCharging).toBe(true);
+  });
+
   test("partial refresh failure preserves the previous coherent snapshot", async () => {
     const device = new V5SerialDevice(serial);
     devices.push(device);
@@ -636,6 +685,31 @@ describe("promise-returning program/match state", () => {
     expect(device.state.brain.activeProgram).toBe(1);
   });
 
+  test("runProgram with a filename does not parse activeProgram from the name", async () => {
+    const device = new V5SerialDevice(serial);
+    devices.push(device);
+    device.state.brain.activeProgram = 4;
+    const calls: Array<string | number> = [];
+    device.connection = {
+      isConnected: true,
+      runProgram: (slot: string | number) => {
+        calls.push(slot);
+        return okAsync(
+          Object.create(
+            LoadFileActionReplyD2HPacket.prototype,
+          ) as LoadFileActionReplyD2HPacket,
+        );
+      },
+      close: async () => {},
+    } as unknown as V5SerialConnection;
+
+    expect((await device.brain.runProgram("123-program.bin")).isOk()).toBe(
+      true,
+    );
+    expect(calls).toEqual(["123-program.bin"]);
+    expect(device.state.brain.activeProgram).toBe(4);
+  });
+
   test("setMatchMode reports a disconnected device", async () => {
     const device = new V5SerialDevice(serial);
     devices.push(device);
@@ -645,6 +719,15 @@ describe("promise-returning program/match state", () => {
       close: async () => {},
     } as unknown as V5SerialConnection;
     expect((await device.setMatchMode("disabled")).isErr()).toBe(true);
+  });
+
+  test("changeChannel reports a disconnected device", async () => {
+    const device = new V5SerialDevice(serial);
+    devices.push(device);
+
+    const result = await device.radio.changeChannel(RadioChannelType.PIT);
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexNotConnectedError);
   });
 });
 
