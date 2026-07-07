@@ -1,0 +1,25 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="512"
+  height="512"
+  viewBox="0 0 16 16"
+>
+  <style>
+    path {
+      fill: #3730a3;
+      stroke: #3730a3;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      path {
+        fill: #b8baff;
+        stroke: #b8baff;
+      }
+    }
+  </style>
+  <path
+    d="M1 4.5h2.5L8 9.75 12.25 4.5h2.5L9 11.5h-2.25Z"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
