@@ -196,7 +196,7 @@ export function readFile(
         handle = request;
       }
 
-      return state.withFileTransfer(() =>
+      return state.withRefreshPaused(() =>
         conn.downloadFileToHost(handle, downloadTarget, progressCallback),
       );
     })(),
@@ -214,7 +214,7 @@ export function removeFile(
         return err(new VexNotConnectedError());
       }
 
-      return state.withFileTransfer(() => conn.removeFile(request));
+      return state.withRefreshPaused(() => conn.removeFile(request));
     })(),
   );
 }
@@ -229,7 +229,7 @@ export function removeAllFiles(
         return err(new VexNotConnectedError());
       }
 
-      return state.withFileTransfer(() => conn.removeAllFiles());
+      return state.withRefreshPaused(() => conn.removeAllFiles());
     })(),
   );
 }
@@ -267,7 +267,7 @@ async function runUploadProgram(
 
   let switchedToDownload = false;
 
-  return state.withFileTransfer(async () => {
+  return state.withRefreshPaused(async () => {
     try {
       if (device.isV5Controller) {
         await sleep(250);
@@ -354,7 +354,7 @@ export function writeFile(
       if (conn == null || !conn.isConnected) {
         return err(new VexNotConnectedError());
       }
-      return state.withFileTransfer(() =>
+      return state.withRefreshPaused(() =>
         conn.uploadFileToDevice(request, progressCallback),
       );
     })(),
@@ -379,7 +379,9 @@ export function captureScreen(
         return err(new VexNotConnectedError());
       }
 
-      return state.withFileTransfer(() => conn.captureScreen(progressCallback));
+      return state.withRefreshPaused(() =>
+        conn.captureScreen(progressCallback),
+      );
     })(),
   );
 }
