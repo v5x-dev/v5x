@@ -26,10 +26,12 @@ import { decodeCatText, formatCatText } from "./cat";
 import {
   compareVersions,
   createDoctorReport,
+  doctorExitCode,
   formatDoctorRows,
 } from "./doctor";
 import { toKvJson } from "./kv";
 import { assertProjectNameArgument } from "./new";
+import { parseToolchain } from "../utils/scaffold";
 import {
   formatProgramRows,
   parseSlotArgument,
@@ -304,6 +306,13 @@ test("rejects nested path attempts for new command names", () => {
   expect(() => assertProjectNameArgument("robot")).not.toThrow();
 });
 
+test("requires a project type for scaffold commands", () => {
+  expect(() => parseToolchain(undefined)).toThrow("--type is required");
+  expect(() => parseToolchain("bad")).toThrow("unsupported --type bad");
+  expect(parseToolchain("pros")).toBe("pros");
+  expect(parseToolchain("vexide")).toBe("vexide");
+});
+
 test("parses start command slot arguments", () => {
   expect(parseSlotArgument("1")).toBe(1);
   expect(parseSlotArgument("8")).toBe(8);
@@ -315,6 +324,9 @@ test("compares Bun-style versions", () => {
   expect(compareVersions("1.3.14", "1.3.14")).toBe(0);
   expect(compareVersions("1.3.15", "1.3.14")).toBe(1);
   expect(compareVersions("1.2.9", "1.3.14")).toBe(-1);
+  expect(compareVersions("1.3.14-canary.37", "1.3.14")).toBe(-1);
+  expect(compareVersions("1.3.0-beta", "1.3.14")).toBe(-1);
+  expect(compareVersions("1.3.15-canary.1", "1.3.14")).toBe(1);
 });
 
 test("reports doctor checks without requiring hardware", async () => {
@@ -339,12 +351,19 @@ test("reports doctor checks without requiring hardware", async () => {
   });
 
   expect(report.status).toBe("ok");
+  expect(doctorExitCode(report)).toBe(0);
   expect(formatDoctorRows(report)).toContainEqual([
     "ok",
     "Serial ports",
     "none visible",
     "Connect a powered V5 brain only when running hardware commands.",
   ]);
+});
+
+test("doctor exits nonzero only for error reports", () => {
+  expect(doctorExitCode({ status: "ok", checks: [] })).toBe(0);
+  expect(doctorExitCode({ status: "warn", checks: [] })).toBe(0);
+  expect(doctorExitCode({ status: "error", checks: [] })).toBe(1);
 });
 
 describe("serial command failures", () => {

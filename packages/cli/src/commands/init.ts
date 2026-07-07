@@ -7,7 +7,7 @@ import { toWorkflowCreateJson } from "../utils/workflow-json";
 export default function registerInitCommand(program: Sade) {
   program
     .command("init [path]", "create a new V5 program in an empty directory")
-    .option("-t, --type", "project toolchain")
+    .option("-t, --type", "project toolchain (required: pros or vexide)")
     .option("--json", "print machine-readable JSON")
     .action(
       async (
