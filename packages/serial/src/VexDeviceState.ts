@@ -30,7 +30,11 @@ import type { V5SerialDevice } from "./VexDevice.js";
 import * as firmware from "./VexFirmware.js";
 import * as transfers from "./VexTransfers.js";
 
-export abstract class VexSerialDevice extends VexEventTarget {
+export interface VexSerialDeviceEvents {
+  error: unknown;
+}
+
+export abstract class VexSerialDevice extends VexEventTarget<VexSerialDeviceEvents> {
   connection: V5SerialConnection | undefined;
   defaultSerial: Serial;
 

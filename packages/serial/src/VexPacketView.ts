@@ -1,6 +1,8 @@
 import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
 import { type HostBoundPacket } from "./VexPacket.js";
 
+const textDecoder = new TextDecoder("UTF-8");
+
 export class PacketView extends DataView<ArrayBuffer> {
   position = 0;
   littleEndianDefault = true;
@@ -55,10 +57,10 @@ export class PacketView extends DataView<ArrayBuffer> {
   }
 
   nextString(length: number): string {
-    let result = "";
-    for (let i = 0; i < length; i++) {
-      result += String.fromCharCode(this.nextUint8());
-    }
+    const result = textDecoder.decode(
+      new Uint8Array(this.buffer, this.byteOffset + this.position, length),
+    );
+    this.position += length;
     return result;
   }
 
@@ -72,14 +74,17 @@ export class PacketView extends DataView<ArrayBuffer> {
 
   /** Read a null-terminated string of at most `length` bytes. */
   nextVarNTBS(length: number): string {
-    let result = "";
+    const start = this.position;
+    let byteLength = 0;
     for (let i = 0; i < length; i++) {
       if (this.byteLength <= this.position) break;
       const g = this.nextUint8();
       if (g === 0) break;
-      result += String.fromCharCode(g);
+      byteLength++;
     }
-    return result;
+    return textDecoder.decode(
+      new Uint8Array(this.buffer, this.byteOffset + start, byteLength),
+    );
   }
 
   nextVersion(reverse = false): VexFirmwareVersion {
