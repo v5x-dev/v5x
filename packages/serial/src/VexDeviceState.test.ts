@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { SmartDeviceType } from "./Vex";
 import { V5SerialConnection } from "./VexConnection";
 import { V5SerialDevice } from "./VexDevice";
+import { VexNotConnectedError } from "./VexError";
 import { FileControlReplyD2HPacket } from "./VexPacketModels";
 import { protocolReply } from "./protocol.test-support";
 
@@ -48,17 +49,24 @@ test("public state views expose one coherent device snapshot", async () => {
   } as unknown as V5SerialConnection;
 
   expect(device.brain.isRunningProgram).toBe(true);
+  expect(device.brain).toBe(device.brain);
+  expect(device.brain.battery).toBe(device.brain.battery);
+  expect(device.brain.button).toBe(device.brain.button);
+  expect(device.brain.settings).toBe(device.brain.settings);
   expect(device.brain.battery.batteryPercent).toBe(75);
   expect(device.brain.battery.isCharging).toBe(true);
   expect(device.brain.button.isPressed).toBe(true);
   expect(device.brain.button.isDoublePressed).toBe(false);
+  expect(device.controllers).toBe(device.controllers);
   expect(device.controllers[0].batteryPercent).toBe(80);
   expect(device.controllers[0].isMasterController).toBe(true);
   expect(device.controllers[0].isAvailable).toBe(true);
   expect(device.controllers[0].isCharging).toBe(true);
+  expect(device.devices[0]).toBe(device.devices[0]);
   expect(device.devices[0]?.port).toBe(1);
   expect(device.devices[0]?.type).toBe(SmartDeviceType.MOTOR);
   expect(device.devices[0]?.version).toBe(7);
+  expect(device.radio).toBe(device.radio);
   expect(device.radio.channel).toBe(3);
   expect(device.radio.isAvailable).toBe(true);
   expect(device.radio.isConnected).toBe(true);
@@ -66,4 +74,13 @@ test("public state views expose one coherent device snapshot", async () => {
   expect(device.radio.isRadioData).toBe(false);
   expect(device.radio.latency).toBe(4);
   expect((await device.radio.changeChannel(1)).isOk()).toBe(true);
+});
+
+test("changeChannel reports disconnected devices", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+
+  const result = await device.radio.changeChannel(1);
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexNotConnectedError);
 });

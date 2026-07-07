@@ -78,7 +78,7 @@ test("screen capture delegates to the connection while refresh is paused", async
   device.connection = {
     isConnected: true,
     captureScreen: () => {
-      sawPausedRefresh = device.state.isFileTransferring;
+      sawPausedRefresh = device.state.isRefreshPaused;
       return okAsync(expected);
     },
     close: async () => {},
@@ -87,7 +87,7 @@ test("screen capture delegates to the connection while refresh is paused", async
   const result = await device.brain.captureScreen();
   expect(result._unsafeUnwrap()).toBe(expected);
   expect(sawPausedRefresh).toBe(true);
-  expect(device.state.isFileTransferring).toBe(false);
+  expect(device.state.isRefreshPaused).toBe(false);
 });
 
 test("listFiles enumerates directory entries returned by the device", async () => {
