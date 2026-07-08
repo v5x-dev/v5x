@@ -62,7 +62,7 @@
     },
     "packages/cli": {
       "name": "@v5x/cli",
-      "version": "0.0.22",
+      "version": "0.0.23",
       "bin": {
         "v5x": "./dist/index.js",
       },
@@ -81,7 +81,7 @@
     },
     "packages/serial": {
       "name": "@v5x/serial",
-      "version": "0.5.5",
+      "version": "0.5.6",
       "dependencies": {
         "@types/dom-serial": "^1.0.2",
         "neverthrow": "^8.2.0",
@@ -94,7 +94,7 @@
     },
     "packages/web": {
       "name": "@v5x/web",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "@v5x/serial": "workspace:*",
         "neverthrow": "^8.2.0",
