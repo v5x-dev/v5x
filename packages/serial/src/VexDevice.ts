@@ -48,6 +48,16 @@ export {
   uploadFirmware,
 } from "./VexFirmware.js";
 
+type RefreshTimer = ReturnType<typeof setInterval>;
+
+function unrefTimerIfPossible(timer: RefreshTimer): void {
+  if (typeof timer !== "object" || timer === null || !("unref" in timer))
+    return;
+
+  const unref = timer.unref;
+  if (typeof unref === "function") unref.call(timer);
+}
+
 export class V5SerialDevice extends VexSerialDevice {
   autoReconnect = true;
   pauseRefreshOnFileTransfer = true;
@@ -68,7 +78,7 @@ export class V5SerialDevice extends VexSerialDevice {
   private readonly _radio = new V5Radio(this.state);
   private readonly _deviceFacades: Array<V5SmartDevice | undefined> = [];
 
-  constructor(defaultSerial: Serial, autoRefresh = true) {
+  constructor(defaultSerial: Serial, autoRefresh = false) {
     super(defaultSerial);
     this.autoRefresh = autoRefresh;
   }
@@ -112,6 +122,7 @@ export class V5SerialDevice extends VexSerialDevice {
         }
       }
     }, 200);
+    unrefTimerIfPossible(this._refreshInterval);
   }
 
   private _stopRefreshInterval(): void {

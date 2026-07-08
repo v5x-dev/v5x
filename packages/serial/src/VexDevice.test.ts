@@ -244,11 +244,12 @@ test("automatic refresh failures are emitted instead of left unhandled", async (
       resolve(error);
     });
   });
+  device.autoRefresh = true;
   expect(await emitted).toBeInstanceOf(Error);
 });
 
-test("disabled automatic refresh does not schedule polling", async () => {
-  const device = new V5SerialDevice(serial, false);
+test("automatic refresh is opt-in", async () => {
+  const device = new V5SerialDevice(serial);
   devices.push(device);
   let refreshes = 0;
   device.connection = {
