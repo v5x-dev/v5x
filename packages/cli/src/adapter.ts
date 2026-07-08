@@ -208,11 +208,7 @@ export class WebSerialAdapter extends EventTarget implements Serial {
           path,
           id: serialNumber ?? path,
           serialNumber,
-          usbVendorId: vendorId
-            ? parseInt(vendorId, 16)
-            : this.os === "darwin"
-              ? 10376
-              : undefined,
+          usbVendorId: vendorId ? parseInt(vendorId, 16) : undefined,
           usbProductId: productId ? parseInt(productId, 16) : undefined,
         });
         this.ports.set(path, adapter);
