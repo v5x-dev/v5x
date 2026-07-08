@@ -41,6 +41,7 @@ import {
   assertScreenshotOptions,
   encodeScreenshotPng,
   encodeScreenshotPpm,
+  parseScreenshotFormat,
   shouldPrintKittyRgb,
   toScreenshotJson,
 } from "./screenshot";
@@ -289,6 +290,15 @@ describe("command output formatting", () => {
     );
     expect(() => encodeScreenshotPpm(new Uint8Array([0]))).toThrow(
       "bad screenshot size: 1",
+    );
+  });
+
+  test("parses screenshot formats", () => {
+    expect(parseScreenshotFormat(undefined)).toBe("png");
+    expect(parseScreenshotFormat("png")).toBe("png");
+    expect(parseScreenshotFormat("ppm")).toBe("ppm");
+    expect(() => parseScreenshotFormat("jpeg")).toThrow(
+      "--format must be png or ppm",
     );
   });
 

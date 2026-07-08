@@ -71,7 +71,9 @@ export function encodeScreenshotPpm(bytes: Uint8Array): Buffer {
   ]);
 }
 
-function parseScreenshotFormat(format: string | undefined): ScreenshotFormat {
+export function parseScreenshotFormat(
+  format: string | undefined,
+): ScreenshotFormat {
   if (format === undefined || format === "png" || format === "ppm") {
     return format ?? "png";
   }
@@ -129,6 +131,7 @@ export default function registerScreenshotCommand(program: Sade) {
           json?: boolean;
         } & PortSelectionOptions,
       ) => {
+        const format = parseScreenshotFormat(options.format);
         assertScreenshotOptions(options);
         await withSelectedV5Device(options, async (device) => {
           const frame = unwrapSerial(
@@ -142,7 +145,6 @@ export default function registerScreenshotCommand(program: Sade) {
             return;
           }
 
-          const format = parseScreenshotFormat(options.format);
           const data =
             format === "png"
               ? encodeScreenshotPng(frame)

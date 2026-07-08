@@ -1,4 +1,14 @@
 const targets = [
+  {
+    name: "Connection",
+    path: "packages/serial/src/VexConnection.ts",
+    minimum: 90,
+  },
+  {
+    name: "Device",
+    path: "packages/serial/src/VexDevice.ts",
+    minimum: 88,
+  },
   { name: "Firmware", path: "packages/serial/src/VexFirmware.ts", minimum: 60 },
   {
     name: "Transfers",

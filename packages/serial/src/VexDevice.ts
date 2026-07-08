@@ -64,7 +64,7 @@ export class V5SerialDevice extends VexSerialDevice {
 
   protected _isReconnecting = false;
   private _isDisconnecting = false;
-  private _refreshInterval: ReturnType<typeof setInterval> | undefined;
+  private _refreshInterval: RefreshTimer | undefined;
   state: V5SerialDeviceState = new V5SerialDeviceState(this);
   private _disposed = false;
   private _refreshGeneration = 0;
