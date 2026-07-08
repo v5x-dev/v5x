@@ -71,7 +71,7 @@ describe("WebSerialAdapter", () => {
     });
   });
 
-  test("allows protocol probing when macOS omits USB identifiers", async () => {
+  test("keeps USB identifiers unknown when macOS omits them", async () => {
     const adapter = new WebSerialAdapter("darwin", async () => [
       { path: "/dev/cu.usbmodem01" },
     ]);
@@ -81,12 +81,12 @@ describe("WebSerialAdapter", () => {
     expect(ports[0]?.getInfo()).toEqual({
       path: "/dev/cu.usbmodem01",
       id: "/dev/cu.usbmodem01",
-      usbVendorId: 10376,
+      usbVendorId: undefined,
       usbProductId: undefined,
     });
-    expect(
-      await adapter.requestPort({ filters: [{ usbVendorId: 10376 }] }),
-    ).toBe(ports[0]!);
+    await expect(
+      adapter.requestPort({ filters: [{ usbVendorId: 10376 }] }),
+    ).rejects.toThrow("No port found matching filters");
   });
 
   test("reports Windows as needing a different serial backend", async () => {

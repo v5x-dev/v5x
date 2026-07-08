@@ -1,8 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { zipSync } from "fflate";
-import { okAsync } from "neverthrow";
+import { errAsync, okAsync } from "neverthrow";
 import { V5SerialDevice } from "./VexDevice";
 import { V5SerialConnection } from "./VexConnection";
+import { VexFirmwareError, VexProtocolError } from "./VexError";
 import {
   FactoryEnableReplyD2HPacket,
   FactoryStatusReplyD2HPacket,
@@ -112,9 +113,93 @@ test("firmware upload reports which factory image upload was rejected", async ()
       "1.2.3",
     );
     expect(result.isErr()).toBe(true);
-    expect(result._unsafeUnwrapErr().message).toContain("ASSETS upload");
+    const error = result._unsafeUnwrapErr();
+    expect(error).toBeInstanceOf(VexFirmwareError);
+    expect(error.message).toContain("ASSETS upload");
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("firmware upload propagates factory status request failures", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const factoryReply = protocolReply(FactoryEnableReplyD2HPacket);
+  let replyIndex = 0;
+  device.connection = {
+    isConnected: true,
+    request: () =>
+      [
+        okAsync(factoryReply),
+        errAsync(new VexProtocolError("expected factory status reply")),
+      ][replyIndex++],
+    uploadFileToDevice: (): ReturnType<
+      V5SerialConnection["uploadFileToDevice"]
+    > => okAsync<boolean>(true),
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+
+  const archive = zipSync({
+    "1.2.3/BOOT.bin": new Uint8Array([1, 2]),
+    "1.2.3/assets.bin": new Uint8Array([3, 4]),
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(async () => new Response(archive), {
+    preconnect: originalFetch.preconnect,
+  });
+
+  try {
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.2.3",
+    );
+    expect(result.isErr()).toBe(true);
+    const error = result._unsafeUnwrapErr();
+    expect(error).toBeInstanceOf(VexProtocolError);
+    expect(error.message).toContain("expected factory status reply");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("firmware upload reports factory status deadline expiry", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const factoryReply = protocolReply(FactoryEnableReplyD2HPacket);
+  device.connection = {
+    isConnected: true,
+    request: () => okAsync(factoryReply),
+    uploadFileToDevice: (): ReturnType<
+      V5SerialConnection["uploadFileToDevice"]
+    > => okAsync<boolean>(true),
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+
+  const archive = zipSync({
+    "1.2.3/BOOT.bin": new Uint8Array([1, 2]),
+    "1.2.3/assets.bin": new Uint8Array([3, 4]),
+  });
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  let nowIndex = 0;
+  const nowValues = [0, 120001];
+  globalThis.fetch = Object.assign(async () => new Response(archive), {
+    preconnect: originalFetch.preconnect,
+  });
+  Date.now = () => nowValues[nowIndex++] ?? 120001;
+
+  try {
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.2.3",
+    );
+    expect(result.isErr()).toBe(true);
+    const error = result._unsafeUnwrapErr();
+    expect(error).toBeInstanceOf(VexFirmwareError);
+    expect(error.message).toContain("BOOT factory status timed out");
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalNow;
   }
 });
 

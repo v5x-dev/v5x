@@ -1,7 +1,19 @@
+export class ProcessExitError extends Error {
+  constructor(
+    message: string,
+    public readonly stderr: string,
+  ) {
+    super(message);
+  }
+}
+
 export async function runProcess(
   command: string[],
   cwd: string,
-  options: { stdout?: "inherit" | "ignore" } = {},
+  options: {
+    stdout?: "inherit" | "ignore";
+    stderr?: "inherit" | "pipe";
+  } = {},
 ): Promise<void> {
   const [program, ...args] = command;
   if (program === undefined) throw new Error("cannot run an empty command");
@@ -15,10 +27,19 @@ export async function runProcess(
     cwd,
     stdin: "inherit",
     stdout: options.stdout ?? "inherit",
-    stderr: "inherit",
+    stderr: options.stderr ?? "inherit",
   });
-  const exitCode = await process.exited;
+  const [exitCode, stderr] = await Promise.all([
+    process.exited,
+    options.stderr === "pipe"
+      ? (process.stderr?.text() ?? Promise.resolve(""))
+      : Promise.resolve(""),
+  ]);
   if (exitCode !== 0) {
-    throw new Error(`${command.join(" ")} exited with code ${exitCode}`);
+    const message = `${command.join(" ")} exited with code ${exitCode}`;
+    throw new ProcessExitError(
+      stderr.length > 0 ? `${message}\n${stderr}` : message,
+      stderr,
+    );
   }
 }

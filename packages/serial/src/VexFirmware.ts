@@ -11,9 +11,7 @@ import {
   VexFirmwareError,
   VexInvalidArgumentError,
   VexNotConnectedError,
-  VexProtocolError,
   VexSerialError,
-  VexTransferError,
   toVexSerialError,
 } from "./VexError.js";
 import { err, errAsync, ok, Result, ResultAsync } from "neverthrow";
@@ -294,7 +292,7 @@ async function flashFactoryImage(
   });
   if (upload.isErr()) return err(upload.error);
   if (!upload.value) {
-    return err(new VexTransferError(`${label} upload was rejected by device`));
+    return err(new VexFirmwareError(`${label} upload was rejected by device`));
   }
 
   const deadline = Date.now() + 120000;
@@ -314,7 +312,7 @@ async function flashFactoryImage(
     await sleepInner(500);
   }
 
-  return err(new VexProtocolError(`${label} factory status timed out`));
+  return err(new VexFirmwareError(`${label} factory status timed out`));
 }
 
 function reportFactoryStatus(
@@ -404,7 +402,7 @@ async function extractFirmwareImages(
  * Upload a VEXos firmware archive to a connected brain. Network and
  * archive validation failures are returned as {@link VexSerialError}
  * values rather than thrown; a device that refuses a step or a missing
- * connection surfaces as {@link VexProtocolError} / {@link VexNotConnectedError}.
+ * connection surfaces as {@link VexFirmwareError} / {@link VexNotConnectedError}.
  */
 export function uploadFirmware(
   state: V5SerialDeviceState,
