@@ -25,6 +25,7 @@ const devices: V5SerialDevice[] = [];
 const serial = {
   getPorts: async () => [],
 } as unknown as Serial;
+type RefreshTimer = ReturnType<typeof setInterval>;
 
 afterEach(async () => {
   await Promise.all(devices.splice(0).map((device) => device.dispose()));
@@ -272,6 +273,46 @@ test("automatic refresh is opt-in", async () => {
   device.autoRefresh = false;
   await new Promise((resolve) => setTimeout(resolve, 250));
   expect(refreshes).toBe(1);
+});
+
+test("automatic refresh starts its timer lazily and unrefs it", async () => {
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  let starts = 0;
+  let stops = 0;
+  let unrefs = 0;
+  const timer = {
+    unref: () => {
+      unrefs++;
+    },
+  } as unknown as RefreshTimer;
+
+  globalThis.setInterval = (() => {
+    starts++;
+    return timer;
+  }) as unknown as typeof globalThis.setInterval;
+  globalThis.clearInterval = ((interval: RefreshTimer | undefined) => {
+    if (interval === timer) stops++;
+  }) as typeof globalThis.clearInterval;
+
+  try {
+    const device = new V5SerialDevice(serial);
+    devices.push(device);
+    expect(starts).toBe(0);
+
+    device.autoRefresh = true;
+    expect(starts).toBe(1);
+    expect(unrefs).toBe(1);
+
+    device.autoRefresh = true;
+    expect(starts).toBe(1);
+
+    device.autoRefresh = false;
+    expect(stops).toBe(1);
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
 });
 
 test("connect opens and retains a supplied connection", async () => {
