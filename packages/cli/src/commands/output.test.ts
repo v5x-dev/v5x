@@ -29,7 +29,7 @@ import {
   doctorExitCode,
   formatDoctorRows,
 } from "./doctor";
-import { toKvJson } from "./kv";
+import { formatKvRows, toKvJson } from "./kv";
 import { assertProjectNameArgument } from "./new";
 import { parseToolchain } from "../utils/scaffold";
 import {
@@ -213,6 +213,28 @@ describe("command output formatting", () => {
     ).toEqual([
       { key: "teamnumber", value: "1234A" },
       { key: "robotname", value: null },
+    ]);
+  });
+
+  test("formats key/value read failures distinctly from unset values", () => {
+    const error = "failed to get robotname: timeout: read timed out";
+    expect(
+      toKvJson([
+        { key: "teamnumber", value: undefined },
+        { key: "robotname", value: undefined, error },
+      ]),
+    ).toEqual([
+      { key: "teamnumber", value: null },
+      { key: "robotname", value: null, error },
+    ]);
+    expect(
+      formatKvRows([
+        { key: "teamnumber", value: undefined },
+        { key: "robotname", value: undefined, error },
+      ]),
+    ).toEqual([
+      ["teamnumber", "(unset)"],
+      ["robotname", error],
     ]);
   });
 

@@ -51,9 +51,55 @@ await mock.module("bun-serialport", () => ({
   list: async () => [],
 }));
 
-const { WebSerialAdapter } = await import("./adapter");
+const { WebSerialAdapter, readLinuxUsbDeviceAttributes } =
+  await import("./adapter");
 
 describe("WebSerialAdapter", () => {
+  test("reads Linux USB vendor, product, and serial attributes", async () => {
+    const files = new Map([
+      ["/sys/devices/pci/idVendor", "2888\n"],
+      ["/sys/devices/pci/idProduct", "0501\n"],
+      ["/sys/devices/pci/serial", "vex-123\n"],
+    ]);
+
+    expect(
+      await readLinuxUsbDeviceAttributes(
+        "/sys/devices/pci/tty",
+        async (path) => {
+          const value = files.get(path);
+          if (value === undefined) throw new Error(`missing ${path}`);
+          return value;
+        },
+      ),
+    ).toEqual({
+      vendorId: "2888",
+      productId: "0501",
+      serialNumber: "vex-123",
+    });
+  });
+
+  test("keeps Linux USB serial unknown when the attribute is absent", async () => {
+    const files = new Map([
+      ["/sys/devices/pci/tty/idVendor", "2888\n"],
+      ["/sys/devices/pci/tty/idProduct", "0501\n"],
+    ]);
+
+    expect(
+      await readLinuxUsbDeviceAttributes(
+        "/sys/devices/pci/tty",
+        async (path) => {
+          const value = files.get(path);
+          if (value === undefined) throw new Error(`missing ${path}`);
+          return value;
+        },
+      ),
+    ).toEqual({
+      vendorId: "2888",
+      productId: "0501",
+      serialNumber: undefined,
+    });
+  });
+
   test("reuses port objects so open state is shared", async () => {
     const adapter = new WebSerialAdapter("darwin", async () => [
       { path: "/dev/ttyACM0", vendorId: "2888", productId: "0501" },

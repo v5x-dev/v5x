@@ -45,6 +45,36 @@ async function listPorts(): Promise<AdapterPortInfo[]> {
   return (await import("bun-serialport")).list();
 }
 
+type ReadTextFile = (path: string) => Promise<string>;
+
+const readTextFile: ReadTextFile = (path) => Bun.file(path).text();
+
+export async function readLinuxUsbDeviceAttributes(
+  device: string,
+  readText: ReadTextFile = readTextFile,
+): Promise<Pick<AdapterPortInfo, "vendorId" | "productId" | "serialNumber">> {
+  let current = device;
+  for (let i = 0; i < 5; i++, current = join(current, "..")) {
+    try {
+      const [vendorId, productId] = await Promise.all([
+        readText(join(current, "idVendor")),
+        readText(join(current, "idProduct")),
+      ]);
+      const serialNumber = await readText(join(current, "serial"))
+        .then((value) => value.trim())
+        .catch(() => undefined);
+      return {
+        vendorId: vendorId.trim(),
+        productId: productId.trim(),
+        serialNumber: serialNumber === "" ? undefined : serialNumber,
+      };
+    } catch {
+      // Keep walking up toward the USB device node.
+    }
+  }
+  return {};
+}
+
 export class WebSerialPortAdapter extends EventTarget implements SerialPort {
   onconnect: (event: Event) => void = () => {};
   ondisconnect: (event: Event) => void = () => {};
@@ -162,20 +192,7 @@ export class WebSerialAdapter extends EventTarget implements Serial {
         const info: AdapterPortInfo = { path: `/dev/${name}` };
 
         if (subsystem.includes("usb")) {
-          let current = device;
-          for (let i = 0; i < 5; i++, current = join(current, "..")) {
-            try {
-              const [vendorId, productId] = await Promise.all([
-                Bun.file(join(current, "idVendor")).text(),
-                Bun.file(join(current, "idProduct")).text(),
-              ]);
-              info.vendorId = vendorId.trim();
-              info.productId = productId.trim();
-              break;
-            } catch {
-              // Keep walking up toward the USB device node.
-            }
-          }
+          Object.assign(info, await readLinuxUsbDeviceAttributes(device));
         }
         ports.push(info);
       } catch {
