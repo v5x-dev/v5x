@@ -94,6 +94,18 @@ export function toScreenshotJson(
   };
 }
 
+export function assertScreenshotOptions(options: {
+  output?: string;
+  json?: boolean;
+}): void {
+  if (options.json === true && options.output === undefined)
+    throw new Error("--json requires --output");
+}
+
+export function shouldPrintKittyRgb(): boolean {
+  return process.stdout.isTTY === true;
+}
+
 function printKittyRgb(bytes: Uint8Array): void {
   assertScreenshotSize(bytes);
   const base64 = Buffer.from(bytes).toString("base64");
@@ -120,14 +132,16 @@ export default function registerScreenshotCommand(program: Sade) {
         } & PortSelectionOptions,
       ) => {
         const format = parseScreenshotFormat(options.format);
-
+        assertScreenshotOptions(options);
         await withSelectedV5Device(options, async (device) => {
           const frame = unwrapSerial(
             await device.brain.captureScreen(),
             "failed to capture screenshot",
           );
           if (options.output === undefined) {
-            printKittyRgb(frame);
+            if (shouldPrintKittyRgb()) printKittyRgb(frame);
+            else
+              console.error("use --output to write the screenshot to a file");
             return;
           }
 
