@@ -38,8 +38,10 @@ import {
   toProgramJson,
 } from "./programs";
 import {
+  assertScreenshotOptions,
   encodeScreenshotPng,
   encodeScreenshotPpm,
+  shouldPrintKittyRgb,
   toScreenshotJson,
 } from "./screenshot";
 
@@ -298,6 +300,29 @@ describe("command output formatting", () => {
       height: 272,
       bytes: 12345,
     });
+  });
+
+  test("requires an output path for screenshot JSON mode", () => {
+    expect(() => assertScreenshotOptions({ json: true })).toThrow(
+      "--json requires --output",
+    );
+    expect(() =>
+      assertScreenshotOptions({ json: true, output: "screen.png" }),
+    ).not.toThrow();
+    expect(() => assertScreenshotOptions({})).not.toThrow();
+  });
+
+  test("only enables Kitty screenshot previews on TTY stdout", () => {
+    const originalIsTTY = process.stdout.isTTY;
+    try {
+      (process.stdout as { isTTY: boolean }).isTTY = true;
+      expect(shouldPrintKittyRgb()).toBe(true);
+
+      (process.stdout as { isTTY: boolean }).isTTY = false;
+      expect(shouldPrintKittyRgb()).toBe(false);
+    } finally {
+      (process.stdout as { isTTY: boolean | undefined }).isTTY = originalIsTTY;
+    }
   });
 });
 
