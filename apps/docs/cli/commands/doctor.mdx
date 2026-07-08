@@ -11,6 +11,8 @@ Checks the local environment before project code or hardware-specific commands a
 
 The command does not require a connected V5 brain. If no serial ports are visible, hardware commands may still work after connecting and powering on a brain.
 
+`v5x doctor` exits with status code `1` when the overall status is `error`. A `warn` status still exits with status code `0`.
+
 ## JSON output
 
 ```bash

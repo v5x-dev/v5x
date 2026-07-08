@@ -4,6 +4,7 @@ import {
   type IFileWriteRequest,
   USER_FLASH_USR_CODE_START,
 } from "./Vex.js";
+import { type V5SerialConnection } from "./VexConnection.js";
 import type { V5SerialDeviceState } from "./VexDeviceState.js";
 import {
   VexDownloadError,
@@ -12,6 +13,7 @@ import {
   VexNotConnectedError,
   VexProtocolError,
   VexSerialError,
+  VexTransferError,
   toVexSerialError,
 } from "./VexError.js";
 import { err, errAsync, ok, Result, ResultAsync } from "neverthrow";
@@ -248,6 +250,109 @@ interface FirmwareImage {
   buf: Uint8Array;
 }
 
+type FirmwareProgressCallback = (
+  state: string,
+  current: number,
+  total: number,
+) => void;
+
+type FactoryImageLabel = "BOOT" | "ASSETS";
+
+interface FactoryImageFlashOptions {
+  image: FirmwareImage;
+  label: FactoryImageLabel;
+  downloadTarget: FileDownloadTarget;
+}
+
+async function flashFactoryImage(
+  conn: V5SerialConnection,
+  options: FactoryImageFlashOptions,
+  pcb: FirmwareProgressCallback,
+): Promise<Result<void, VexSerialError>> {
+  const { image, label, downloadTarget } = options;
+  pcb(`FACTORY ENB ${label}`, 0, 0);
+
+  const enableReply = await conn.writeDataAsync(new FactoryEnableH2DPacket());
+  if (!(enableReply instanceof FactoryEnableReplyD2HPacket)) {
+    return err(
+      new VexProtocolError(
+        `${label} factory enable failed: expected FactoryEnableReplyD2HPacket, received ${describeReply(enableReply)}`,
+      ),
+    );
+  }
+
+  const writeRequest: IFileWriteRequest = {
+    filename: "null.bin",
+    vendor: FileVendor.USER,
+    loadAddress: USER_FLASH_USR_CODE_START,
+    buf: image.buf,
+    downloadTarget,
+    exttype: "bin",
+    autoRun: true, // need to set EXIT_RUN
+    linkedFile: undefined,
+  };
+
+  const upload = await conn.uploadFileToDevice(writeRequest, (c, t) => {
+    pcb(`UPLOAD ${label}`, c, t);
+  });
+  if (upload.isErr()) return err(upload.error);
+  if (!upload.value) {
+    return err(new VexTransferError(`${label} upload was rejected by device`));
+  }
+
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    const statusReply = await conn.writeDataAsync(
+      new FactoryStatusH2DPacket(),
+      10000,
+    );
+    if (!(statusReply instanceof FactoryStatusReplyD2HPacket)) {
+      return err(
+        new VexProtocolError(
+          `${label} factory status failed: expected FactoryStatusReplyD2HPacket, received ${describeReply(statusReply)}`,
+        ),
+      );
+    }
+
+    reportFactoryStatus(label, statusReply, pcb);
+
+    if (statusReply.status === 0 && statusReply.percent === 100) {
+      return ok(undefined);
+    }
+    await sleepInner(500);
+  }
+
+  return err(new VexProtocolError(`${label} factory status timed out`));
+}
+
+function reportFactoryStatus(
+  label: FactoryImageLabel,
+  reply: FactoryStatusReplyD2HPacket,
+  pcb: FirmwareProgressCallback,
+): void {
+  switch (reply.status) {
+    case 2:
+      pcb(`ERASE ${label}`, reply.percent, 100);
+      break;
+    case 3:
+      pcb(`WRITE ${label}`, reply.percent, 100);
+      break;
+    case 4:
+      pcb(`VERIFY ${label}`, reply.percent, 100);
+      break;
+    case 8:
+      pcb(`FINISHING ${label}`, reply.percent, 100);
+      break;
+  }
+}
+
+function describeReply(reply: unknown): string {
+  if (reply === null) return "null";
+  if (reply === undefined) return "undefined";
+  if (typeof reply === "object") return reply.constructor.name;
+  return String(reply);
+}
+
 // Internal helper: stays throwing. The public `uploadFirmware` boundary
 // converts thrown errors into the {@link VexSerialError} hierarchy.
 async function extractFirmwareImages(
@@ -320,7 +425,7 @@ export function uploadFirmware(
   state: V5SerialDeviceState,
   publicUrl = "https://content.vexrobotics.com/vexos/public/V5/",
   usingVersion?: string,
-  progressCallback?: (state: string, current: number, total: number) => void,
+  progressCallback?: FirmwareProgressCallback,
 ): ResultAsync<boolean, VexSerialError> {
   return new ResultAsync(
     runUploadFirmware(state, publicUrl, usingVersion, progressCallback),
@@ -331,7 +436,7 @@ async function runUploadFirmware(
   state: V5SerialDeviceState,
   publicUrl: string,
   usingVersion: string | undefined,
-  progressCallback?: (state: string, current: number, total: number) => void,
+  progressCallback?: FirmwareProgressCallback,
 ): Promise<Result<boolean, VexSerialError>> {
   const device = state._instance;
   const conn = device.connection;
@@ -379,13 +484,6 @@ async function runUploadFirmware(
   pcb("UNZIP VEXOS", 1, 1);
 
   return state.withRefreshPaused(async () => {
-    pcb("FACTORY ENB BOOT", 0, 0);
-
-    const result = await conn.writeDataAsync(new FactoryEnableH2DPacket());
-    if (!(result instanceof FactoryEnableReplyD2HPacket)) {
-      return err(new VexProtocolError("FactoryEnableH2DPacket failed"));
-    }
-
     const boot = images.find((image) => image.name.endsWith("BOOT.bin"));
     if (boot === undefined) {
       return err(new VexFirmwareError("VEXos archive is missing BOOT.bin"));
@@ -397,119 +495,28 @@ async function runUploadFirmware(
       return err(new VexFirmwareError("VEXos archive is missing assets.bin"));
     }
 
-    const bootWriteRequest: IFileWriteRequest = {
-      filename: "null.bin",
-      vendor: FileVendor.USER,
-      loadAddress: USER_FLASH_USR_CODE_START,
-      buf: boot.buf,
-      downloadTarget: FileDownloadTarget.FILE_TARGET_B1,
-      exttype: "bin",
-      autoRun: true, // need to set EXIT_RUN
-      linkedFile: undefined,
-    };
-
-    const bootUpload = await conn.uploadFileToDevice(
-      bootWriteRequest,
-      (c, t) => {
-        pcb("UPLOAD BOOT", c, t);
+    const bootFlash = await flashFactoryImage(
+      conn,
+      {
+        image: boot,
+        label: "BOOT",
+        downloadTarget: FileDownloadTarget.FILE_TARGET_B1,
       },
+      pcb,
     );
-    if (bootUpload.isErr()) return err(bootUpload.error);
-    if (!bootUpload.value) return ok(false);
+    if (bootFlash.isErr()) return err(bootFlash.error);
 
-    const bootDeadline = Date.now() + 120000;
-    let bootComplete = false;
-    while (Date.now() < bootDeadline) {
-      const result3 = await conn.writeDataAsync(
-        new FactoryStatusH2DPacket(),
-        10000,
-      );
-      if (result3 instanceof FactoryStatusReplyD2HPacket) {
-        switch (result3.status) {
-          case 2:
-            pcb("ERASE BOOT", result3.percent, 100);
-            break;
-          case 3:
-            pcb("WRITE BOOT", result3.percent, 100);
-            break;
-          case 4:
-            pcb("VERIFY BOOT", result3.percent, 100);
-            break;
-          case 8:
-            pcb("FINISHING BOOT", result3.percent, 100);
-            break;
-        }
-        if (result3.status === 0 && result3.percent === 100) {
-          bootComplete = true;
-          break;
-        }
-      } else {
-        return ok(false);
-      }
-      await sleepInner(500);
-    }
-    if (!bootComplete) return ok(false);
-
-    pcb("FACTORY ENB ASSERT", 0, 0);
-
-    const result5 = await conn.writeDataAsync(new FactoryEnableH2DPacket());
-    if (!(result5 instanceof FactoryEnableReplyD2HPacket)) {
-      return err(new VexProtocolError("FactoryEnableH2DPacket failed"));
-    }
-
-    const assertWriteRequest: IFileWriteRequest = {
-      filename: "null.bin",
-      vendor: FileVendor.USER,
-      loadAddress: USER_FLASH_USR_CODE_START,
-      buf: assertImage.buf,
-      downloadTarget: FileDownloadTarget.FILE_TARGET_A1,
-      exttype: "bin",
-      autoRun: true, // need to set EXIT_RUN
-      linkedFile: undefined,
-    };
-
-    const assertUpload = await conn.uploadFileToDevice(
-      assertWriteRequest,
-      (c, t) => {
-        pcb("UPLOAD ASSERT", c, t);
+    const assetsFlash = await flashFactoryImage(
+      conn,
+      {
+        image: assertImage,
+        label: "ASSETS",
+        downloadTarget: FileDownloadTarget.FILE_TARGET_A1,
       },
+      pcb,
     );
-    if (assertUpload.isErr()) return err(assertUpload.error);
-    if (!assertUpload.value) return ok(false);
+    if (assetsFlash.isErr()) return err(assetsFlash.error);
 
-    const assertDeadline = Date.now() + 120000;
-    let assertComplete = false;
-    while (Date.now() < assertDeadline) {
-      const result7 = await conn.writeDataAsync(
-        new FactoryStatusH2DPacket(),
-        10000,
-      );
-      if (result7 instanceof FactoryStatusReplyD2HPacket) {
-        switch (result7.status) {
-          case 2:
-            pcb("ERASE ASSERT", result7.percent, 100);
-            break;
-          case 3:
-            pcb("WRITE ASSERT", result7.percent, 100);
-            break;
-          case 4:
-            pcb("VERIFY ASSERT", result7.percent, 100);
-            break;
-          case 8:
-            pcb("FINISHING ASSERT", result7.percent, 100);
-            break;
-        }
-
-        if (result7.status === 0 && result7.percent === 100) {
-          assertComplete = true;
-          break;
-        }
-      } else {
-        return ok(false);
-      }
-      await sleepInner(500);
-    }
-    if (!assertComplete) return ok(false);
     return ok(true);
   });
 }

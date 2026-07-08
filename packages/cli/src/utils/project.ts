@@ -26,8 +26,20 @@ function stringAt(value: unknown, keys: string[]): string | undefined {
   return typeof current === "string" ? current : undefined;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function readProsInfo(path: string) {
-  const metadata: unknown = await Bun.file(join(path, "project.pros")).json();
+  const filePath = join(path, "project.pros");
+  let metadata: unknown;
+  try {
+    metadata = JSON.parse(await Bun.file(filePath).text());
+  } catch (error) {
+    throw new Error(
+      `invalid project.pros at ${filePath}: ${errorMessage(error)}`,
+    );
+  }
   return {
     name: stringAt(metadata, ["py/state", "project_name"]),
     description: stringAt(metadata, [
@@ -46,9 +58,15 @@ async function readProsInfo(path: string) {
 }
 
 async function readVexideInfo(path: string) {
-  const manifest = Bun.TOML.parse(
-    await Bun.file(join(path, "Cargo.toml")).text(),
-  );
+  const filePath = join(path, "Cargo.toml");
+  let manifest: unknown;
+  try {
+    manifest = Bun.TOML.parse(await Bun.file(filePath).text());
+  } catch (error) {
+    throw new Error(
+      `invalid Cargo.toml at ${filePath}: ${errorMessage(error)}`,
+    );
+  }
   return {
     name: stringAt(manifest, ["package", "name"]),
     description: stringAt(manifest, ["package", "description"]),

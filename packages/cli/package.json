@@ -29,7 +29,6 @@
     "prepack": "bun run --cwd ../serial build && bun run build"
   },
   "devDependencies": {
-    "@v5x/serial": "workspace:*",
     "@types/bun": "latest"
   },
   "dependencies": {

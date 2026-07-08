@@ -5,26 +5,25 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^6.0.3",
-    "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@v5x/serial": "workspace:*",
     "@v5x/web": "workspace:*",
     "neverthrow": "^8.2.0",
-    "vite": "8.0.16",
-    "vite-plugin-solid": "^2.11.12",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "solid-js": "^1.9.10",
     "svelte": "^5.46.0"
   },
   "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/dom-serial": "^1.0.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "typescript": "^5.9.3"
+    "@vitejs/plugin-react": "^6.0.3",
+    "typescript": "^5.9.3",
+    "vite": "8.0.16",
+    "vite-plugin-solid": "^2.11.12"
   }
 }

@@ -25,6 +25,12 @@ export interface DoctorOptions {
   which?: (command: string) => string | null;
 }
 
+interface ParsedVersion {
+  parts: number[];
+  prerelease: boolean;
+  valid: boolean;
+}
+
 const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>(["darwin", "linux"]);
 const TOOLCHAINS = [
   {
@@ -60,8 +66,14 @@ function minimumBunVersion(): string {
 }
 
 export function compareVersions(left: string, right: string): number {
-  const leftParts = left.split(".").map((part) => Number(part));
-  const rightParts = right.split(".").map((part) => Number(part));
+  const leftVersion = parseVersion(left);
+  const rightVersion = parseVersion(right);
+  if (!leftVersion.valid && !rightVersion.valid) return 0;
+  if (!leftVersion.valid) return -1;
+  if (!rightVersion.valid) return 1;
+
+  const leftParts = leftVersion.parts;
+  const rightParts = rightVersion.parts;
   const length = Math.max(leftParts.length, rightParts.length);
 
   for (let index = 0; index < length; index++) {
@@ -71,7 +83,26 @@ export function compareVersions(left: string, right: string): number {
     if (leftValue < rightValue) return -1;
   }
 
+  if (leftVersion.prerelease !== rightVersion.prerelease) {
+    return leftVersion.prerelease ? -1 : 1;
+  }
+
   return 0;
+}
+
+function parseVersion(version: string): ParsedVersion {
+  const match = /^(\d+(?:\.\d+)*)(?:[-+].*)?$/.exec(version);
+  if (match === null) return { parts: [], prerelease: false, valid: false };
+  const numericVersion = match[1];
+  if (numericVersion === undefined) {
+    return { parts: [], prerelease: false, valid: false };
+  }
+
+  return {
+    parts: numericVersion.split(".").map((part) => Number(part)),
+    prerelease: version.includes("-"),
+    valid: true,
+  };
 }
 
 function worstStatus(statuses: DoctorStatus[]): DoctorStatus {
@@ -196,12 +227,17 @@ export function formatDoctorRows(report: DoctorReport): string[][] {
   ]);
 }
 
+export function doctorExitCode(report: DoctorReport): 0 | 1 {
+  return report.status === "error" ? 1 : 0;
+}
+
 export default function registerDoctorCommand(program: Sade) {
   program
     .command("doctor", "check local v5x environment")
     .option("--json", "print machine-readable JSON")
     .action(async (options: { json?: boolean }) => {
       const report = await createDoctorReport();
+      process.exitCode = doctorExitCode(report);
       if (options.json === true) printJson(report);
       else {
         console.log(

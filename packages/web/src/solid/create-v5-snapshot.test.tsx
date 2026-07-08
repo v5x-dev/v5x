@@ -17,6 +17,8 @@ function createSnapshot(status: V5Snapshot["status"]): V5Snapshot {
       status === "error"
         ? new V5WebError("connect-error", "connect failed")
         : null,
+    device: null,
+    deviceVersion: 0,
   };
 }
 
@@ -73,4 +75,27 @@ test("createV5Snapshot mirrors updates and unsubscribes on cleanup", () => {
   dispose();
 
   expect(client.listenerCount()).toBe(0);
+});
+
+test("V5Provider disconnects a provided client only when it owns it", () => {
+  let disconnects = 0;
+  const client = {
+    ...createFakeClient(),
+    disconnect: async () => {
+      disconnects++;
+    },
+  };
+
+  const dispose = createRoot((rootDispose) => {
+    createComponent(V5Provider, {
+      client,
+      children: null,
+    });
+
+    return rootDispose;
+  });
+
+  dispose();
+
+  expect(disconnects).toBe(0);
 });

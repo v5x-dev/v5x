@@ -30,7 +30,12 @@ import type { V5SerialDevice } from "./VexDevice.js";
 import * as firmware from "./VexFirmware.js";
 import * as transfers from "./VexTransfers.js";
 
-export abstract class VexSerialDevice extends VexEventTarget {
+export interface VexSerialDeviceEvents {
+  disconnected: undefined;
+  error: unknown;
+}
+
+export abstract class VexSerialDevice extends VexEventTarget<VexSerialDeviceEvents> {
   connection: V5SerialConnection | undefined;
   defaultSerial: Serial;
 
@@ -59,8 +64,8 @@ export abstract class VexSerialDevice extends VexEventTarget {
 export class V5SerialDeviceState {
   _instance: V5SerialDevice;
   /**
-   * Counter used to pause automatic refresh while a sensitive operation
-   * is in flight. This is not a mutex: serialisation of transfer
+   * Counter used only to pause automatic refresh while a file transfer
+   * is in flight. This is not a mutex: serialization of transfer
    * operations lives on the {@link V5SerialConnection} transaction queue.
    */
   private refreshPauseDepth = 0;
@@ -70,9 +75,8 @@ export class V5SerialDeviceState {
   }
 
   /**
-   * @deprecated Use {@link isRefreshPaused}. This state-level flag only
-   * reports whether automatic refresh is paused; it does not report the
-   * connection transfer mutex.
+   * @deprecated Use {@link isRefreshPaused}. This flag only means that
+   * automatic refresh is paused, not that transfer operations are locked.
    */
   get isFileTransferring(): boolean {
     return this.isRefreshPaused;
@@ -92,8 +96,8 @@ export class V5SerialDeviceState {
   }
 
   /**
-   * @deprecated Use {@link withRefreshPaused}. This method pauses the
-   * device refresh loop only; it does not serialise file transfers.
+   * @deprecated Use {@link withRefreshPaused}. This only pauses automatic
+   * refresh and does not lock file transfers.
    */
   async withFileTransfer<T>(operation: () => PromiseLike<T>): Promise<T> {
     return this.withRefreshPaused(operation);
@@ -155,15 +159,15 @@ export class V5SerialDeviceState {
 
 export class V5Brain {
   private readonly state: V5SerialDeviceState;
-  private readonly _battery: V5Battery;
-  private readonly _button: V5BrainButton;
-  private readonly _settings: V5BrainSettings;
+  private readonly batteryFacade: V5Battery;
+  private readonly buttonFacade: V5BrainButton;
+  private readonly settingsFacade: V5BrainSettings;
 
   constructor(state: V5SerialDeviceState) {
     this.state = state;
-    this._battery = new V5Battery(state);
-    this._button = new V5BrainButton(state);
-    this._settings = new V5BrainSettings(state);
+    this.batteryFacade = new V5Battery(state);
+    this.buttonFacade = new V5BrainButton(state);
+    this.settingsFacade = new V5BrainSettings(state);
   }
 
   get isRunningProgram(): boolean {
@@ -226,7 +230,7 @@ export class V5Brain {
         const reply = await conn.runProgram(slot);
         if (reply.isErr()) return err(reply.error);
 
-        if (typeof slot !== "string") this.state.brain.activeProgram = slot;
+        if (typeof slot === "number") this.state.brain.activeProgram = slot;
         return ok(undefined);
       })(),
     );
@@ -253,11 +257,11 @@ export class V5Brain {
   }
 
   get battery(): V5Battery {
-    return this._battery;
+    return this.batteryFacade;
   }
 
   get button(): V5BrainButton {
-    return this._button;
+    return this.buttonFacade;
   }
 
   get cpu0Version(): VexFirmwareVersion {
@@ -273,7 +277,7 @@ export class V5Brain {
   }
 
   get settings(): V5BrainSettings {
-    return this._settings;
+    return this.settingsFacade;
   }
 
   get systemVersion(): VexFirmwareVersion {
@@ -446,7 +450,7 @@ export class V5Controller {
     return this.state.controllers[this.controllerIndex]!.isAvailable;
   }
 
-  get isCharging(): boolean {
+  get isCharging(): boolean | undefined {
     return this.state.controllers[this.controllerIndex]!.isCharging;
   }
 }

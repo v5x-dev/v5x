@@ -65,21 +65,22 @@ export class V5SerialDevice extends VexSerialDevice {
   protected _isReconnecting = false;
   private _isDisconnecting = false;
   private _refreshInterval: ReturnType<typeof setInterval> | undefined;
+  state: V5SerialDeviceState = new V5SerialDeviceState(this);
+  private _disposed = false;
+  private _refreshGeneration = 0;
   private _autoRefresh = false;
   private _isLastRefreshComplete = true;
-  state: V5SerialDeviceState = new V5SerialDeviceState(this);
   private readonly _brain = new V5Brain(this.state);
   private readonly _controllers: [V5Controller, V5Controller] = [
     new V5Controller(this.state, 0),
     new V5Controller(this.state, 1),
   ];
   private readonly _radio = new V5Radio(this.state);
-  private readonly _smartDevices: Array<V5SmartDevice | undefined> = [];
-  private _disposed = false;
-  private _refreshGeneration = 0;
+  private readonly _deviceFacades: Array<V5SmartDevice | undefined> = [];
 
-  constructor(defaultSerial: Serial) {
+  constructor(defaultSerial: Serial, autoRefresh = false) {
     super(defaultSerial);
+    this.autoRefresh = autoRefresh;
   }
 
   get autoRefresh(): boolean {
@@ -87,16 +88,20 @@ export class V5SerialDevice extends VexSerialDevice {
   }
 
   set autoRefresh(value: boolean) {
+    if (this._autoRefresh === value) return;
     this._autoRefresh = value;
-    if (value) this.startAutoRefresh();
-    else this.stopAutoRefresh();
+    if (value) {
+      this._startRefreshInterval();
+    } else {
+      this._stopRefreshInterval();
+    }
   }
 
-  private startAutoRefresh(): void {
-    if (this._disposed || this._refreshInterval !== undefined) return;
+  private _startRefreshInterval(): void {
+    if (this._refreshInterval !== undefined || this._disposed) return;
     this._refreshInterval = setInterval(() => {
       if (this._disposed) return;
-      if (this.autoRefresh && this._isLastRefreshComplete) {
+      if (this._autoRefresh && this._isLastRefreshComplete) {
         if (!this.isConnected) {
           this.state.brain.isAvailable = false;
           return;
@@ -120,7 +125,7 @@ export class V5SerialDevice extends VexSerialDevice {
     unrefTimerIfPossible(this._refreshInterval);
   }
 
-  private stopAutoRefresh(): void {
+  private _stopRefreshInterval(): void {
     if (this._refreshInterval === undefined) return;
     clearInterval(this._refreshInterval);
     this._refreshInterval = undefined;
@@ -142,12 +147,10 @@ export class V5SerialDevice extends VexSerialDevice {
     const rtn: V5SmartDevice[] = [];
     for (let i = 1; i < this.state.devices.length; i++) {
       if (this.state.devices[i] != null) {
-        let device = this._smartDevices[i];
-        if (device == null) {
-          device = new V5SmartDevice(this.state, i);
-          this._smartDevices[i] = device;
-        }
-        rtn.push(device);
+        const facade =
+          this._deviceFacades[i] ?? new V5SmartDevice(this.state, i);
+        this._deviceFacades[i] = facade;
+        rtn.push(facade);
       }
     }
     return rtn;
@@ -391,7 +394,9 @@ export class V5SerialDevice extends VexSerialDevice {
     if (this.connection == null) return;
 
     this.connection.on("disconnected", (_data) => {
-      if (this.autoReconnect && !this._isDisconnecting) {
+      if (this._isDisconnecting) return;
+      this.emit("disconnected", undefined);
+      if (this.autoReconnect) {
         void this.reconnect().mapErr((e) => this.emit("error", e));
       }
     });
@@ -528,7 +533,7 @@ export class V5SerialDevice extends VexSerialDevice {
         {
           battery: controller1Battery,
           isAvailable: controller1Available,
-          isCharging: false,
+          isCharging: (flags2 & 0b10000000) !== 0,
         },
       ],
       radio: {

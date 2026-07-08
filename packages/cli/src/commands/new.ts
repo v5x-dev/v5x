@@ -15,7 +15,7 @@ export function assertProjectNameArgument(name: string): void {
 export default function registerNewCommand(program: Sade) {
   program
     .command("new <name>", "create a new V5 program", { alias: "n" })
-    .option("-t, --type", "project toolchain")
+    .option("-t, --type", "project toolchain (required: pros or vexide)")
     .option("-p, --path", "destination path")
     .option("--json", "print machine-readable JSON")
     .action(

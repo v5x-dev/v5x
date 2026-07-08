@@ -11,4 +11,13 @@ describe("PacketView", () => {
       [1, 2, 3, 4],
     );
   });
+
+  test("decodes fixed and null-terminated strings as UTF-8", () => {
+    const bytes = new TextEncoder().encode("pré\0arm");
+    const view = new PacketView(bytes.buffer);
+
+    expect(view.nextVarNTBS(bytes.byteLength)).toBe("pré");
+    expect(view.position).toBe(5);
+    expect(view.nextString(3)).toBe("arm");
+  });
 });

@@ -2,6 +2,7 @@ import {
   createContext,
   createElement,
   useContext,
+  useEffect,
   useMemo,
   type ReactNode,
 } from "react";
@@ -26,8 +27,13 @@ export function V5Provider({
 }: V5ProviderProps): ReactNode {
   const value = useMemo(
     () => client ?? createV5Client(options),
-    [client, options],
+    [client, options?.refreshIntervalMs, options?.serial],
   );
+
+  useEffect(() => {
+    if (client !== undefined) return;
+    return () => void value.disconnect();
+  }, [client, value]);
 
   return createElement(V5Context.Provider, { value }, children);
 }

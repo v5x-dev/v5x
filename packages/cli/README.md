@@ -47,6 +47,9 @@ v5x stop
 # Create a project directly from the built-in templates.
 v5x new robot --type pros
 v5x new robot --type vexide
+
+# Check local CLI prerequisites; exits 1 only when an error is reported.
+v5x doctor
 ```
 
 The PROS template is pinned by CLI release and verified with SHA-256 before it

@@ -258,9 +258,10 @@ test("linked upload failures still exit file transfer mode", async () => {
     },
   });
   expect(uploadResult.isErr()).toBe(true);
-  expect(uploadResult._unsafeUnwrapErr().message).toContain(
-    "LinkFileH2DPacket failed",
-  );
+  const error = uploadResult._unsafeUnwrapErr();
+  expect(error.message).toContain("LinkFileReplyD2HPacket");
+  expect(error.message).toContain("AckType.CDC2_NACK (255)");
+  expect(error.ackType).toBe(AckType.CDC2_NACK);
   expect(writes.at(-2)).toBeInstanceOf(LinkFileH2DPacket);
   expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
 });
@@ -634,9 +635,10 @@ describe("transfer cleanup on every failure point", () => {
       autoRun: false,
     });
     expect(result.isErr()).toBe(true);
-    expect(result._unsafeUnwrapErr().message).toContain(
-      "WriteFileReplyD2DPacket",
-    );
+    const error = result._unsafeUnwrapErr();
+    expect(error.message).toContain("WriteFileReplyD2HPacket");
+    expect(error.message).toContain("AckType.CDC2_NACK (255)");
+    expect(error.ackType).toBe(AckType.CDC2_NACK);
     expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
   });
 
@@ -685,9 +687,10 @@ describe("transfer cleanup on every failure point", () => {
       vendor: FileVendor.USER,
     });
     expect(result.isErr()).toBe(true);
-    expect(result._unsafeUnwrapErr().message).toContain(
-      "ReadFileReplyD2HPacket failed",
-    );
+    const error = result._unsafeUnwrapErr();
+    expect(error.message).toContain("ReadFileReplyD2HPacket");
+    expect(error.message).toContain("AckType.CDC2_NACK (255)");
+    expect(error.ackType).toBe(AckType.CDC2_NACK);
     expect(sawReadAttempt).toBe(true);
   });
 

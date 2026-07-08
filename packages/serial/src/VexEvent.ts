@@ -1,27 +1,36 @@
-export class VexEventEmitter {
-  handlerMap: Map<string | symbol, Array<(...args: unknown[]) => void>>;
+type EventName = string | symbol;
+type EventMapKey<TEvents> = Extract<keyof TEvents, EventName>;
+type EventListener<TValue> = (data: TValue) => void;
+
+export class VexEventEmitter<
+  TEvents extends object = Record<EventName, unknown>,
+> {
+  handlerMap: Map<EventName, Array<EventListener<unknown>>>;
 
   constructor() {
-    this.handlerMap = new Map<string, Array<(...args: unknown[]) => void>>();
+    this.handlerMap = new Map<EventName, Array<EventListener<unknown>>>();
   }
 
-  on(eventName: string | symbol, listener: (...args: unknown[]) => void): void {
-    let listeners = this.handlerMap.get(eventName);
-    listeners ??= [];
-
-    listeners.push(listener);
-
-    this.handlerMap.set(eventName, listeners);
-  }
-
-  remove(
-    eventName: string | symbol,
-    listener: (...args: unknown[]) => void,
+  on<K extends EventMapKey<TEvents>>(
+    eventName: K,
+    listener: EventListener<TEvents[K]>,
   ): void {
     let listeners = this.handlerMap.get(eventName);
     listeners ??= [];
 
-    const index = listeners.indexOf(listener);
+    listeners.push(listener as EventListener<unknown>);
+
+    this.handlerMap.set(eventName, listeners);
+  }
+
+  remove<K extends EventMapKey<TEvents>>(
+    eventName: K,
+    listener: EventListener<TEvents[K]>,
+  ): void {
+    let listeners = this.handlerMap.get(eventName);
+    listeners ??= [];
+
+    const index = listeners.indexOf(listener as EventListener<unknown>);
     if (index > -1) {
       listeners.splice(index, 1);
     }
@@ -29,10 +38,22 @@ export class VexEventEmitter {
     this.handlerMap.set(eventName, listeners);
   }
 
-  emit(eventName: string | symbol, data: unknown): void {
-    (this.handlerMap.get(eventName) ?? []).forEach((callback) => {
-      callback(data);
-    });
+  emit<K extends EventMapKey<TEvents>>(eventName: K, data: TEvents[K]): void {
+    const errors: unknown[] = [];
+    for (const callback of [...(this.handlerMap.get(eventName) ?? [])]) {
+      try {
+        callback(data);
+      } catch (error: unknown) {
+        errors.push(error);
+      }
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(
+        errors,
+        `listeners for ${String(eventName)} failed`,
+      );
+    }
   }
 
   clearListeners(): void {
@@ -40,29 +61,38 @@ export class VexEventEmitter {
   }
 }
 
-export class VexEventTarget {
-  emitter: VexEventEmitter;
+export class VexEventTarget<
+  TEvents extends object = Record<EventName, unknown>,
+> {
+  emitter: VexEventEmitter<TEvents>;
 
   constructor() {
-    this.emitter = new VexEventEmitter();
+    this.emitter = new VexEventEmitter<TEvents>();
   }
 
-  emit(eventName: string | symbol, data: unknown): void {
-    this.emitter.emit(String(eventName), data);
+  emit<K extends EventMapKey<TEvents>>(eventName: K, data: TEvents[K]): void {
+    this.emitter.emit(this.normalizeEventName(eventName), data);
   }
 
-  on(eventName: string | symbol, listener: (...args: unknown[]) => void): void {
-    this.emitter.on(String(eventName), listener);
-  }
-
-  remove(
-    eventName: string | symbol,
-    listener: (...args: unknown[]) => void,
+  on<K extends EventMapKey<TEvents>>(
+    eventName: K,
+    listener: EventListener<TEvents[K]>,
   ): void {
-    this.emitter.remove(String(eventName), listener);
+    this.emitter.on(this.normalizeEventName(eventName), listener);
+  }
+
+  remove<K extends EventMapKey<TEvents>>(
+    eventName: K,
+    listener: EventListener<TEvents[K]>,
+  ): void {
+    this.emitter.remove(this.normalizeEventName(eventName), listener);
   }
 
   clearListeners(): void {
     this.emitter.clearListeners();
+  }
+
+  private normalizeEventName<K extends EventMapKey<TEvents>>(eventName: K): K {
+    return String(eventName) as K;
   }
 }

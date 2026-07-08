@@ -15,14 +15,23 @@ import {
   formatSmartDeviceVersion,
   toDeviceJson,
 } from "./devices";
-import { formatFileRows, formatFileTimestamp, toFileJson } from "./dir";
+import {
+  formatFileRows,
+  formatFileTimestamp,
+  formatVendorListFailure,
+  toDirectoryJson,
+  toFileJson,
+} from "./dir";
+import { decodeCatText, formatCatText } from "./cat";
 import {
   compareVersions,
   createDoctorReport,
+  doctorExitCode,
   formatDoctorRows,
 } from "./doctor";
 import { toKvJson } from "./kv";
 import { assertProjectNameArgument } from "./new";
+import { parseToolchain } from "../utils/scaffold";
 import {
   formatProgramRows,
   parseSlotArgument,
@@ -101,6 +110,57 @@ describe("command output formatting", () => {
         crc32: 0x1234,
       },
     ]);
+  });
+
+  test("formats directory JSON with vendor listing errors", () => {
+    const failure = formatVendorListFailure(
+      FileVendor.SYS,
+      new VexSerialError("protocol", "directory unavailable"),
+    );
+
+    expect(failure).toEqual({
+      vendor: FileVendor.SYS,
+      vendorPrefix: "sys_",
+      message: "failed to list sys_/ files: protocol: directory unavailable",
+    });
+    expect(
+      toDirectoryJson(
+        [
+          {
+            vendor: FileVendor.USER,
+            filename: "program.bin",
+            size: 1536,
+            loadAddress: 0x3800000,
+            timestamp: 0,
+            crc32: 0x1234,
+          },
+        ],
+        [failure],
+      ),
+    ).toEqual({
+      files: [
+        {
+          vendor: FileVendor.USER,
+          vendorPrefix: "user",
+          filename: "program.bin",
+          path: "user/program.bin",
+          size: 1536,
+          loadAddress: 0x3800000,
+          timestamp: 0,
+          timestampIso: "1970-01-01T00:00:00.000Z",
+          crc32: 0x1234,
+        },
+      ],
+      errors: [failure],
+    });
+  });
+
+  test("formats cat output for interactive text without changing bytes helper", () => {
+    const bytes = new Uint8Array([0x68, 0x69]);
+
+    expect(decodeCatText(bytes)).toBe("hi");
+    expect(formatCatText(bytes)).toBe("hi\n");
+    expect(formatCatText(new Uint8Array([0x68, 0x69, 0x0a]))).toBe("hi\n");
   });
 
   test("formats listed programs with slots and UTC timestamps", () => {
@@ -246,6 +306,13 @@ test("rejects nested path attempts for new command names", () => {
   expect(() => assertProjectNameArgument("robot")).not.toThrow();
 });
 
+test("requires a project type for scaffold commands", () => {
+  expect(() => parseToolchain(undefined)).toThrow("--type is required");
+  expect(() => parseToolchain("bad")).toThrow("unsupported --type bad");
+  expect(parseToolchain("pros")).toBe("pros");
+  expect(parseToolchain("vexide")).toBe("vexide");
+});
+
 test("parses start command slot arguments", () => {
   expect(parseSlotArgument("1")).toBe(1);
   expect(parseSlotArgument("8")).toBe(8);
@@ -257,6 +324,9 @@ test("compares Bun-style versions", () => {
   expect(compareVersions("1.3.14", "1.3.14")).toBe(0);
   expect(compareVersions("1.3.15", "1.3.14")).toBe(1);
   expect(compareVersions("1.2.9", "1.3.14")).toBe(-1);
+  expect(compareVersions("1.3.14-canary.37", "1.3.14")).toBe(-1);
+  expect(compareVersions("1.3.0-beta", "1.3.14")).toBe(-1);
+  expect(compareVersions("1.3.15-canary.1", "1.3.14")).toBe(1);
 });
 
 test("reports doctor checks without requiring hardware", async () => {
@@ -281,12 +351,19 @@ test("reports doctor checks without requiring hardware", async () => {
   });
 
   expect(report.status).toBe("ok");
+  expect(doctorExitCode(report)).toBe(0);
   expect(formatDoctorRows(report)).toContainEqual([
     "ok",
     "Serial ports",
     "none visible",
     "Connect a powered V5 brain only when running hardware commands.",
   ]);
+});
+
+test("doctor exits nonzero only for error reports", () => {
+  expect(doctorExitCode({ status: "ok", checks: [] })).toBe(0);
+  expect(doctorExitCode({ status: "warn", checks: [] })).toBe(0);
+  expect(doctorExitCode({ status: "error", checks: [] })).toBe(1);
 });
 
 describe("serial command failures", () => {
