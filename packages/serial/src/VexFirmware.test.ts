@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { zipSync } from "fflate";
-import { okAsync } from "neverthrow";
+import { errAsync, okAsync } from "neverthrow";
 import { V5SerialDevice } from "./VexDevice";
 import { V5SerialConnection } from "./VexConnection";
-import { VexFirmwareError } from "./VexError";
+import { VexFirmwareError, VexProtocolError } from "./VexError";
 import {
   FactoryEnableReplyD2HPacket,
   FactoryStatusReplyD2HPacket,
@@ -40,8 +40,12 @@ test("firmware upload validates an archive and uploads both images", async () =>
   };
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () =>
-      [factoryReply, finishedReply, factoryReply, finishedReply][replyIndex++],
+    request: () =>
+      okAsync(
+        [factoryReply, finishedReply, factoryReply, finishedReply][
+          replyIndex++
+        ],
+      ),
     uploadFileToDevice: uploadFile,
     close: async () => {},
   } as unknown as V5SerialConnection;
@@ -86,8 +90,8 @@ test("firmware upload reports which factory image upload was rejected", async ()
   let uploadIndex = 0;
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () =>
-      [factoryReply, finishedReply, factoryReply][replyIndex++],
+    request: () =>
+      okAsync([factoryReply, finishedReply, factoryReply][replyIndex++]),
     uploadFileToDevice: (): ReturnType<
       V5SerialConnection["uploadFileToDevice"]
     > => okAsync<boolean>(uploadIndex++ === 0),
@@ -117,14 +121,18 @@ test("firmware upload reports which factory image upload was rejected", async ()
   }
 });
 
-test("firmware upload reports missing factory status replies", async () => {
+test("firmware upload propagates factory status request failures", async () => {
   const device = new V5SerialDevice(serial);
   devices.push(device);
   const factoryReply = protocolReply(FactoryEnableReplyD2HPacket);
   let replyIndex = 0;
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () => [factoryReply, undefined][replyIndex++],
+    request: () =>
+      [
+        okAsync(factoryReply),
+        errAsync(new VexProtocolError("expected factory status reply")),
+      ][replyIndex++],
     uploadFileToDevice: (): ReturnType<
       V5SerialConnection["uploadFileToDevice"]
     > => okAsync<boolean>(true),
@@ -147,9 +155,8 @@ test("firmware upload reports missing factory status replies", async () => {
     );
     expect(result.isErr()).toBe(true);
     const error = result._unsafeUnwrapErr();
-    expect(error).toBeInstanceOf(VexFirmwareError);
-    expect(error.message).toContain("BOOT factory status failed");
-    expect(error.message).toContain("undefined");
+    expect(error).toBeInstanceOf(VexProtocolError);
+    expect(error.message).toContain("expected factory status reply");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -161,7 +168,7 @@ test("firmware upload reports factory status deadline expiry", async () => {
   const factoryReply = protocolReply(FactoryEnableReplyD2HPacket);
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () => factoryReply,
+    request: () => okAsync(factoryReply),
     uploadFileToDevice: (): ReturnType<
       V5SerialConnection["uploadFileToDevice"]
     > => okAsync<boolean>(true),

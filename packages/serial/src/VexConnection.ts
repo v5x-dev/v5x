@@ -324,14 +324,6 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     }
   }
 
-  writeData(
-    rawData: DeviceBoundPacket | Uint8Array,
-    resolve: (data: HostBoundPacket | ArrayBuffer | AckType) => void,
-    timeout: number = 1000,
-  ): void {
-    void this.writeDataAsync(rawData, timeout).then(resolve);
-  }
-
   async writeDataAsync(
     rawData: DeviceBoundPacket | Uint8Array,
     timeout: number = 1000,

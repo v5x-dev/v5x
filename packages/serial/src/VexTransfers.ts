@@ -39,10 +39,9 @@ export function getValue(
       if (conn == null || !conn.isConnected) {
         return err(new VexNotConnectedError());
       }
-      const result = await conn.writeDataAsync(new ReadKeyValueH2DPacket(key));
-      return result instanceof ReadKeyValueReplyD2HPacket
-        ? ok(result.value)
-        : err(new VexProtocolError("getValue was not acknowledged"));
+      return conn
+        .request(new ReadKeyValueH2DPacket(key), ReadKeyValueReplyD2HPacket)
+        .map((result) => result.value);
     })(),
   );
 }
@@ -58,12 +57,12 @@ export function setValue(
       if (conn == null || !conn.isConnected) {
         return err(new VexNotConnectedError());
       }
-      const result = await conn.writeDataAsync(
-        new WriteKeyValueH2DPacket(key, value),
-      );
-      return result instanceof WriteKeyValueReplyD2HPacket
-        ? ok(undefined)
-        : err(new VexProtocolError("setValue was not acknowledged"));
+      return conn
+        .request(
+          new WriteKeyValueH2DPacket(key, value),
+          WriteKeyValueReplyD2HPacket,
+        )
+        .map(() => undefined);
     })(),
   );
 }
@@ -78,40 +77,34 @@ export function listFiles(
       if (conn == null || !conn.isConnected) {
         return err(new VexNotConnectedError());
       }
-      const result = await conn.writeDataAsync(
+      const countResult = await conn.request(
         new GetDirectoryFileCountH2DPacket(vendor),
+        GetDirectoryFileCountReplyD2HPacket,
       );
-      if (!(result instanceof GetDirectoryFileCountReplyD2HPacket)) {
-        return err(
-          new VexProtocolError("directory file count was not acknowledged"),
-        );
-      }
+      if (countResult.isErr()) return err(countResult.error);
 
       const files: IFileHandle[] = [];
-      for (let i = 0; i < result.count; i++) {
-        const result2 = await conn.writeDataAsync(
+      for (let i = 0; i < countResult.value.count; i++) {
+        const entryResult = await conn.request(
           new GetDirectoryEntryH2DPacket(i),
+          GetDirectoryEntryReplyD2HPacket,
         );
-        if (!(result2 instanceof GetDirectoryEntryReplyD2HPacket)) {
-          return err(
-            new VexProtocolError("directory entry was not acknowledged"),
-          );
-        }
+        if (entryResult.isErr()) return err(entryResult.error);
 
         // .file is undefined if the file is not found
         // .file is a file entry but not a file handle
-        if (result2.file != null) {
+        if (entryResult.value.file != null) {
           files.push({
-            filename: result2.file.filename,
+            filename: entryResult.value.file.filename,
             vendor,
-            loadAddress: result2.file.loadAddress,
+            loadAddress: entryResult.value.file.loadAddress,
 
-            size: result2.file.size,
-            crc32: result2.file.crc32,
+            size: entryResult.value.file.size,
+            crc32: entryResult.value.file.crc32,
 
-            type: result2.file.type,
-            timestamp: result2.file.timestamp,
-            version: result2.file.version,
+            type: entryResult.value.file.type,
+            timestamp: entryResult.value.file.timestamp,
+            version: entryResult.value.file.version,
           });
         }
       }
@@ -160,12 +153,13 @@ export function listProgram(
           requestedSlot: -1,
         };
 
-        const result2 = await conn.writeDataAsync(
+        const slotInfo = await conn.request(
           new GetProgramSlotInfoH2DPacket(FileVendor.USER, program.binfile),
+          GetProgramSlotInfoReplyD2HPacket,
         );
-        if (result2 instanceof GetProgramSlotInfoReplyD2HPacket) {
-          program.slot = result2.slot;
-          program.requestedSlot = result2.requestedSlot;
+        if (slotInfo.isOk()) {
+          program.slot = slotInfo.value.slot;
+          program.requestedSlot = slotInfo.value.requestedSlot;
         }
         programList.push(program);
       }

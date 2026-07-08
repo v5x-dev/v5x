@@ -270,14 +270,11 @@ async function flashFactoryImage(
   const { image, label, downloadTarget } = options;
   pcb(`FACTORY ENB ${label}`, 0, 0);
 
-  const enableReply = await conn.writeDataAsync(new FactoryEnableH2DPacket());
-  if (!(enableReply instanceof FactoryEnableReplyD2HPacket)) {
-    return err(
-      new VexFirmwareError(
-        `${label} factory enable failed: expected FactoryEnableReplyD2HPacket, received ${describeReply(enableReply)}`,
-      ),
-    );
-  }
+  const enableReply = await conn.request(
+    new FactoryEnableH2DPacket(),
+    FactoryEnableReplyD2HPacket,
+  );
+  if (enableReply.isErr()) return err(enableReply.error);
 
   const writeRequest: IFileWriteRequest = {
     filename: "null.bin",
@@ -300,21 +297,16 @@ async function flashFactoryImage(
 
   const deadline = Date.now() + 120000;
   while (Date.now() < deadline) {
-    const statusReply = await conn.writeDataAsync(
+    const statusReply = await conn.request(
       new FactoryStatusH2DPacket(),
+      FactoryStatusReplyD2HPacket,
       10000,
     );
-    if (!(statusReply instanceof FactoryStatusReplyD2HPacket)) {
-      return err(
-        new VexFirmwareError(
-          `${label} factory status failed: expected FactoryStatusReplyD2HPacket, received ${describeReply(statusReply)}`,
-        ),
-      );
-    }
+    if (statusReply.isErr()) return err(statusReply.error);
 
-    reportFactoryStatus(label, statusReply, pcb);
+    reportFactoryStatus(label, statusReply.value, pcb);
 
-    if (statusReply.status === 0 && statusReply.percent === 100) {
+    if (statusReply.value.status === 0 && statusReply.value.percent === 100) {
       return ok(undefined);
     }
     await sleepInner(500);
@@ -342,13 +334,6 @@ function reportFactoryStatus(
       pcb(`FINISHING ${label}`, reply.percent, 100);
       break;
   }
-}
-
-function describeReply(reply: unknown): string {
-  if (reply === null) return "null";
-  if (reply === undefined) return "undefined";
-  if (typeof reply === "object") return reply.constructor.name;
-  return String(reply);
 }
 
 // Internal helper: stays throwing. The public `uploadFirmware` boundary
