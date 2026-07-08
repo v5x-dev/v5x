@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { okAsync } from "neverthrow";
 import { SmartDeviceType } from "./Vex";
 import { V5SerialConnection } from "./VexConnection";
 import { V5SerialDevice } from "./VexDevice";
@@ -44,7 +45,7 @@ test("public state views expose one coherent device snapshot", async () => {
   };
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () => protocolReply(FileControlReplyD2HPacket),
+    request: () => okAsync(protocolReply(FileControlReplyD2HPacket)),
     close: async () => {},
   } as unknown as V5SerialConnection;
 

@@ -36,7 +36,7 @@ test("file and key-value operations report protocol outcomes", async () => {
   ];
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () => replies.shift(),
+    request: () => okAsync(replies.shift()),
     removeFile: () => okAsync(undefined),
     removeAllFiles: () => okAsync(undefined),
     close: async () => {},
@@ -111,7 +111,7 @@ test("listFiles enumerates directory entries returned by the device", async () =
   ];
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () => replies.shift(),
+    request: () => okAsync(replies.shift()),
     close: async () => {},
   } as unknown as V5SerialConnection;
 
@@ -156,7 +156,7 @@ test("listProgram reports program slots returned by the device", async () => {
   ];
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () => replies.shift(),
+    request: () => okAsync(replies.shift()),
     close: async () => {},
   } as unknown as V5SerialConnection;
 

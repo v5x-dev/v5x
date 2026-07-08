@@ -16,11 +16,7 @@ import { type V5SerialConnection } from "./VexConnection.js";
 import { VexEventTarget } from "./VexEvent.js";
 import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
 import { type ProgramIniConfig } from "./VexIniConfig.js";
-import {
-  VexNotConnectedError,
-  VexProtocolError,
-  VexSerialError,
-} from "./VexError.js";
+import { VexNotConnectedError, VexSerialError } from "./VexError.js";
 import { err, ok, ResultAsync } from "neverthrow";
 import {
   FileControlH2DPacket,
@@ -524,12 +520,12 @@ export class V5Radio {
           return err(new VexNotConnectedError());
         }
 
-        const result = await conn.writeDataAsync(
-          new FileControlH2DPacket(1, channel),
-        );
-        return result instanceof FileControlReplyD2HPacket
-          ? ok(undefined)
-          : err(new VexProtocolError("changeChannel was not acknowledged"));
+        return conn
+          .request(
+            new FileControlH2DPacket(1, channel),
+            FileControlReplyD2HPacket,
+          )
+          .map(() => undefined);
       })(),
     );
   }

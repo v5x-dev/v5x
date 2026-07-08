@@ -39,8 +39,12 @@ test("firmware upload validates an archive and uploads both images", async () =>
   };
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () =>
-      [factoryReply, finishedReply, factoryReply, finishedReply][replyIndex++],
+    request: () =>
+      okAsync(
+        [factoryReply, finishedReply, factoryReply, finishedReply][
+          replyIndex++
+        ],
+      ),
     uploadFileToDevice: uploadFile,
     close: async () => {},
   } as unknown as V5SerialConnection;
@@ -85,8 +89,8 @@ test("firmware upload reports which factory image upload was rejected", async ()
   let uploadIndex = 0;
   device.connection = {
     isConnected: true,
-    writeDataAsync: async () =>
-      [factoryReply, finishedReply, factoryReply][replyIndex++],
+    request: () =>
+      okAsync([factoryReply, finishedReply, factoryReply][replyIndex++]),
     uploadFileToDevice: (): ReturnType<
       V5SerialConnection["uploadFileToDevice"]
     > => okAsync<boolean>(uploadIndex++ === 0),

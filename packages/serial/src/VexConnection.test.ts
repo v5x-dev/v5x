@@ -750,6 +750,18 @@ test("captureScreenSetup rejects NACK and timeout replies", async () => {
   }
 });
 
+test("request errors include the NACK type", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  connection.writeDataAsync = async () => AckType.CDC2_NACK_FILE_SYS_FULL;
+
+  const result = await connection.captureScreenSetup();
+
+  expect(result.isErr()).toBe(true);
+  const error = result._unsafeUnwrapErr();
+  expect(error.ackType).toBe(AckType.CDC2_NACK_FILE_SYS_FULL);
+  expect(error.message).toContain("AckType.CDC2_NACK_FILE_SYS_FULL (220)");
+});
+
 test("captureScreenSetup accepts the matching reply packet", async () => {
   const connection = new V5SerialConnection({} as Serial);
   const reply = Object.create(
