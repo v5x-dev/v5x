@@ -378,7 +378,7 @@ async function runUploadFirmware(
   }
   pcb("UNZIP VEXOS", 1, 1);
 
-  return state.withFileTransfer(async () => {
+  return state.withRefreshPaused(async () => {
     pcb("FACTORY ENB BOOT", 0, 0);
 
     const result = await conn.writeDataAsync(new FactoryEnableH2DPacket());

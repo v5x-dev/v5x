@@ -59,31 +59,44 @@ export abstract class VexSerialDevice extends VexEventTarget {
 export class V5SerialDeviceState {
   _instance: V5SerialDevice;
   /**
-   * Counter used only to pause automatic refresh while a file transfer
+   * Counter used to pause automatic refresh while a sensitive operation
    * is in flight. This is not a mutex: serialisation of transfer
-   * operations lives on the {@link V5SerialConnection} transaction
-   * queue. The counter is exposed via {@link isFileTransferring} so the
-   * refresh loop can skip work during transfers.
+   * operations lives on the {@link V5SerialConnection} transaction queue.
    */
   private refreshPauseDepth = 0;
 
-  get isFileTransferring(): boolean {
+  get isRefreshPaused(): boolean {
     return this.refreshPauseDepth > 0;
   }
 
   /**
-   * Increment the refresh-pause depth, run the operation, and decrement
-   * the depth again. The actual transfer mutex lives on the connection,
-   * so this method does not serialise anything; it only signals the
-   * device that a transfer is in progress so refresh polling is paused.
+   * @deprecated Use {@link isRefreshPaused}. This state-level flag only
+   * reports whether automatic refresh is paused; it does not report the
+   * connection transfer mutex.
    */
-  async withFileTransfer<T>(operation: () => PromiseLike<T>): Promise<T> {
+  get isFileTransferring(): boolean {
+    return this.isRefreshPaused;
+  }
+
+  /**
+   * Increment the refresh-pause depth, run the operation, and decrement
+   * the depth again. The actual transfer mutex lives on the connection.
+   */
+  async withRefreshPaused<T>(operation: () => PromiseLike<T>): Promise<T> {
     this.refreshPauseDepth++;
     try {
       return await operation();
     } finally {
       this.refreshPauseDepth--;
     }
+  }
+
+  /**
+   * @deprecated Use {@link withRefreshPaused}. This method pauses the
+   * device refresh loop only; it does not serialise file transfers.
+   */
+  async withFileTransfer<T>(operation: () => PromiseLike<T>): Promise<T> {
+    return this.withRefreshPaused(operation);
   }
 
   brain = {
@@ -117,6 +130,7 @@ export class V5SerialDeviceState {
     {
       battery: 0,
       isAvailable: false,
+      isCharging: false,
     },
   ];
 
@@ -141,9 +155,15 @@ export class V5SerialDeviceState {
 
 export class V5Brain {
   private readonly state: V5SerialDeviceState;
+  private readonly _battery: V5Battery;
+  private readonly _button: V5BrainButton;
+  private readonly _settings: V5BrainSettings;
 
   constructor(state: V5SerialDeviceState) {
     this.state = state;
+    this._battery = new V5Battery(state);
+    this._button = new V5BrainButton(state);
+    this._settings = new V5BrainSettings(state);
   }
 
   get isRunningProgram(): boolean {
@@ -206,10 +226,7 @@ export class V5Brain {
         const reply = await conn.runProgram(slot);
         if (reply.isErr()) return err(reply.error);
 
-        const slotNumber =
-          typeof slot === "string" ? Number.parseInt(slot, 10) : slot;
-        if (Number.isFinite(slotNumber))
-          this.state.brain.activeProgram = slotNumber;
+        if (typeof slot !== "string") this.state.brain.activeProgram = slot;
         return ok(undefined);
       })(),
     );
@@ -236,11 +253,11 @@ export class V5Brain {
   }
 
   get battery(): V5Battery {
-    return new V5Battery(this.state);
+    return this._battery;
   }
 
   get button(): V5BrainButton {
-    return new V5BrainButton(this.state);
+    return this._button;
   }
 
   get cpu0Version(): VexFirmwareVersion {
@@ -256,7 +273,7 @@ export class V5Brain {
   }
 
   get settings(): V5BrainSettings {
-    return new V5BrainSettings(this.state);
+    return this._settings;
   }
 
   get systemVersion(): VexFirmwareVersion {
@@ -429,7 +446,7 @@ export class V5Controller {
     return this.state.controllers[this.controllerIndex]!.isAvailable;
   }
 
-  get isCharging(): boolean | undefined {
+  get isCharging(): boolean {
     return this.state.controllers[this.controllerIndex]!.isCharging;
   }
 }
@@ -498,7 +515,12 @@ export class V5Radio {
   changeChannel(channel: RadioChannelType): ResultAsync<void, VexSerialError> {
     return new ResultAsync(
       (async () => {
-        const result = await this.state._instance.connection?.writeDataAsync(
+        const conn = this.state._instance.connection;
+        if (conn == null || !conn.isConnected) {
+          return err(new VexNotConnectedError());
+        }
+
+        const result = await conn.writeDataAsync(
           new FileControlH2DPacket(1, channel),
         );
         return result instanceof FileControlReplyD2HPacket
