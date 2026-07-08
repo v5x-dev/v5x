@@ -51,7 +51,7 @@ const TOOLCHAINS = [
   {
     name: "PROS CLI",
     commands: ["pros"],
-    action: "Run `v5x install pros` or install pros-cli.",
+    action: "Run `v5x install pros` or install pros-cli with pipx.",
   },
   {
     name: "Make",
