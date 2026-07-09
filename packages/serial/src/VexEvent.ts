@@ -71,28 +71,24 @@ export class VexEventTarget<
   }
 
   emit<K extends EventMapKey<TEvents>>(eventName: K, data: TEvents[K]): void {
-    this.emitter.emit(this.normalizeEventName(eventName), data);
+    this.emitter.emit(eventName, data);
   }
 
   on<K extends EventMapKey<TEvents>>(
     eventName: K,
     listener: EventListener<TEvents[K]>,
   ): void {
-    this.emitter.on(this.normalizeEventName(eventName), listener);
+    this.emitter.on(eventName, listener);
   }
 
   remove<K extends EventMapKey<TEvents>>(
     eventName: K,
     listener: EventListener<TEvents[K]>,
   ): void {
-    this.emitter.remove(this.normalizeEventName(eventName), listener);
+    this.emitter.remove(eventName, listener);
   }
 
   clearListeners(): void {
     this.emitter.clearListeners();
-  }
-
-  private normalizeEventName<K extends EventMapKey<TEvents>>(eventName: K): K {
-    return String(eventName) as K;
   }
 }

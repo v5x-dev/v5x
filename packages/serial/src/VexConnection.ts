@@ -138,7 +138,26 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   }
 
   protected reportWarning(message: string, details?: unknown): void {
-    this.emit("warning", { message, details } satisfies ConnectionWarning);
+    this.emitSafely("warning", {
+      message,
+      details,
+    } satisfies ConnectionWarning);
+  }
+
+  /**
+   * Connection events are notifications only: a consumer callback must not
+   * alter the lifecycle of the serial transport that produced it.
+   */
+  private emitSafely<K extends keyof VexSerialConnectionEvents>(
+    eventName: K,
+    data: VexSerialConnectionEvents[K],
+  ): void {
+    try {
+      this.emit(eventName, data);
+    } catch {
+      // Listeners are application code. Keep a throwing listener from
+      // disrupting the reader loop or making a successfully opened port fail.
+    }
   }
 
   async close(): Promise<void> {
@@ -245,7 +264,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     //    that observers don't have to deduplicate.
     if (this._wasConnected) {
       this._wasConnected = false;
-      this.emit("disconnected", undefined);
+      this.emitSafely("disconnected", undefined);
     }
   }
 
@@ -315,7 +334,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
       this.reader = this.port.readable.getReader();
       void this.startReader();
       this._wasConnected = true;
-      this.emit("connected", undefined);
+      this.emitSafely("connected", undefined);
 
       return ok("opened");
     } catch (e) {
