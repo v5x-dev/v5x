@@ -156,8 +156,10 @@ export default function registerScreenshotCommand(program: Sade) {
           );
           if (output === undefined) {
             if (shouldPrintKittyRgb()) printKittyRgb(frame);
-            else
+            else {
               console.error("use --output to write the screenshot to a file");
+              process.exitCode = 1;
+            }
             return;
           }
 
