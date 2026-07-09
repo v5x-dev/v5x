@@ -12,7 +12,7 @@ export default function registerInitCommand(program: Sade) {
     .action(
       async (
         inputPath: string = process.cwd(),
-        options: { type?: string; json?: boolean },
+        options: { type?: string | boolean; json?: boolean },
       ) => {
         const toolchain = parseToolchain(options.type);
         const path = resolve(inputPath);

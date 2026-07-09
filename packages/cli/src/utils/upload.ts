@@ -1,4 +1,5 @@
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
+import { requireOptionValue } from "./guards";
 import { formatSerialFailure, printJson } from "./output";
 import {
   buildProject,
@@ -30,10 +31,10 @@ export interface UploadCommandOptions extends PortSelectionOptions {
   // sade/mri parse a flag given without a value (e.g. a bare `--slot`) as the
   // boolean `true` rather than the declared default, so this must accept both.
   slot: string | boolean;
-  name?: string;
-  description?: string;
-  icon: string;
-  file?: string;
+  name?: string | boolean;
+  description?: string | boolean;
+  icon: string | boolean;
+  file?: string | boolean;
   build?: boolean;
   run?: boolean;
   json?: boolean;
@@ -47,12 +48,7 @@ export interface UploadCommandOptions extends PortSelectionOptions {
  * case explicitly instead of uploading to the wrong slot.
  */
 export function resolveSlotOption(slot: string | boolean): number {
-  if (typeof slot === "boolean") {
-    throw new Error(
-      "--slot requires a value (e.g. --slot 1); it cannot be passed as a bare flag",
-    );
-  }
-  return Number(slot);
+  return Number(requireOptionValue(slot, "--slot"));
 }
 
 /**
@@ -75,14 +71,19 @@ export async function uploadProgramFromCommand(
   options: UploadCommandOptions,
   runDefault: boolean,
 ): Promise<void> {
+  const name = requireOptionValue(options.name, "--name");
+  const description = requireOptionValue(options.description, "--description");
+  const icon = requireOptionValue(options.icon, "--icon");
+  const file = requireOptionValue(options.file, "--file");
+
   await uploadProgram({
     path: path ?? process.cwd(),
     slot: resolveSlotOption(options.slot),
-    name: options.name,
-    description: options.description,
-    icon: options.icon,
-    artifact: options.file,
-    build: resolveBuildOption(options.build, options.file),
+    name,
+    description,
+    icon: icon ?? "default.bmp",
+    artifact: file,
+    build: resolveBuildOption(options.build, file),
     run: options.run ?? runDefault,
     port: options.port,
     command: runDefault ? "run" : "upload",

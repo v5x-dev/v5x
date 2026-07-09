@@ -1,6 +1,7 @@
 import type { Sade } from "sade";
 import { deflateSync } from "node:zlib";
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
+import { requireOptionValue } from "../utils/guards";
 import { printJson, unwrapSerial } from "../utils/output";
 
 const WIDTH = 480;
@@ -72,8 +73,9 @@ export function encodeScreenshotPpm(bytes: Uint8Array): Buffer {
 }
 
 export function parseScreenshotFormat(
-  format: string | undefined,
+  format: string | boolean | undefined,
 ): ScreenshotFormat {
+  requireOptionValue(format, "--format");
   if (format === undefined || format === "png" || format === "ppm") {
     return format ?? "png";
   }
@@ -126,19 +128,20 @@ export default function registerScreenshotCommand(program: Sade) {
     .action(
       async (
         options: {
-          output?: string;
-          format?: string;
+          output?: string | boolean;
+          format?: string | boolean;
           json?: boolean;
         } & PortSelectionOptions,
       ) => {
+        const output = requireOptionValue(options.output, "--output");
         const format = parseScreenshotFormat(options.format);
-        assertScreenshotOptions(options);
+        assertScreenshotOptions({ output, json: options.json });
         await withSelectedV5Device(options, async (device) => {
           const frame = unwrapSerial(
             await device.brain.captureScreen(),
             "failed to capture screenshot",
           );
-          if (options.output === undefined) {
+          if (output === undefined) {
             if (shouldPrintKittyRgb()) printKittyRgb(frame);
             else
               console.error("use --output to write the screenshot to a file");
@@ -149,10 +152,10 @@ export default function registerScreenshotCommand(program: Sade) {
             format === "png"
               ? encodeScreenshotPng(frame)
               : encodeScreenshotPpm(frame);
-          await Bun.write(options.output, data);
+          await Bun.write(output, data);
           if (options.json === true)
-            printJson(toScreenshotJson(options.output, format, data.length));
-          else console.log(`wrote ${options.output}`);
+            printJson(toScreenshotJson(output, format, data.length));
+          else console.log(`wrote ${output}`);
         });
       },
     );

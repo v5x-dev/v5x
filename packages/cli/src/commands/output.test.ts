@@ -322,6 +322,9 @@ describe("command output formatting", () => {
     expect(() => parseScreenshotFormat("jpeg")).toThrow(
       "--format must be png or ppm",
     );
+    expect(() => parseScreenshotFormat(true)).toThrow(
+      "--format requires a value",
+    );
   });
 
   test("formats screenshot JSON metadata", () => {
@@ -366,6 +369,7 @@ test("rejects nested path attempts for new command names", () => {
 test("requires a project type for scaffold commands", () => {
   expect(() => parseToolchain(undefined)).toThrow("--type is required");
   expect(() => parseToolchain("bad")).toThrow("unsupported --type bad");
+  expect(() => parseToolchain(true)).toThrow("--type requires a value");
   expect(parseToolchain("pros")).toBe("pros");
   expect(parseToolchain("vexide")).toBe("vexide");
 });

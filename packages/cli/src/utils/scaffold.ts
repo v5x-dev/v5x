@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { unzipSync } from "fflate";
-import { hasErrorCode, isRecord } from "./guards";
+import { hasErrorCode, isRecord, requireOptionValue } from "./guards";
 
 export type ProjectToolchain = "pros" | "vexide";
 
@@ -47,7 +47,10 @@ const DEFAULT_PROS_TEMPLATE: ProsTemplateSource = {
   sha256: "f019642af93dc3d164d1c3e67a2a7dc75c795ac6a4d550c9221c480e2e7f4899",
 };
 
-export function parseToolchain(type: unknown): ProjectToolchain {
+export function parseToolchain(
+  type: string | boolean | undefined,
+): ProjectToolchain {
+  requireOptionValue(type, "--type");
   if (type === "pros" || type === "vexide") return type;
   if (type === undefined) {
     throw new Error(

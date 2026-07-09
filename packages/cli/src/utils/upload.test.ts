@@ -55,6 +55,24 @@ describe("uploadProgramFromCommand", () => {
       ),
     ).rejects.toThrow("--slot requires a value");
   });
+
+  test.each([
+    ["--name", { name: true }],
+    ["--description", { description: true }],
+    ["--icon", { icon: true }],
+    ["--file", { file: true }],
+  ])(
+    "rejects a bare %s flag before touching the project or device",
+    async (flag, overrides) => {
+      await expect(
+        uploadProgramFromCommand(
+          "/nonexistent/path",
+          baseCommandOptions(overrides),
+          false,
+        ),
+      ).rejects.toThrow(`${flag} requires a value`);
+    },
+  );
 });
 
 describe("reportProgress", () => {
