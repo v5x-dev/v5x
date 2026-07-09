@@ -24,6 +24,7 @@ connectButton?.addEventListener("click", async () => {
 ```
 
 <Warning>
-  Keep a reference to the device instance so you can dispose it later — creating
-  one starts its periodic refresh timer.
+  Keep a reference to the device instance so you can dispose it later. Automatic
+  refresh is disabled by default; set `device.autoRefresh = true` if your
+  application needs periodic state updates.
 </Warning>
