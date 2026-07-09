@@ -460,8 +460,14 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
         const ack = cache[n + 1];
 
         if (hasExtId) {
-          if (!thePacketEncoder.validateMessageCdc(cache))
-            throw new Error("Invalid message CDC");
+          if (!thePacketEncoder.validateMessageCdc(cache)) {
+            this.reportWarning("discarding a reply with an invalid CDC CRC", {
+              commandId: cmdId,
+              commandExtendedId: cmdExId,
+              ack,
+            });
+            continue;
+          }
         }
 
         // Route the reply to the first callback wanting these command

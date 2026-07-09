@@ -19,6 +19,7 @@ import {
   InitFileTransferReplyD2HPacket,
   LinkFileH2DPacket,
   LinkFileReplyD2HPacket,
+  PacketEncoder,
   ReadFileReplyD2HPacket,
   ScreenCaptureH2DPacket,
   ScreenCaptureReplyD2HPacket,
@@ -41,6 +42,24 @@ function connectionWithWriter() {
 
 function query1Reply(ack: AckType): Uint8Array {
   return Uint8Array.of(0xaa, 0x55, 33, 8, 0, ack, 1, 2, 0, 0, 3, 4);
+}
+
+function cdc2Reply(
+  command: number,
+  extendedCommand: number,
+  ack: AckType,
+  body: Uint8Array = new Uint8Array(),
+): Uint8Array {
+  const payloadSize = body.byteLength + 4;
+  const packet = new Uint8Array(payloadSize + 4);
+  packet.set([0xaa, 0x55, command, payloadSize, extendedCommand, ack]);
+  packet.set(body, 6);
+  const crc = PacketEncoder.getInstance().crcgen.crc16(
+    packet.subarray(0, -2),
+    0,
+  );
+  packet.set([crc >>> 8, crc & 0xff], packet.byteLength - 2);
+  return packet;
 }
 
 describe("request callbacks", () => {
@@ -592,6 +611,48 @@ test("reader resynchronizes after leading garbage", async () => {
   const result = connection.query1();
   const reading = connection.start();
   expect((await result).isOk()).toBe(true);
+  await connection.close();
+  await reading;
+});
+
+test("reader discards a corrupt CDC reply and continues to the next reply", async () => {
+  class ReadableConnection extends V5SerialConnection {
+    start(): Promise<void> {
+      return this.startReader();
+    }
+  }
+
+  const corrupt = cdc2Reply(86, 30, AckType.CDC2_ACK);
+  corrupt[corrupt.length - 1]! ^= 0xff;
+  const valid = cdc2Reply(86, 30, AckType.CDC2_ACK);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array([...corrupt, ...valid]));
+    },
+  });
+  const connection = new ReadableConnection({} as Serial);
+  connection.reader = stream.getReader();
+  connection.writer = {
+    write: async () => {},
+    close: async () => {},
+    releaseLock: () => {},
+  } as unknown as WritableStreamDefaultWriter<unknown>;
+  const warnings: unknown[] = [];
+  connection.on("warning", (warning) => warnings.push(warning));
+
+  const result = connection.request(
+    new FileClearUpH2DPacket(FileVendor.USER),
+    FileClearUpReplyD2HPacket,
+  );
+  const reading = connection.start();
+
+  expect((await result).isOk()).toBe(true);
+  expect(warnings).toContainEqual({
+    message: "discarding a reply with an invalid CDC CRC",
+    details: { commandId: 86, commandExtendedId: 30, ack: AckType.CDC2_ACK },
+  });
+  expect(connection.callbacksQueue).toHaveLength(0);
+
   await connection.close();
   await reading;
 });
