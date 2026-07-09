@@ -39,6 +39,10 @@ function connectionWithWriter() {
   return connection;
 }
 
+function query1Reply(ack: AckType): Uint8Array {
+  return Uint8Array.of(0xaa, 0x55, 33, 8, 0, ack, 1, 2, 0, 0, 3, 4);
+}
+
 describe("request callbacks", () => {
   test("a timeout resolves its own concurrent request", async () => {
     const connection = connectionWithWriter();
@@ -430,7 +434,7 @@ test("typed replies are not stolen by an earlier raw write", async () => {
     }
   }
 
-  const packet = new Uint8Array([0xaa, 0x55, 33, 8, 0, 0, 1, 2, 0, 0, 3, 4]);
+  const packet = query1Reply(AckType.CDC2_ACK);
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(packet);
@@ -453,6 +457,37 @@ test("typed replies are not stolen by an earlier raw write", async () => {
   expect((await typed).isOk()).toBe(true);
   await connection.close();
   expect(await rawWrite).toBe(AckType.CDC2_NACK);
+  await reading;
+});
+
+test("non-CDC2 NACK replies reject typed requests", async () => {
+  class ReadableConnection extends V5SerialConnection {
+    start(): Promise<void> {
+      return this.startReader();
+    }
+  }
+
+  const packet = query1Reply(AckType.CDC2_NACK);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(packet);
+    },
+  });
+  const connection = new ReadableConnection({} as Serial);
+  connection.reader = stream.getReader();
+  connection.writer = {
+    write: async () => {},
+    close: async () => {},
+    releaseLock: () => {},
+  } as unknown as WritableStreamDefaultWriter<unknown>;
+
+  const result = connection.query1();
+  const reading = connection.start();
+
+  const error = (await result)._unsafeUnwrapErr();
+  expect(error.ackType).toBe(AckType.CDC2_NACK);
+
+  await connection.close();
   await reading;
 });
 
@@ -492,7 +527,7 @@ test("reader resynchronizes after leading garbage", async () => {
     }
   }
 
-  const packet = new Uint8Array([0xaa, 0x55, 33, 8, 0, 0, 1, 2, 0, 0, 3, 4]);
+  const packet = query1Reply(AckType.CDC2_ACK);
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(new Uint8Array([9, 8, 7, ...packet]));

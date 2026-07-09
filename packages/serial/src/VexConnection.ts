@@ -504,7 +504,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
             ),
           );
         } else {
-          if (!hasExtId || PackageType.isValidPacket(data, n)) {
+          if (PackageType.isValidPacket(data, n)) {
             callbackInfo.callback(new PackageType(data));
           } else {
             this.reportWarning(
