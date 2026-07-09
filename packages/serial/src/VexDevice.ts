@@ -58,6 +58,16 @@ function unrefTimerIfPossible(timer: RefreshTimer): void {
   if (typeof unref === "function") unref.call(timer);
 }
 
+function describePort(port: SerialPort): string | undefined {
+  const info = port.getInfo() as SerialPortInfo & {
+    path?: unknown;
+    id?: unknown;
+    serialNumber?: unknown;
+  };
+  const identifier = info.path ?? info.id ?? info.serialNumber;
+  return typeof identifier === "string" ? identifier : undefined;
+}
+
 export class V5SerialDevice extends VexSerialDevice {
   autoReconnect = true;
   pauseRefreshOnFileTransfer = true;
@@ -237,20 +247,54 @@ export class V5SerialDevice extends VexSerialDevice {
       this.connection = conn;
     } else {
       let tryIdx = 0;
+      let canRequestPort = true;
+      const attemptedPorts = new Set<SerialPort>();
+      const attemptedPortNames: string[] = [];
       while (true) {
         const c = new V5SerialConnection(this.defaultSerial);
 
-        const result = await c.open(tryIdx++, true);
+        let result = await c.open(tryIdx++, false);
+        if (result.isOk() && result.value === "no-port" && canRequestPort) {
+          canRequestPort = false;
+          result = await c.open(tryIdx, true);
+        }
         if (result.isErr()) {
           await c.close();
           return err(result.error);
         }
         if (result.value === "no-port") {
-          return err(new VexNotConnectedError("no V5 device was found"));
+          const attempted = attemptedPortNames.length
+            ? `; attempted ${attemptedPortNames.join(", ")}`
+            : "";
+          return err(
+            new VexNotConnectedError(
+              `no responsive V5 device was found${attempted}`,
+            ),
+          );
         }
         if (result.value === "busy") {
           await c.close();
-          continue;
+          return err(
+            new VexNotConnectedError("the selected V5 serial port is busy"),
+          );
+        }
+
+        const port = c.port;
+        if (port !== undefined && attemptedPorts.has(port)) {
+          await c.close();
+          const portName = describePort(port);
+          return err(
+            new VexNotConnectedError(
+              portName === undefined
+                ? "the selected serial port did not respond as a V5 device"
+                : `serial port ${portName} did not respond as a V5 device`,
+            ),
+          );
+        }
+        if (port !== undefined) {
+          attemptedPorts.add(port);
+          const portName = describePort(port);
+          if (portName !== undefined) attemptedPortNames.push(portName);
         }
 
         const q = await c.query1();

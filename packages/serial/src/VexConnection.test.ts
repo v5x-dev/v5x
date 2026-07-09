@@ -163,6 +163,25 @@ test("downloads accept short chunks, report completion, and exit", async () => {
   expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
 });
 
+test("downloads trim word padding from the final chunk", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const replies = [
+    initReply(4, 3),
+    readReply(USER_FLASH_USR_CODE_START, [1, 2, 3, 0]),
+    Object.create(
+      ExitFileTransferReplyD2HPacket.prototype,
+    ) as ExitFileTransferReplyD2HPacket,
+  ];
+  connection.writeDataAsync = async () => replies.shift() ?? AckType.CDC2_NACK;
+
+  const result = await connection.downloadFileToHost({
+    filename: "test.ini",
+    vendor: FileVendor.USER,
+  });
+
+  expect(result._unsafeUnwrap()).toEqual(new Uint8Array([1, 2, 3]));
+});
+
 test("upload progress advances with each acknowledged chunk", async () => {
   const connection = new V5SerialConnection({} as Serial);
   connection.writeDataAsync = async (packet) => {

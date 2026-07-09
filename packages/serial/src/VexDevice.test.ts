@@ -340,6 +340,54 @@ test("connect opens and retains a supplied connection", async () => {
   expect(device.connection).toBe(connection);
 });
 
+test("connect stops after requestPort returns an unresponsive port again", async () => {
+  let readable: ReadableStream<Uint8Array> | null = null;
+  let writable: WritableStream<Uint8Array> | null = null;
+  let openCount = 0;
+  let requestCount = 0;
+  const port = {
+    get readable() {
+      return readable;
+    },
+    get writable() {
+      return writable;
+    },
+    getInfo: () => ({
+      usbVendorId: 10376,
+      usbProductId: 1281,
+      path: "/dev/ttyACM1",
+    }),
+    open: async () => {
+      openCount++;
+      readable = new ReadableStream<Uint8Array>();
+      writable = new WritableStream<Uint8Array>();
+    },
+    close: async () => {
+      readable = null;
+      writable = null;
+    },
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as unknown as SerialPort;
+  const retryingSerial = {
+    getPorts: async () => [port],
+    requestPort: async () => {
+      requestCount++;
+      return port;
+    },
+  } as unknown as Serial;
+  const device = new V5SerialDevice(retryingSerial);
+  devices.push(device);
+
+  const result = await device.connect();
+
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexNotConnectedError);
+  expect(result._unsafeUnwrapErr().message).toContain("/dev/ttyACM1");
+  expect(openCount).toBe(2);
+  expect(requestCount).toBe(1);
+});
+
 test("explicit disconnect does not trigger automatic reconnect", async () => {
   const device = new V5SerialDevice(serial);
   devices.push(device);
