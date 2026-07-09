@@ -41,6 +41,7 @@ import {
   assertScreenshotOptions,
   encodeScreenshotPng,
   encodeScreenshotPpm,
+  formatKittyRgb,
   parseScreenshotFormat,
   shouldPrintKittyRgb,
   toScreenshotJson,
@@ -355,6 +356,25 @@ describe("command output formatting", () => {
     } finally {
       (process.stdout as { isTTY: boolean | undefined }).isTTY = originalIsTTY;
     }
+  });
+
+  test("chunks Kitty RGB previews into protocol-sized payloads", () => {
+    const rgb = new Uint8Array(480 * 272 * 3);
+    const chunks = formatKittyRgb(rgb);
+    const payloads = chunks.map((chunk) => {
+      const separator = chunk.indexOf(";");
+      return chunk.slice(separator + 1, chunk.indexOf("\x1b\\"));
+    });
+
+    expect(chunks).toHaveLength(128);
+    expect(chunks[0]).toStartWith("\x1b_Ga=T,f=24,s=480,v=272,c=40,m=1;");
+    expect(
+      chunks.slice(1, -1).every((chunk) => chunk.startsWith("\x1b_Gm=1;")),
+    ).toBe(true);
+    expect(chunks.at(-1)).toStartWith("\x1b_Gm=0;");
+    expect(chunks.at(-1)).toEndWith("\x1b\\\n");
+    expect(payloads.every((payload) => payload.length <= 4096)).toBe(true);
+    expect(payloads.join("")).toBe(Buffer.from(rgb).toString("base64"));
   });
 });
 

@@ -6,6 +6,7 @@ import { printJson, unwrapSerial } from "../utils/output";
 const WIDTH = 480;
 const HEIGHT = 272;
 const ROW_BYTES = WIDTH * 3;
+const KITTY_CHUNK_BYTES = 4096;
 type ScreenshotFormat = "png" | "ppm";
 
 function assertScreenshotSize(bytes: Uint8Array): void {
@@ -106,12 +107,24 @@ export function shouldPrintKittyRgb(): boolean {
   return process.stdout.isTTY === true;
 }
 
-function printKittyRgb(bytes: Uint8Array): void {
+export function formatKittyRgb(bytes: Uint8Array): string[] {
   assertScreenshotSize(bytes);
   const base64 = Buffer.from(bytes).toString("base64");
-  process.stdout.write(
-    `\x1b_Ga=T,f=24,s=${WIDTH},v=${HEIGHT},c=40;${base64}\x1b\\\n`,
-  );
+  const chunks: string[] = [];
+  for (let offset = 0; offset < base64.length; offset += KITTY_CHUNK_BYTES) {
+    const payload = base64.slice(offset, offset + KITTY_CHUNK_BYTES);
+    const more = offset + KITTY_CHUNK_BYTES < base64.length;
+    const control =
+      offset === 0
+        ? `a=T,f=24,s=${WIDTH},v=${HEIGHT},c=40,m=${more ? 1 : 0}`
+        : `m=${more ? 1 : 0}`;
+    chunks.push(`\x1b_G${control};${payload}\x1b\\${more ? "" : "\n"}`);
+  }
+  return chunks;
+}
+
+function printKittyRgb(bytes: Uint8Array): void {
+  for (const chunk of formatKittyRgb(bytes)) process.stdout.write(chunk);
 }
 
 export default function registerScreenshotCommand(program: Sade) {
