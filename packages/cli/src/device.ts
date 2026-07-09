@@ -1,19 +1,20 @@
 import { V5SerialDevice } from "@v5x/serial";
 import { basename } from "node:path";
 import { serial, type Serial, type SerialPort } from "./adapter";
+import { requireOptionValue } from "./utils/guards";
 
 export const V5X_PORT_ENV = "V5X_PORT";
 
 export interface PortSelectionOptions {
-  port?: string;
+  port?: string | boolean;
 }
 
 type Environment = Record<string, string | undefined>;
 
 function normalizePortSelector(
-  selector: string | undefined,
+  selector: string | boolean | undefined,
 ): string | undefined {
-  const trimmed = selector?.trim();
+  const trimmed = requireOptionValue(selector, "--port")?.trim();
   return trimmed === "" ? undefined : trimmed;
 }
 

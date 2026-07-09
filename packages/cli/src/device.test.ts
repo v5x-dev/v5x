@@ -68,6 +68,12 @@ test("resolves port selectors from options before V5X_PORT", () => {
   expect(resolvePortSelector({ port: " " }, { V5X_PORT: "" })).toBeUndefined();
 });
 
+test("rejects a bare --port option before selecting a device", () => {
+  expect(() => resolvePortSelector({ port: true })).toThrow(
+    "--port requires a value",
+  );
+});
+
 test("matches fake serial ports by path, basename, id, or serial number", () => {
   const port = new FakePort({
     path: "/dev/ttyACM0",

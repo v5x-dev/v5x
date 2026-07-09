@@ -1,5 +1,6 @@
 import type { Sade } from "sade";
 import { basename, join, resolve } from "node:path";
+import { requireOptionValue } from "../utils/guards";
 import { createProject, parseToolchain } from "../utils/scaffold";
 import { printJson } from "../utils/output";
 import { toWorkflowCreateJson } from "../utils/workflow-json";
@@ -21,14 +22,19 @@ export default function registerNewCommand(program: Sade) {
     .action(
       async (
         name: string,
-        options: { type?: string; path?: string; json?: boolean },
+        options: {
+          type?: string | boolean;
+          path?: string | boolean;
+          json?: boolean;
+        },
       ) => {
         const toolchain = parseToolchain(options.type);
+        const destinationPath = requireOptionValue(options.path, "--path");
         assertProjectNameArgument(name);
         const destination =
-          options.path === undefined
+          destinationPath === undefined
             ? join(process.cwd(), name)
-            : resolve(options.path);
+            : resolve(destinationPath);
         const path = await createProject(destination, toolchain, {
           displayName: name,
           cargoPackageName:

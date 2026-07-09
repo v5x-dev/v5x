@@ -1,6 +1,7 @@
 import type { Sade } from "sade";
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { parseBrainFilePath } from "../utils/brainPath";
+import { requireOptionValue } from "../utils/guards";
 import { unwrapSerial } from "../utils/output";
 
 export function decodeCatText(bytes: Uint8Array): string {
@@ -18,15 +19,19 @@ export default function registerCatCommand(program: Sade) {
     .option("-o, --output", "write the file bytes to a local path")
     .option("--port", "serial port path or id, defaults to V5X_PORT")
     .action(
-      async (file, options: { output?: string } & PortSelectionOptions) => {
+      async (
+        file,
+        options: { output?: string | boolean } & PortSelectionOptions,
+      ) => {
+        const output = requireOptionValue(options.output, "--output");
         const handle = parseBrainFilePath(file);
         await withSelectedV5Device(options, async (device) => {
           const bytes = unwrapSerial(
             await device.brain.readFile(handle),
             `failed to read ${file}`,
           );
-          if (options.output !== undefined) {
-            await Bun.write(options.output, bytes);
+          if (output !== undefined) {
+            await Bun.write(output, bytes);
             return;
           }
 
