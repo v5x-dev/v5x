@@ -16,8 +16,8 @@
   },
   "scripts": {
     "build": "bun run clean && bun run build:dts && bun run build:esm && bun run build:cjs",
-    "build:esm": "bun build ./src/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external unzipit",
-    "build:cjs": "bun build ./src/index.ts --target node --format cjs --sourcemap=linked --outdir ./dist --entry-naming=index.cjs --external unzipit",
+    "build:esm": "bun build ./src/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external unzipit --external neverthrow",
+    "build:cjs": "bun build ./src/index.ts --target node --format cjs --sourcemap=linked --outdir ./dist --entry-naming=index.cjs --external unzipit --external neverthrow",
     "build:dts": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
