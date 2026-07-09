@@ -88,9 +88,9 @@ describe("fixed-width text fields", () => {
   });
 
   test("rejects filenames longer than the 24-byte field and overlong types", () => {
-    expect(
-      () => initFileTransfer("x".repeat(25)),
-    ).toThrow("Filename must be at most 24 UTF-8 bytes");
+    expect(() => initFileTransfer("x".repeat(25))).toThrow(
+      "Filename must be at most 24 UTF-8 bytes",
+    );
     expect(
       () =>
         new InitFileTransferH2DPacket(
@@ -127,7 +127,8 @@ describe("fixed-width text fields", () => {
       ),
     ];
     for (const packet of packets) {
-      const filenameOffset = packet instanceof InitFileTransferH2DPacket ? 35 : 9;
+      const filenameOffset =
+        packet instanceof InitFileTransferH2DPacket ? 35 : 9;
       expect(packet.data.slice(filenameOffset, filenameOffset + 24)).toEqual(
         new TextEncoder().encode(name),
       );
