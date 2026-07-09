@@ -1,9 +1,6 @@
 {
   "name": "@v5x/docs",
   "private": true,
-  "engines": {
-    "node": ">=24 <25"
-  },
   "scripts": {
     "dev": "bun run --bun mint dev",
     "validate": "bun run --bun mint validate",
@@ -14,7 +11,7 @@
     "export": "rm -rf .wrangler && mkdir -p .wrangler && bun run --bun mint export --output .wrangler/export.zip && bun scripts/export.ts",
     "deploy": "bun run export && wrangler deploy",
     "deploy:dry": "bun run export && wrangler deploy --dry-run",
-    "typecheck": "tsc --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --target ESNext --module Preserve --moduleResolution bundler --types bun scripts/*.ts",
+    "typecheck": "tsc --ignoreConfig --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --target ESNext --module Preserve --moduleResolution bundler --types bun scripts/*.ts",
     "lint": "bun run typecheck",
     "test": "bun test scripts"
   },

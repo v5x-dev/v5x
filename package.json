@@ -38,7 +38,7 @@
     "oxlint-tsgolint": "^0.23.0",
     "prettier": "^3.8.5",
     "turbo": "^2.9.18",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "patchedDependencies": {
     "front-matter@4.0.2": "patches/front-matter@4.0.2.patch"

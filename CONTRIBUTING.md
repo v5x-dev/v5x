@@ -1,12 +1,17 @@
 # Contributing
 
-v5x uses Bun for dependency management, builds, and tests. Install the Bun
-version declared in `package.json` and Node 24 for docs validation, then run:
+v5x uses Bun for dependency management, builds, tests, and docs validation.
+Install the Bun version declared in `package.json`, then run:
 
 ```sh
 bun install --frozen-lockfile
 bun run check
 ```
+
+The root `tsc` executable is TypeScript 7. The website's `astro check` keeps a
+temporary TypeScript 6 API dependency because Astro does not yet support the
+TypeScript 7 compiler API. This is the only permitted workspace-level
+TypeScript dependency.
 
 `bun run check` runs formatting, linting, typechecking, tests, package and app
 builds, docs export, and docs validation. The expanded sequence is:
