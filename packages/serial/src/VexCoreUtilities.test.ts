@@ -75,7 +75,7 @@ describe("VexEventEmitter", () => {
     expect(values).toEqual([7]);
   });
 
-  test("normalizes symbol event names through VexEventTarget", () => {
+  test("preserves symbol event names through VexEventTarget", () => {
     const target = new VexEventTarget();
     const event = Symbol("update");
     let received: unknown;
@@ -86,5 +86,18 @@ describe("VexEventEmitter", () => {
     target.emit(event, "ready");
 
     expect(received).toBe("ready");
+  });
+
+  test("keeps distinct symbols with the same description separate", () => {
+    const target = new VexEventTarget();
+    const first = Symbol("update");
+    const second = Symbol("update");
+    const values: string[] = [];
+
+    target.on(first, () => values.push("first"));
+    target.on(second, () => values.push("second"));
+    target.emit(first, undefined);
+
+    expect(values).toEqual(["first"]);
   });
 });

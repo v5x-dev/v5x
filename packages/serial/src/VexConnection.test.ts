@@ -107,6 +107,55 @@ test("open discovers unopened authorized ports and emits connected when ready", 
   await connection.close();
 });
 
+test("throwing lifecycle listeners do not interrupt a connection", async () => {
+  class TestConnection extends V5SerialConnection {
+    warn(): void {
+      this.reportWarning("listener isolation test");
+    }
+  }
+
+  let readable: ReadableStream<Uint8Array> | null = null;
+  let writable: WritableStream<Uint8Array> | null = null;
+  const port = {
+    get readable() {
+      return readable;
+    },
+    get writable() {
+      return writable;
+    },
+    getInfo: () => ({ usbVendorId: 10376, usbProductId: 1281 }),
+    open: async () => {
+      readable = new ReadableStream<Uint8Array>();
+      writable = new WritableStream<Uint8Array>();
+    },
+    close: async () => {
+      readable = null;
+      writable = null;
+    },
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as unknown as SerialPort;
+  const connection = new TestConnection({
+    getPorts: async () => [port],
+  } as unknown as Serial);
+
+  connection.on("connected", () => {
+    throw new Error("connected listener failed");
+  });
+  connection.on("disconnected", () => {
+    throw new Error("disconnected listener failed");
+  });
+  connection.on("warning", () => {
+    throw new Error("warning listener failed");
+  });
+
+  expect((await connection.open(0, false))._unsafeUnwrap()).toBe("opened");
+  expect(connection.isConnected).toBe(true);
+  expect(() => connection.warn()).not.toThrow();
+  expect(connection.isConnected).toBe(true);
+  await expect(connection.close()).resolves.toBeUndefined();
+});
+
 test("openScreen accepts its matching reply packet", async () => {
   const connection = new V5SerialConnection({} as Serial);
   const reply = Object.create(
