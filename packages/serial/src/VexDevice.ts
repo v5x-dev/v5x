@@ -77,6 +77,13 @@ export class V5SerialDevice extends VexSerialDevice {
   private _refreshInterval: RefreshTimer | undefined;
   state: V5SerialDeviceState = new V5SerialDeviceState(this);
   private _disposed = false;
+  private _lifecycleGeneration = 0;
+  private _disconnectListener:
+    | {
+        connection: V5SerialConnection;
+        listener: () => void;
+      }
+    | undefined;
   private _refreshGeneration = 0;
   private _autoRefresh = false;
   private _isLastRefreshComplete = true;
@@ -224,39 +231,72 @@ export class V5SerialDevice extends VexSerialDevice {
   }
 
   connect(conn?: V5SerialConnection): ResultAsync<void, VexSerialError> {
-    return new ResultAsync(this._connect(conn));
+    if (this._disposed) {
+      return new ResultAsync(Promise.resolve(this._staleLifecycleResult()));
+    }
+    if (this.isConnected)
+      return new ResultAsync(Promise.resolve(ok(undefined)));
+
+    const generation = ++this._lifecycleGeneration;
+    return new ResultAsync(this._connect(conn, generation));
   }
 
   private async _connect(
     conn?: V5SerialConnection,
+    generation: number = this._lifecycleGeneration,
   ): Promise<Result<void, VexSerialError>> {
+    if (!this._isLifecycleCurrent(generation)) {
+      return this._staleLifecycleResult();
+    }
     if (this.isConnected) return ok(undefined);
 
     if (conn != null) {
       if (!conn.isConnected) {
         const opened = await conn.open();
+        if (!this._isLifecycleCurrent(generation)) {
+          await conn.close();
+          return this._staleLifecycleResult();
+        }
         if (opened.isErr() || opened.value !== "opened") {
           return err(new VexIoError("failed to open the supplied connection"));
         }
       }
       const q = await conn.query1();
+      if (!this._isLifecycleCurrent(generation)) {
+        await conn.close();
+        return this._staleLifecycleResult();
+      }
       if (q.isErr()) {
         await conn.close();
         return err(q.error);
       }
-      this.connection = conn;
+      if (!this._commitConnection(conn, generation)) {
+        await conn.close();
+        return this._staleLifecycleResult();
+      }
     } else {
       let tryIdx = 0;
       let canRequestPort = true;
       const attemptedPorts = new Set<SerialPort>();
       const attemptedPortNames: string[] = [];
       while (true) {
-        const c = new V5SerialConnection(this.defaultSerial);
+        if (!this._isLifecycleCurrent(generation)) {
+          return this._staleLifecycleResult();
+        }
+        const c = this.createConnection();
 
         let result = await c.open(tryIdx++, false);
+        if (!this._isLifecycleCurrent(generation)) {
+          await c.close();
+          return this._staleLifecycleResult();
+        }
         if (result.isOk() && result.value === "no-port" && canRequestPort) {
           canRequestPort = false;
           result = await c.open(tryIdx, true);
+          if (!this._isLifecycleCurrent(generation)) {
+            await c.close();
+            return this._staleLifecycleResult();
+          }
         }
         if (result.isErr()) {
           await c.close();
@@ -298,28 +338,48 @@ export class V5SerialDevice extends VexSerialDevice {
         }
 
         const q = await c.query1();
+        if (!this._isLifecycleCurrent(generation)) {
+          await c.close();
+          return this._staleLifecycleResult();
+        }
         if (q.isErr()) {
           // no response
           await c.close();
           continue;
         }
 
-        this.connection = c;
+        if (!this._commitConnection(c, generation)) {
+          await c.close();
+          return this._staleLifecycleResult();
+        }
         break;
       }
     }
 
-    if (!this.isConnected) return err(new VexNotConnectedError());
+    const connection = this.connection;
+    if (!this._isLifecycleCurrent(generation) || connection == null) {
+      return this._staleLifecycleResult();
+    }
+    if (!connection.isConnected) return err(new VexNotConnectedError());
 
-    await this.doAfterConnect();
+    await this.doAfterConnect(connection, generation);
+    if (
+      !this._isLifecycleCurrent(generation) ||
+      this.connection !== connection
+    ) {
+      return this._staleLifecycleResult();
+    }
 
     return ok(undefined);
   }
 
   async disconnect(): Promise<void> {
+    this._lifecycleGeneration++;
+    this._refreshGeneration++;
     this._isDisconnecting = true;
     const connection = this.connection;
     this.connection = undefined;
+    this._detachDisconnectListener();
     try {
       await connection?.close();
     } finally {
@@ -338,12 +398,32 @@ export class V5SerialDevice extends VexSerialDevice {
    * @param timeout defaults to 0. If timeout is 0, then it will attempt to reconnect forever.
    */
   reconnect(timeout: number = 0): ResultAsync<void, VexSerialError> {
-    return new ResultAsync(this._reconnect(timeout));
+    if (this._disposed) {
+      return new ResultAsync(Promise.resolve(this._staleLifecycleResult()));
+    }
+    if (timeout < 0) {
+      return new ResultAsync(
+        Promise.resolve(
+          err(new VexInvalidArgumentError("timeout must be non-negative")),
+        ),
+      );
+    }
+    if (this.isConnected)
+      return new ResultAsync(Promise.resolve(ok(undefined)));
+
+    const generation = this._isReconnecting
+      ? this._lifecycleGeneration
+      : ++this._lifecycleGeneration;
+    return new ResultAsync(this._reconnect(timeout, generation));
   }
 
   private async _reconnect(
     timeout: number,
+    generation: number = this._lifecycleGeneration,
   ): Promise<Result<void, VexSerialError>> {
+    if (!this._isLifecycleCurrent(generation)) {
+      return this._staleLifecycleResult();
+    }
     if (this.isConnected) return ok(undefined);
     if (timeout < 0) {
       return err(new VexInvalidArgumentError("timeout must be non-negative"));
@@ -361,6 +441,9 @@ export class V5SerialDevice extends VexSerialDevice {
         }
       }
 
+      if (!this._isLifecycleCurrent(generation)) {
+        return this._staleLifecycleResult();
+      }
       if (this.isConnected) return ok(undefined);
     }
 
@@ -369,9 +452,16 @@ export class V5SerialDevice extends VexSerialDevice {
       while (timeout === 0 || Date.now() < endTime) {
         let tryIdx = 0;
         while (true) {
-          const c = new V5SerialConnection(this.defaultSerial);
+          if (!this._isLifecycleCurrent(generation)) {
+            return this._staleLifecycleResult();
+          }
+          const c = this.createConnection();
 
           const result = await c.open(tryIdx++, false);
+          if (!this._isLifecycleCurrent(generation)) {
+            await c.close();
+            return this._staleLifecycleResult();
+          }
 
           if (result.isErr()) {
             await c.close();
@@ -384,6 +474,10 @@ export class V5SerialDevice extends VexSerialDevice {
           }
 
           const status = await c.getSystemStatus(200);
+          if (!this._isLifecycleCurrent(generation)) {
+            await c.close();
+            return this._staleLifecycleResult();
+          }
           if (status.isErr()) {
             // no response
             await c.close();
@@ -399,7 +493,10 @@ export class V5SerialDevice extends VexSerialDevice {
             continue;
           }
 
-          this.connection = c;
+          if (!this._commitConnection(c, generation)) {
+            await c.close();
+            return this._staleLifecycleResult();
+          }
           break;
         }
 
@@ -409,10 +506,16 @@ export class V5SerialDevice extends VexSerialDevice {
         const getPortCount = async (): Promise<number> =>
           (await this.defaultSerial.getPorts()).length;
         const portsCount = await getPortCount();
+        if (!this._isLifecycleCurrent(generation)) {
+          return this._staleLifecycleResult();
+        }
         await sleepUntilAsync(
           async () => (await getPortCount()) !== portsCount,
           1000,
         );
+        if (!this._isLifecycleCurrent(generation)) {
+          return this._staleLifecycleResult();
+        }
       }
     } catch (e) {
       return err(toVexSerialError(e));
@@ -420,9 +523,19 @@ export class V5SerialDevice extends VexSerialDevice {
       this._isReconnecting = false;
     }
 
-    if (!this.isConnected) return err(new VexNotConnectedError());
+    const connection = this.connection;
+    if (!this._isLifecycleCurrent(generation) || connection == null) {
+      return this._staleLifecycleResult();
+    }
+    if (!connection.isConnected) return err(new VexNotConnectedError());
 
-    await this.doAfterConnect();
+    await this.doAfterConnect(connection, generation);
+    if (
+      !this._isLifecycleCurrent(generation) ||
+      this.connection !== connection
+    ) {
+      return this._staleLifecycleResult();
+    }
 
     return ok(undefined);
   }
@@ -434,16 +547,65 @@ export class V5SerialDevice extends VexSerialDevice {
     }
   }
 
-  private async doAfterConnect(): Promise<void> {
-    if (this.connection == null) return;
+  protected createConnection(): V5SerialConnection {
+    return new V5SerialConnection(this.defaultSerial);
+  }
 
-    this.connection.on("disconnected", (_data) => {
-      if (this._isDisconnecting) return;
+  private _isLifecycleCurrent(generation: number): boolean {
+    return generation === this._lifecycleGeneration && !this._disposed;
+  }
+
+  private _staleLifecycleResult(): Result<void, VexSerialError> {
+    return err(new VexNotConnectedError("connection attempt was superseded"));
+  }
+
+  private _commitConnection(
+    connection: V5SerialConnection,
+    generation: number,
+  ): boolean {
+    if (!this._isLifecycleCurrent(generation)) return false;
+
+    this._detachDisconnectListener();
+    this.connection = connection;
+    return true;
+  }
+
+  private _detachDisconnectListener(): void {
+    const subscription = this._disconnectListener;
+    this._disconnectListener = undefined;
+    subscription?.connection.remove("disconnected", subscription.listener);
+  }
+
+  private async doAfterConnect(
+    connection: V5SerialConnection,
+    generation: number,
+  ): Promise<void> {
+    if (
+      !this._isLifecycleCurrent(generation) ||
+      this.connection !== connection
+    ) {
+      return;
+    }
+
+    const listener = () => {
+      if (
+        this._isDisconnecting ||
+        !this._isLifecycleCurrent(generation) ||
+        this.connection !== connection
+      ) {
+        return;
+      }
       this.emit("disconnected", undefined);
-      if (this.autoReconnect) {
+      if (
+        this.autoReconnect &&
+        this._isLifecycleCurrent(generation) &&
+        this.connection === connection
+      ) {
         void this.reconnect().mapErr((e) => this.emit("error", e));
       }
-    });
+    };
+    connection.on("disconnected", listener);
+    this._disconnectListener = { connection, listener };
 
     await this.refresh();
   }
