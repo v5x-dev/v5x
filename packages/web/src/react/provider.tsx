@@ -3,7 +3,7 @@ import {
   createElement,
   useContext,
   useEffect,
-  useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 import {
@@ -20,15 +20,39 @@ export interface V5ProviderProps {
   options?: V5ClientOptions;
 }
 
+interface OwnedClient {
+  client: V5Client;
+  refreshIntervalMs: V5ClientOptions["refreshIntervalMs"];
+  serial: V5ClientOptions["serial"];
+}
+
 export function V5Provider({
   children,
   client,
   options,
 }: V5ProviderProps): ReactNode {
-  const value = useMemo(
-    () => client ?? createV5Client(options),
-    [client, options?.refreshIntervalMs, options?.serial],
-  );
+  // Lazily create the owned client into a ref rather than during render.
+  // A ref persists across Strict Mode's double render invocation, so only
+  // one client is ever constructed for a given set of options; a fresh
+  // useMemo/render call would build (and leak) a throwaway on the extra pass.
+  const owned = useRef<OwnedClient | null>(null);
+  let value: V5Client;
+  if (client !== undefined) {
+    value = client;
+  } else {
+    if (
+      owned.current === null ||
+      owned.current.refreshIntervalMs !== options?.refreshIntervalMs ||
+      owned.current.serial !== options?.serial
+    ) {
+      owned.current = {
+        client: createV5Client(options),
+        refreshIntervalMs: options?.refreshIntervalMs,
+        serial: options?.serial,
+      };
+    }
+    value = owned.current.client;
+  }
 
   useEffect(() => {
     if (client !== undefined) return;

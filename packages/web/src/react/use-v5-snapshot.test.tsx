@@ -1,7 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { Window } from "happy-dom";
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import * as clientModule from "../client.js";
 import { type V5Client, type V5Snapshot } from "../client.js";
 import { V5WebError } from "../errors.js";
 import { V5Provider, useV5Client } from "./provider.js";
@@ -123,6 +124,36 @@ test("V5Provider keeps an owned client stable for equivalent inline options", as
 
   expect(seen).toHaveLength(2);
   expect(seen[0]).toBe(seen[1]);
+});
+
+test("V5Provider creates one owned client under Strict Mode double invocation", async () => {
+  const createSpy = spyOn(clientModule, "createV5Client");
+  const container = document.createElement("div");
+  const root = createRoot(container);
+
+  function Probe() {
+    useV5Client();
+    return null;
+  }
+
+  try {
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <V5Provider>
+            <Probe />
+          </V5Provider>
+        </StrictMode>,
+      );
+    });
+
+    expect(createSpy).toHaveBeenCalledTimes(1);
+  } finally {
+    await act(async () => {
+      root.unmount();
+    });
+    createSpy.mockRestore();
+  }
 });
 
 function useV5ClientForTest(): V5Client {
