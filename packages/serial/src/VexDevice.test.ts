@@ -27,6 +27,17 @@ const serial = {
 } as unknown as Serial;
 type RefreshTimer = ReturnType<typeof setInterval>;
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, reject, resolve };
+}
+
 afterEach(async () => {
   await Promise.all(devices.splice(0).map((device) => device.dispose()));
 });
@@ -331,6 +342,7 @@ test("connect opens and retains a supplied connection", async () => {
     },
     query1: () => okAsync({} as never),
     on: () => {},
+    remove: () => {},
     close: async () => {},
   } as unknown as V5SerialConnection;
   device.refresh = () => okAsync<boolean>(true);
@@ -399,6 +411,11 @@ test("explicit disconnect does not trigger automatic reconnect", async () => {
     on: (event: string, listener: () => void) => {
       if (event === "disconnected") disconnected = listener;
     },
+    remove: (event: string, listener: () => void) => {
+      if (event === "disconnected" && listener === disconnected) {
+        disconnected = undefined;
+      }
+    },
     close: async () => disconnected?.(),
   } as unknown as V5SerialConnection;
   device.refresh = () => okAsync<boolean>(true);
@@ -410,6 +427,207 @@ test("explicit disconnect does not trigger automatic reconnect", async () => {
   await device.connect(connection);
   await device.disconnect();
   expect(reconnects).toBe(0);
+});
+
+test("reusing a connection does not stack disconnected listeners", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  let connected = false;
+  const disconnectedListeners = new Set<() => void>();
+  const connection = {
+    get isConnected() {
+      return connected;
+    },
+    open: () => {
+      connected = true;
+      return okAsync("opened" as const);
+    },
+    query1: () => okAsync({} as never),
+    on: (event: string, listener: () => void) => {
+      if (event === "disconnected") disconnectedListeners.add(listener);
+    },
+    remove: (event: string, listener: () => void) => {
+      if (event === "disconnected") disconnectedListeners.delete(listener);
+    },
+    close: async () => {
+      connected = false;
+    },
+  } as unknown as V5SerialConnection;
+  device.refresh = () => okAsync<boolean>(true);
+  let deviceDisconnects = 0;
+  let reconnects = 0;
+  device.on("disconnected", () => deviceDisconnects++);
+  device.reconnect = () => {
+    reconnects++;
+    return okAsync(undefined);
+  };
+
+  await device.connect(connection);
+  await device.disconnect();
+  await device.connect(connection);
+
+  expect(disconnectedListeners.size).toBe(1);
+  for (const listener of disconnectedListeners) listener();
+  expect(deviceDisconnects).toBe(1);
+  expect(reconnects).toBe(1);
+
+  await device.disconnect();
+  expect(disconnectedListeners.size).toBe(0);
+});
+
+test("disconnect invalidates and closes a pending supplied connection", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const openStarted = createDeferred<void>();
+  const finishOpen = createDeferred<void>();
+  let connected = false;
+  let closes = 0;
+  let queries = 0;
+  const connection = {
+    get isConnected() {
+      return connected;
+    },
+    open: () => {
+      openStarted.resolve();
+      return new ResultAsync(
+        finishOpen.promise.then(() => {
+          connected = true;
+          return ok("opened" as const);
+        }),
+      );
+    },
+    query1: () => {
+      queries++;
+      return okAsync({} as never);
+    },
+    on: () => {},
+    remove: () => {},
+    close: async () => {
+      closes++;
+      connected = false;
+    },
+  } as unknown as V5SerialConnection;
+
+  const pending = device.connect(connection);
+  await openStarted.promise;
+  await device.disconnect();
+  finishOpen.resolve();
+  const result = await pending;
+
+  expect(result.isErr()).toBe(true);
+  expect(device.connection).toBeUndefined();
+  expect(queries).toBe(0);
+  expect(closes).toBe(1);
+});
+
+test("dispose invalidates pending and future connection attempts", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const openStarted = createDeferred<void>();
+  const finishOpen = createDeferred<void>();
+  let connected = false;
+  let closes = 0;
+  let opens = 0;
+  const pendingConnection = {
+    get isConnected() {
+      return connected;
+    },
+    open: () => {
+      opens++;
+      openStarted.resolve();
+      return new ResultAsync(
+        finishOpen.promise.then(() => {
+          connected = true;
+          return ok("opened" as const);
+        }),
+      );
+    },
+    query1: () => okAsync({} as never),
+    on: () => {},
+    remove: () => {},
+    close: async () => {
+      closes++;
+      connected = false;
+    },
+  } as unknown as V5SerialConnection;
+  const futureConnection = {
+    isConnected: false,
+    open: () => {
+      opens++;
+      return okAsync("opened" as const);
+    },
+  } as unknown as V5SerialConnection;
+
+  const pending = device.connect(pendingConnection);
+  await openStarted.promise;
+  await device.dispose();
+  finishOpen.resolve();
+
+  expect((await pending).isErr()).toBe(true);
+  expect(device.connection).toBeUndefined();
+  expect(closes).toBe(1);
+  expect((await device.connect(futureConnection)).isErr()).toBe(true);
+  expect((await device.reconnect(1)).isErr()).toBe(true);
+  expect(opens).toBe(1);
+});
+
+test("manual connect supersedes an in-flight reconnect", async () => {
+  const reconnectOpenStarted = createDeferred<void>();
+  const finishReconnectOpen = createDeferred<void>();
+  let reconnectConnected = false;
+  let reconnectCloses = 0;
+  const reconnectConnection = {
+    get isConnected() {
+      return reconnectConnected;
+    },
+    open: () => {
+      reconnectOpenStarted.resolve();
+      return new ResultAsync(
+        finishReconnectOpen.promise.then(() => {
+          reconnectConnected = true;
+          return ok("opened" as const);
+        }),
+      );
+    },
+    getSystemStatus: () => okAsync({ uniqueId: 0 } as never),
+    on: () => {},
+    remove: () => {},
+    close: async () => {
+      reconnectCloses++;
+      reconnectConnected = false;
+    },
+  } as unknown as V5SerialConnection;
+  class TestDevice extends V5SerialDevice {
+    constructor(connection: V5SerialConnection) {
+      super(serial);
+      this.connectionToCreate = connection;
+    }
+
+    private connectionToCreate: V5SerialConnection;
+
+    protected createConnection(): V5SerialConnection {
+      return this.connectionToCreate;
+    }
+  }
+  const device = new TestDevice(reconnectConnection);
+  devices.push(device);
+  device.refresh = () => okAsync<boolean>(true);
+  const manualConnection = {
+    isConnected: true,
+    query1: () => okAsync({} as never),
+    on: () => {},
+    remove: () => {},
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+
+  const reconnect = device.reconnect();
+  await reconnectOpenStarted.promise;
+  expect((await device.connect(manualConnection)).isOk()).toBe(true);
+  finishReconnectOpen.resolve();
+
+  expect((await reconnect).isErr()).toBe(true);
+  expect(device.connection).toBe(manualConnection);
+  expect(reconnectCloses).toBe(1);
 });
 
 test("reconnect clears its guard when port discovery throws", async () => {
