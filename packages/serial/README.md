@@ -29,7 +29,10 @@ if (opened.isErr()) {
   console.error(opened.error); // VexSerialError with a stable .kind
   return;
 }
-// opened.value: true | false | undefined (opened / busy / no port selected)
+if (opened.value !== "opened") {
+  console.error(`Unable to open a compatible port: ${opened.value}`);
+  return;
+}
 
 const status = await connection.getSystemStatus();
 if (status.isOk()) {
@@ -81,9 +84,9 @@ removed. Migrate to the corresponding `setMatchMode()` / `setActiveProgram()`
 methods and handle the returned `Result`.
 
 Legacy methods that resolved to `false`, `null`, or `undefined` on failure now
-return a typed `Err` instead, preserving the prior success value semantics on
-the `Ok` channel (e.g. `open()` still resolves to `Ok(true | false |
-undefined)`).
+return a typed `Err` instead. `open()` reports non-error connection outcomes on
+the `Ok` channel as `"opened"`, `"busy"`, or `"no-port"`; only `"opened"`
+indicates an established connection.
 
 ## Transfers and timeouts
 
