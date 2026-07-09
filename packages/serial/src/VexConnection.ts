@@ -773,10 +773,9 @@ export class V5SerialConnection extends VexSerialConnection {
       const fileBuf = new Uint8Array(fileSize);
 
       while (bufferOffset < fileSize) {
-        const requestedSize = Math.min(
-          bufferChunkSize,
-          fileSize - bufferOffset,
-        );
+        const remainingSize = fileSize - bufferOffset;
+        const chunkSize = Math.min(bufferChunkSize, remainingSize);
+        const requestedSize = (chunkSize + 3) & ~3;
         const p2Result = await this.request(
           new ReadFileH2DPacket(nextAddress, requestedSize),
           ReadFileReplyD2HPacket,
@@ -800,9 +799,10 @@ export class V5SerialConnection extends VexSerialConnection {
           );
         }
 
-        fileBuf.set(new Uint8Array(p2.buf), bufferOffset);
-        bufferOffset += p2.length;
-        nextAddress += p2.length;
+        const receivedSize = Math.min(p2.length, remainingSize);
+        fileBuf.set(new Uint8Array(p2.buf, 0, receivedSize), bufferOffset);
+        bufferOffset += receivedSize;
+        nextAddress += receivedSize;
         progressCallback?.(bufferOffset, fileSize);
       }
 
