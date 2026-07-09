@@ -7,7 +7,10 @@ import {
   FileVendor,
 } from "./Vex";
 import {
+  EraseFileH2DPacket,
   ExitFileTransferReplyD2HPacket,
+  GetDirectoryEntryReplyD2HPacket,
+  GetFileMetadataH2DPacket,
   InitFileTransferH2DPacket,
   PacketEncoder,
   ReadFileReplyD2HPacket,
@@ -61,19 +64,33 @@ test("read replies parse their address and exact data bytes", () => {
 });
 
 describe("fixed-width text fields", () => {
-  test("rejects overlong filenames and file types", () => {
-    expect(
-      () =>
-        new InitFileTransferH2DPacket(
-          FileInitAction.READ,
-          FileDownloadTarget.FILE_TARGET_QSPI,
-          FileVendor.USER,
-          FileInitOption.NONE,
-          new Uint8Array(),
-          0,
-          "x".repeat(24),
-        ),
-    ).toThrow("Filename must be at most 23 UTF-8 bytes");
+  const initFileTransfer = (name: string) =>
+    new InitFileTransferH2DPacket(
+      FileInitAction.READ,
+      FileDownloadTarget.FILE_TARGET_QSPI,
+      FileVendor.USER,
+      FileInitOption.NONE,
+      new Uint8Array(),
+      0,
+      name,
+    );
+
+  test("uses the complete 24-byte filename field", () => {
+    const twentyThreeBytes = "x".repeat(23);
+    const twentyFourBytes = "x".repeat(24);
+
+    expect(initFileTransfer(twentyThreeBytes).data.slice(35, 59)).toEqual(
+      Uint8Array.from([...new TextEncoder().encode(twentyThreeBytes), 0]),
+    );
+    expect(initFileTransfer(twentyFourBytes).data.slice(35, 59)).toEqual(
+      new TextEncoder().encode(twentyFourBytes),
+    );
+  });
+
+  test("rejects filenames longer than the 24-byte field and overlong types", () => {
+    expect(() => initFileTransfer("x".repeat(25))).toThrow(
+      "Filename must be at most 24 UTF-8 bytes",
+    );
     expect(
       () =>
         new InitFileTransferH2DPacket(
@@ -87,6 +104,35 @@ describe("fixed-width text fields", () => {
           "abcde",
         ),
     ).toThrow("File type must be at most 4 UTF-8 bytes");
+  });
+
+  test("reuses a 24-byte directory filename in file requests", () => {
+    const name = "directory-entry-name-24x";
+    expect(new TextEncoder().encode(name)).toHaveLength(24);
+
+    const body = new Uint8Array(57);
+    body.set(new TextEncoder().encode(name), 25);
+    const directoryEntry = new GetDirectoryEntryReplyD2HPacket(
+      hostPacket(86, 23, body),
+    );
+    expect(directoryEntry.file?.filename).toBe(name);
+
+    const packets = [
+      initFileTransfer(directoryEntry.file!.filename),
+      new EraseFileH2DPacket(FileVendor.USER, directoryEntry.file!.filename),
+      new GetFileMetadataH2DPacket(
+        FileVendor.USER,
+        directoryEntry.file!.filename,
+        0,
+      ),
+    ];
+    for (const packet of packets) {
+      const filenameOffset =
+        packet instanceof InitFileTransferH2DPacket ? 35 : 9;
+      expect(packet.data.slice(filenameOffset, filenameOffset + 24)).toEqual(
+        new TextEncoder().encode(name),
+      );
+    }
   });
 
   test("rejects keys that cannot fit with a null terminator", () => {

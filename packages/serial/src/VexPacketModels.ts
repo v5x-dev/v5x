@@ -20,12 +20,12 @@ import { PacketEncoder, encodeFixedText } from "./VexPacketEncoder.js";
 
 const textEncoder = new TextEncoder();
 
-/** Encode `[vendor/first byte, options/second byte, 23-byte filename + NUL]`. */
+/** Encode `[vendor/first byte, options/second byte, 24-byte filename field]`. */
 function filePayload(a: number, b: number, fileName: string): Uint8Array {
   const payload = new Uint8Array(26);
   payload[0] = a;
   payload[1] = b;
-  payload.set(encodeFixedText(fileName, "Filename", 23), 2);
+  payload.set(encodeFixedText(fileName, "Filename", 24), 2);
   return payload;
 }
 
@@ -119,7 +119,7 @@ export class InitFileTransferH2DPacket extends DeviceBoundPacket {
     view.setUint32(20, timestamp, true);
 
     payload.set(version.toUint8Array(), 24);
-    payload.set(encodeFixedText(name, "Filename", 23), 28);
+    payload.set(encodeFixedText(name, "Filename", 24), 28);
 
     super(payload);
   }
