@@ -337,8 +337,16 @@ export async function createProject(
     try {
       await rename(stagingPath, path);
     } catch (error) {
-      const destination = await stat(path).catch(() => undefined);
-      if (destination?.isDirectory() && (await readdir(path)).length === 0) {
+      const destination = await stat(path, { bigint: true }).catch(
+        () => undefined,
+      );
+      if (
+        reservation !== undefined &&
+        destination?.isDirectory() &&
+        destination.dev === reservation.device &&
+        destination.ino === reservation.inode &&
+        (await readdir(path)).length === 0
+      ) {
         // Windows cannot replace an existing empty directory with rename().
         // rmdir() is atomic and fails if another process populated the directory.
         await rmdir(path);
