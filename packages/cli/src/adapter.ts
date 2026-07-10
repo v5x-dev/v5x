@@ -81,6 +81,9 @@ export class WebSerialPortAdapter extends EventTarget implements SerialPort {
 
   private port: BunSerialPortRaw | null = null;
   private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  private dataListener: ((data: Uint8Array) => void) | null = null;
+  private errorListener: ((error: Error) => void) | null = null;
+  private nativePaused = false;
   private _readable: ReadableStream<Uint8Array> | null = null;
   private _writable: WritableStream<Uint8Array> | null = null;
 
@@ -117,12 +120,46 @@ export class WebSerialPortAdapter extends EventTarget implements SerialPort {
     this._readable = new ReadableStream({
       start: (controller) => {
         this.controller = controller;
-        port.on("data", (data: Uint8Array) => controller.enqueue(data));
-        port.on("error", (error) => {
+        this.dataListener = (data) => {
+          if (this.port !== port || this.controller !== controller) return;
+
+          if ((controller.desiredSize ?? 1) <= 0) {
+            const pause = port.pause;
+            if (typeof pause === "function" && !this.nativePaused) {
+              pause.call(port);
+              this.nativePaused = true;
+            } else {
+              this.failReadableBackpressure(port, controller);
+              return;
+            }
+          }
+
+          try {
+            controller.enqueue(data);
+          } catch {
+            // Closing detaches this listener synchronously, but an event that
+            // was already being dispatched may still reach this callback.
+            return;
+          }
+
+          if ((controller.desiredSize ?? 1) <= 0 && !this.nativePaused) {
+            const pause = port.pause;
+            if (typeof pause === "function") {
+              pause.call(port);
+              this.nativePaused = true;
+            }
+          }
+        };
+        this.errorListener = (error) => {
+          if (this.port !== port || this.controller !== controller) return;
           controller.error(error);
+          this.controller = null;
           this.close().catch(() => {});
-        });
+        };
+        port.on("data", this.dataListener);
+        port.on("error", this.errorListener);
       },
+      pull: () => this.resumeNativePort(port),
       cancel: () => void this.close(),
     });
 
@@ -139,6 +176,7 @@ export class WebSerialPortAdapter extends EventTarget implements SerialPort {
     const port = this.port;
     if (!port) return;
     this.port = null;
+    this.detachNativeListeners(port);
 
     try {
       this.controller?.close();
@@ -159,6 +197,34 @@ export class WebSerialPortAdapter extends EventTarget implements SerialPort {
       this._writable = null;
       this.dispatchEvent(new Event("disconnect"));
     }
+  }
+
+  private detachNativeListeners(port: BunSerialPortRaw): void {
+    if (this.dataListener !== null) port.off("data", this.dataListener);
+    if (this.errorListener !== null) port.off("error", this.errorListener);
+    this.dataListener = null;
+    this.errorListener = null;
+    this.nativePaused = false;
+  }
+
+  private resumeNativePort(port: BunSerialPortRaw): void {
+    if (this.port !== port || !this.nativePaused) return;
+    this.nativePaused = false;
+    port.resume?.();
+  }
+
+  private failReadableBackpressure(
+    port: BunSerialPortRaw,
+    controller: ReadableStreamDefaultController<Uint8Array>,
+  ): void {
+    if (this.port !== port || this.controller !== controller) return;
+    controller.error(
+      new Error(
+        "serial input exceeded readable-stream capacity; the native backend cannot pause",
+      ),
+    );
+    this.controller = null;
+    void this.close();
   }
 
   async forget(): Promise<void> {
