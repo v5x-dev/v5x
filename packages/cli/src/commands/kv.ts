@@ -78,14 +78,23 @@ export default function registerKvCommand(program: Sade) {
 
   program
     .command("kv set <key> <value>", "set a system variable on a brain")
+    .option("--json", "print machine-readable JSON")
     .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(async (key, value, options: PortSelectionOptions) => {
-      await withSelectedV5Device(options, async (device) => {
-        unwrapSerial(
-          await device.brain.setValue(key, value),
-          `failed to set ${key} to ${value}`,
-        );
-        console.log(`set ${key} to ${value}`);
-      });
-    });
+    .action(
+      async (
+        key,
+        value,
+        options: { json?: boolean } & PortSelectionOptions,
+      ) => {
+        await withSelectedV5Device(options, async (device) => {
+          unwrapSerial(
+            await device.brain.setValue(key, value),
+            `failed to set ${key} to ${value}`,
+          );
+          if (options.json === true)
+            printJson({ command: "kv set", key, value, set: true });
+          else console.log(`set ${key} to ${value}`);
+        });
+      },
+    );
 }
