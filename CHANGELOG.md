@@ -15,6 +15,7 @@ section to a dated package-version heading.
 
 ### @v5x/serial
 
+- Distinguish closed serial connections from device NACK responses.
 - Add top-level declaration metadata for older TypeScript tooling.
 - Replace the `matchMode` and `activeProgram` setters with awaitable
   `setMatchMode()` and `setActiveProgram()` methods.

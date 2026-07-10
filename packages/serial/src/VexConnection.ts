@@ -18,6 +18,7 @@ import {
 } from "./Vex.js";
 import {
   VexIoError,
+  VexNotConnectedError,
   VexProtocolError,
   VexSerialError,
   VexTransferError,
@@ -186,7 +187,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     // 1. Reject every pending callback so callers don't hang.
     for (const callback of this.callbacksQueue.splice(0)) {
       clearTimeout(callback.timeout);
-      callback.callback(AckType.CDC2_NACK);
+      callback.callback(AckType.NOT_CONNECTED);
     }
 
     // 2. Remove the port's disconnect listener so a late event doesn't
@@ -349,7 +350,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   ): Promise<HostBoundPacket | ArrayBuffer | AckType> {
     return new Promise<HostBoundPacket | ArrayBuffer | AckType>((resolve) => {
       if (this.writer === undefined) {
-        resolve(AckType.CDC2_NACK);
+        resolve(AckType.NOT_CONNECTED);
         return;
       }
 
@@ -391,6 +392,9 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
       (async () => {
         const result = await this.writeDataAsync(packet, timeout);
         if (result instanceof ReplyType) return ok(result);
+        if (result === AckType.NOT_CONNECTED) {
+          return err(new VexNotConnectedError());
+        }
 
         return err(
           new VexProtocolError(
