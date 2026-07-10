@@ -28,6 +28,8 @@ declare module "bun-serialport" {
     open(): Promise<void>;
     close(): Promise<void>;
     write(data: string | Uint8Array | Buffer): Promise<number>;
+    pause?(): void;
+    resume?(): void;
   }
 
   export function list(): Promise<SerialPortInfo[]>;

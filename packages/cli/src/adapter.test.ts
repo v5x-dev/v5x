@@ -4,6 +4,9 @@ class FakeNativePort {
   static instances: FakeNativePort[] = [];
   static closeError: Error | undefined;
   readonly writes: Uint8Array[] = [];
+  pauses = 0;
+  resumes = 0;
+  closeGate: Promise<void> | undefined;
   private readonly listeners = new Map<
     string,
     Set<(value: Uint8Array | Error) => void>
@@ -16,12 +19,21 @@ class FakeNativePort {
   async open(): Promise<void> {}
 
   async close(): Promise<void> {
+    await this.closeGate;
     if (FakeNativePort.closeError !== undefined) {
       const error = FakeNativePort.closeError;
       FakeNativePort.closeError = undefined;
       throw error;
     }
   }
+
+  pause: (() => void) | undefined = () => {
+    this.pauses++;
+  };
+
+  resume: (() => void) | undefined = () => {
+    this.resumes++;
+  };
 
   async write(data: Uint8Array): Promise<void> {
     this.writes.push(data);
@@ -31,6 +43,10 @@ class FakeNativePort {
     const listeners = this.listeners.get(event) ?? new Set();
     listeners.add(listener);
     this.listeners.set(event, listeners);
+  }
+
+  off(event: string, listener: (value: Uint8Array | Error) => void): void {
+    this.listeners.get(event)?.delete(listener);
   }
 
   emit(event: string, value: Uint8Array | Error): void {
@@ -210,5 +226,69 @@ describe("WebSerialAdapter", () => {
 
     await port.open({ baudRate: 115200 });
     await port.close();
+  });
+
+  test("detaches native listeners before awaiting close", async () => {
+    const adapter = new WebSerialAdapter("darwin", async () => [
+      { path: "/dev/cu.race" },
+    ]);
+    const port = (await adapter.getPorts())[0]!;
+    await port.open({ baudRate: 115200 });
+    const nativePort = FakeNativePort.instances.at(-1)!;
+    let finishClose: (() => void) | undefined;
+    nativePort.closeGate = new Promise<void>((resolve) => {
+      finishClose = resolve;
+    });
+
+    const closing = port.close();
+    expect(nativePort.listenerCount("data")).toBe(0);
+    expect(nativePort.listenerCount("error")).toBe(0);
+    expect(() => nativePort.emit("data", new Uint8Array([9]))).not.toThrow();
+    expect(() =>
+      nativePort.emit("error", new Error("late error")),
+    ).not.toThrow();
+
+    finishClose?.();
+    await closing;
+  });
+
+  test("pauses native reads while the readable stream is backpressured", async () => {
+    const adapter = new WebSerialAdapter("darwin", async () => [
+      { path: "/dev/cu.backpressure" },
+    ]);
+    const port = (await adapter.getPorts())[0]!;
+    await port.open({ baudRate: 115200 });
+    const nativePort = FakeNativePort.instances.at(-1)!;
+    const reader = port.readable!.getReader();
+
+    nativePort.emit("data", new Uint8Array([1]));
+    expect(nativePort.pauses).toBe(1);
+    expect((await reader.read()).value).toEqual(new Uint8Array([1]));
+    await Bun.sleep(0);
+    expect(nativePort.resumes).toBe(1);
+
+    reader.releaseLock();
+    await port.close();
+  });
+
+  test("fails closed on overflow when native reads cannot be paused", async () => {
+    const adapter = new WebSerialAdapter("darwin", async () => [
+      { path: "/dev/cu.bounded" },
+    ]);
+    const port = (await adapter.getPorts())[0]!;
+    await port.open({ baudRate: 115200 });
+    const nativePort = FakeNativePort.instances.at(-1)!;
+    nativePort.pause = undefined;
+    nativePort.resume = undefined;
+    const reader = port.readable!.getReader();
+
+    nativePort.emit("data", new Uint8Array([1]));
+    nativePort.emit("data", new Uint8Array([2]));
+
+    await expect(reader.read()).rejects.toThrow("readable-stream capacity");
+    await Bun.sleep(0);
+    expect(port.readable).toBeNull();
+    expect(port.writable).toBeNull();
+    expect(nativePort.listenerCount("data")).toBe(0);
   });
 });
