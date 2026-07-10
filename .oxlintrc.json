@@ -2,14 +2,20 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "promise"],
   "categories": {
-    "correctness": "off"
+    "correctness": "error"
   },
   "rules": {
     "no-empty": "error",
+    "no-control-regex": "off",
     "promise/catch-or-return": "error",
+    "promise/no-callback-in-promise": "off",
+    "typescript/await-thenable": "off",
+    "typescript/no-duplicate-enum-values": "off",
     "typescript/no-explicit-any": "error",
     "typescript/no-floating-promises": "error",
-    "typescript/no-misused-promises": "error"
+    "typescript/no-misused-promises": "error",
+    "typescript/no-redundant-type-constituents": "off",
+    "typescript/unbound-method": "off"
   },
   "ignorePatterns": ["**/dist/**", "**/.astro/**"],
   "env": {
