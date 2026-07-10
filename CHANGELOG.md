@@ -16,6 +16,7 @@ section to a dated package-version heading.
 
 ### @v5x/serial
 
+- Distinguish closed serial connections from device NACK responses.
 - Report partner-controller charging state as unavailable instead of mirroring
   the primary controller's charging bit.
 - Add top-level declaration metadata for older TypeScript tooling.
