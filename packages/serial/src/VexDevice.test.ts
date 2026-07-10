@@ -811,7 +811,7 @@ function buildReply(args: {
 }
 
 describe("refresh snapshot safety", () => {
-  test("refresh populates partner-controller charging state", async () => {
+  test("refresh does not mirror primary charging state to the partner", async () => {
     const device = new V5SerialDevice(serial);
     devices.push(device);
     device.connection = {
@@ -829,9 +829,10 @@ describe("refresh snapshot safety", () => {
     } as unknown as V5SerialConnection;
 
     expect((await device.refresh())._unsafeUnwrap()).toBe(true);
+    expect(device.controllers[0].isCharging).toBe(true);
     expect(device.controllers[1].batteryPercent).toBe(88);
     expect(device.controllers[1].isAvailable).toBe(true);
-    expect(device.controllers[1].isCharging).toBe(true);
+    expect(device.controllers[1].isCharging).toBeUndefined();
   });
 
   test("partial refresh failure preserves the previous coherent snapshot", async () => {
