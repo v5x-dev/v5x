@@ -2,44 +2,54 @@ const targets = [
   {
     name: "Connection",
     path: "packages/serial/src/VexConnection.ts",
-    minimum: 90,
+    minimum: 93,
   },
   {
     name: "Device",
     path: "packages/serial/src/VexDevice.ts",
+    minimum: 93,
+  },
+  {
+    name: "Packet models",
+    path: "packages/serial/src/VexPacketModels.ts",
+    minimum: 68,
+  },
+  {
+    name: "Packet encoder",
+    path: "packages/serial/src/VexPacketEncoder.ts",
     minimum: 88,
   },
-  { name: "Firmware", path: "packages/serial/src/VexFirmware.ts", minimum: 60 },
+  { name: "Firmware", path: "packages/serial/src/VexFirmware.ts", minimum: 87 },
   {
     name: "Transfers",
     path: "packages/serial/src/VexTransfers.ts",
-    minimum: 60,
+    minimum: 95,
   },
-  { name: "CLI adapter", path: "packages/cli/src/adapter.ts", minimum: 70 },
+  { name: "CLI adapter", path: "packages/cli/src/adapter.ts", minimum: 81 },
   {
     name: "CLI device command output",
     path: "packages/cli/src/commands/devices.ts",
-    minimum: 75,
+    minimum: 77,
   },
   {
     name: "CLI dir command output",
     path: "packages/cli/src/commands/dir.ts",
-    minimum: 60,
+    minimum: 67,
   },
   {
     name: "CLI doctor command output",
     path: "packages/cli/src/commands/doctor.ts",
-    minimum: 70,
+    minimum: 79,
   },
   {
     name: "CLI screenshot command output",
     path: "packages/cli/src/commands/screenshot.ts",
-    minimum: 55,
+    minimum: 68,
   },
   {
     name: "CLI output helpers",
     path: "packages/cli/src/utils/output.ts",
-    minimum: 70,
+    minimum: 77,
   },
   {
     name: "CLI project workflows",
@@ -49,22 +59,22 @@ const targets = [
   {
     name: "CLI scaffold workflows",
     path: "packages/cli/src/utils/scaffold.ts",
-    minimum: 85,
+    minimum: 92,
   },
   {
     name: "Device state",
     path: "packages/serial/src/VexDeviceState.ts",
-    minimum: 60,
+    minimum: 82,
   },
   {
     name: "Web client",
     path: "packages/web/src/client.ts",
-    minimum: 90,
+    minimum: 96,
   },
   {
     name: "Web support",
     path: "packages/web/src/support.ts",
-    minimum: 95,
+    minimum: 100,
   },
 ];
 
