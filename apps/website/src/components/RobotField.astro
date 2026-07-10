@@ -1,0 +1,285 @@
+---
+import Bot from "lucide-astro/Bot";
+import Drone from "lucide-astro/Drone";
+---
+
+<div class="robot-field fixed inset-0 z-0" aria-hidden="true">
+    <span class="robot robot-a" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+    <span class="robot robot-b" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+    <span class="robot robot-c" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+    <span class="robot robot-d" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+    <span class="robot robot-e" data-robot-slot>
+      <Bot class="robot-icon bot-icon" size={128} stroke-width={1.65} />
+      <Drone class="robot-icon drone-icon" size={128} stroke-width={1.65} />
+    </span>
+  </div>
+
+<script is:inline>
+  document.querySelectorAll("[data-robot-slot]").forEach((slot) => {
+    if (Math.random() < 0.2) {
+      slot.dataset.kind = "drone";
+    }
+  });
+</script>
+
+<style>
+  .robot-field {
+    color: #4f46e5;
+    opacity: 0.28;
+    pointer-events: none;
+  }
+
+  [data-theme="dark"] .robot-field {
+    color: #b8baff;
+    opacity: 0.35;
+  }
+
+  .robot {
+    position: absolute;
+    width: clamp(4.5rem, 8vw, 8rem);
+    height: auto;
+    filter: drop-shadow(0 0 24px rgb(79 70 229 / 0.35));
+  }
+
+  [data-theme="dark"] .robot {
+    filter: drop-shadow(0 0 24px rgb(184 186 255 / 0.45));
+  }
+
+  .robot-icon {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .drone-icon {
+    display: none;
+  }
+
+  .robot[data-kind="drone"] .bot-icon {
+    display: none;
+  }
+
+  .robot[data-kind="drone"] .drone-icon {
+    display: block;
+  }
+
+  .robot-a {
+    top: 12%;
+    left: -10%;
+    animation: robot-a-run 18s cubic-bezier(0.35, 0, 0.2, 1) infinite;
+  }
+
+  .robot-b {
+    right: -10%;
+    bottom: 20%;
+    animation: robot-b-run 21s cubic-bezier(0.28, 0, 0.18, 1) infinite;
+  }
+
+  .robot-c {
+    top: 72%;
+    left: 4%;
+    animation: robot-c-run 23s cubic-bezier(0.32, 0, 0.24, 1) infinite;
+  }
+
+  .robot-d {
+    top: 38%;
+    left: -14%;
+    animation: robot-d-run 19s cubic-bezier(0.36, 0, 0.22, 1) infinite;
+  }
+
+  .robot-e {
+    right: -12%;
+    top: 58%;
+    animation: robot-e-run 25s cubic-bezier(0.3, 0, 0.2, 1) infinite;
+  }
+
+  @keyframes robot-a-run {
+    0%,
+    9% {
+      transform: translate3d(0, 0, 0) rotate(5deg);
+    }
+    18% {
+      transform: translate3d(24vw, 6vh, 0) rotate(34deg);
+    }
+    25%,
+    31% {
+      transform: translate3d(18vw, 17vh, 0) rotate(-18deg);
+    }
+    45% {
+      transform: translate3d(48vw, 8vh, 0) rotate(8deg);
+    }
+    55% {
+      transform: translate3d(43vw, -5vh, 0) rotate(-42deg);
+    }
+    70% {
+      transform: translate3d(78vw, 14vh, 0) rotate(26deg);
+    }
+    82%,
+    88% {
+      transform: translate3d(84vw, 2vh, 0) rotate(0deg);
+    }
+    100% {
+      transform: translate3d(118vw, -10vh, 0) rotate(18deg);
+    }
+  }
+
+  @keyframes robot-d-run {
+    0%,
+    7% {
+      transform: translate3d(0, 0, 0) rotate(-10deg);
+    }
+    16% {
+      transform: translate3d(22vw, -9vh, 0) rotate(18deg);
+    }
+    28% {
+      transform: translate3d(30vw, 10vh, 0) rotate(-34deg);
+    }
+    42% {
+      transform: translate3d(48vw, -16vh, 0) rotate(12deg);
+    }
+    49%,
+    56% {
+      transform: translate3d(44vw, -12vh, 0) rotate(7deg);
+    }
+    66% {
+      transform: translate3d(66vw, 9vh, 0) rotate(38deg);
+    }
+    79% {
+      transform: translate3d(76vw, -3vh, 0) rotate(-16deg);
+    }
+    100% {
+      transform: translate3d(112vw, 18vh, 0) rotate(12deg);
+    }
+  }
+
+  @keyframes robot-e-run {
+    0%,
+    10% {
+      transform: translate3d(0, 0, 0) rotate(14deg);
+    }
+    20% {
+      transform: translate3d(-20vw, 12vh, 0) rotate(-28deg);
+    }
+    33%,
+    39% {
+      transform: translate3d(-28vw, 4vh, 0) rotate(22deg);
+    }
+    46% {
+      transform: translate3d(-48vw, 24vh, 0) rotate(-8deg);
+    }
+    58% {
+      transform: translate3d(-42vw, 6vh, 0) rotate(34deg);
+    }
+    73% {
+      transform: translate3d(-78vw, 18vh, 0) rotate(-18deg);
+    }
+    84%,
+    90% {
+      transform: translate3d(-86vw, 10vh, 0) rotate(-6deg);
+    }
+    100% {
+      transform: translate3d(-116vw, -16vh, 0) rotate(28deg);
+    }
+  }
+
+  @keyframes robot-b-run {
+    0%,
+    8% {
+      transform: translate3d(0, 0, 0) rotate(-16deg);
+    }
+    19% {
+      transform: translate3d(-26vw, -8vh, 0) rotate(20deg);
+    }
+    29% {
+      transform: translate3d(-18vw, -20vh, 0) rotate(-38deg);
+    }
+    37%,
+    43% {
+      transform: translate3d(-34vw, -17vh, 0) rotate(-10deg);
+    }
+    50% {
+      transform: translate3d(-54vw, -22vh, 0) rotate(-4deg);
+    }
+    63% {
+      transform: translate3d(-58vw, -4vh, 0) rotate(30deg);
+    }
+    75% {
+      transform: translate3d(-78vw, 2vh, 0) rotate(-22deg);
+    }
+    86%,
+    92% {
+      transform: translate3d(-92vw, -8vh, 0) rotate(-16deg);
+    }
+    100% {
+      transform: translate3d(-118vw, 8vh, 0) rotate(10deg);
+    }
+  }
+
+  @keyframes robot-c-run {
+    0%,
+    6% {
+      transform: translate3d(-18vw, 10vh, 0) rotate(28deg);
+    }
+    16% {
+      transform: translate3d(2vw, -8vh, 0) rotate(-22deg);
+    }
+    26%,
+    32% {
+      transform: translate3d(10vw, -4vh, 0) rotate(8deg);
+    }
+    48% {
+      transform: translate3d(32vw, -34vh, 0) rotate(-12deg);
+    }
+    57% {
+      transform: translate3d(24vw, -24vh, 0) rotate(36deg);
+    }
+    70% {
+      transform: translate3d(52vw, -18vh, 0) rotate(-26deg);
+    }
+    83%,
+    89% {
+      transform: translate3d(62vw, -30vh, 0) rotate(5deg);
+    }
+    100% {
+      transform: translate3d(88vw, 6vh, 0) rotate(-18deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .robot {
+      animation: none;
+    }
+
+    .robot-a {
+      transform: translate3d(8vw, 3vh, 0) rotate(8deg);
+    }
+
+    .robot-b {
+      transform: translate3d(-10vw, -3vh, 0) rotate(-16deg);
+    }
+
+    .robot-c {
+      transform: translate3d(28vw, -18vh, 0) rotate(18deg);
+    }
+
+    .robot-d {
+      transform: translate3d(18vw, -8vh, 0) rotate(-6deg);
+    }
+
+    .robot-e {
+      transform: translate3d(-22vw, 14vh, 0) rotate(14deg);
+    }
+  }
+</style>

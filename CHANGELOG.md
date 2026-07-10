@@ -8,6 +8,7 @@ section to a dated package-version heading.
 
 ### @v5x/cli
 
+- Add verbose stack traces, colored error output, and documented exit codes.
 - Add `--port <path-or-id>` or `V5X_PORT` selection for V5 hardware commands.
 - Publish the CLI for Linux and macOS with Bun 1.3.14 or newer. Windows
   remains unsupported until the CLI has a compatible serial backend.
@@ -16,6 +17,8 @@ section to a dated package-version heading.
 ### @v5x/serial
 
 - Distinguish closed serial connections from device NACK responses.
+- Report partner-controller charging state as unavailable instead of mirroring
+  the primary controller's charging bit.
 - Add top-level declaration metadata for older TypeScript tooling.
 - Replace the `matchMode` and `activeProgram` setters with awaitable
   `setMatchMode()` and `setActiveProgram()` methods.

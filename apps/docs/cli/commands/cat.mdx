@@ -5,13 +5,17 @@ description: "Read a text file from brain flash."
 
 ```bash
 v5x cat <file>
+v5x cat <file> --json
+v5x cat <file> --output <local-path> --json
 ```
 
 <ParamField path="file" type="string" required>
   File identifier understood by the brain file API.
 </ParamField>
 
-v5x decodes the bytes as text and prints them to standard output.
+By default, v5x decodes the bytes as text and prints them to standard output.
+`--json` emits the file metadata and base64-encoded contents. When combined
+with `--output`, it emits the destination and byte count instead.
 
 ```bash
 v5x cat slot_1.ini
