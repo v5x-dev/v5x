@@ -17,8 +17,12 @@ import rm from "./commands/rm";
 import run from "./commands/run";
 import screenshot from "./commands/screenshot";
 import upload from "./commands/upload";
+import { cliExitCode, formatCliError, isVerbose } from "./errors";
 
-const program = sade("v5x").version(pkg.version).describe(pkg.description);
+const program = sade("v5x")
+  .version(pkg.version)
+  .describe(pkg.description)
+  .option("--verbose", "print stack traces for errors");
 
 const commands = [
   build,
@@ -42,6 +46,6 @@ for (const register of commands) register(program);
 try {
   await program.parse(process.argv);
 } catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
+  console.error(formatCliError(error, isVerbose()));
+  process.exitCode = cliExitCode(error);
 }

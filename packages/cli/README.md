@@ -79,6 +79,17 @@ v5x kv set key value
 Hardware commands accept `--port <path-or-id>` to target a specific serial
 device. Set `V5X_PORT` to use the same selector without repeating the flag.
 
+## Errors and exit codes
+
+Errors use a colored `error:` prefix. Pass `--verbose` or set `V5X_DEBUG=1` to
+include a stack trace. The CLI uses these exit codes for automation:
+
+- `1`: an unclassified failure
+- `2`: invalid arguments or usage
+- `3`: no matching or connected V5 device
+- `4`: a device protocol, transfer, or firmware failure
+- `5`: an I/O or download failure
+
 ## Development
 
 ```sh
