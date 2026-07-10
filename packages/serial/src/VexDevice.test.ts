@@ -326,6 +326,48 @@ test("automatic refresh starts its timer lazily and unrefs it", async () => {
   }
 });
 
+test("automatic refresh uses and reschedules a configurable interval", () => {
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  const intervals: number[] = [];
+  let stops = 0;
+  const timer = { unref: () => {} } as unknown as RefreshTimer;
+
+  globalThis.setInterval = ((
+    ...args: Parameters<typeof globalThis.setInterval>
+  ) => {
+    intervals.push(args[1] ?? 0);
+    return timer;
+  }) as typeof globalThis.setInterval;
+  globalThis.clearInterval = ((interval: RefreshTimer | undefined) => {
+    if (interval === timer) stops++;
+  }) as typeof globalThis.clearInterval;
+
+  try {
+    const device = new V5SerialDevice(serial, {
+      autoRefresh: true,
+      refreshIntervalMs: 500,
+    });
+    devices.push(device);
+
+    expect(intervals).toEqual([500]);
+    expect(device.refreshIntervalMs).toBe(500);
+
+    device.refreshIntervalMs = 1_000;
+    expect(intervals).toEqual([500, 1_000]);
+    expect(stops).toBe(1);
+
+    expect(() => (device.refreshIntervalMs = 0)).toThrow("positive finite");
+    expect(() => (device.refreshIntervalMs = Number.NaN)).toThrow(
+      "positive finite",
+    );
+    device.autoRefresh = false;
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
 test("connect opens and retains a supplied connection", async () => {
   const device = new V5SerialDevice(serial);
   devices.push(device);
@@ -811,6 +853,40 @@ function buildReply(args: {
 }
 
 describe("refresh snapshot safety", () => {
+  test("pipelines all status requests before awaiting replies", async () => {
+    const device = new V5SerialDevice(serial);
+    devices.push(device);
+    const replies = buildReply({});
+    const gates = [
+      createDeferred<void>(),
+      createDeferred<void>(),
+      createDeferred<void>(),
+      createDeferred<void>(),
+    ];
+    const started: string[] = [];
+    const request = <T>(name: string, index: number, getReply: () => T) => {
+      started.push(name);
+      return gates[index]!.promise.then(getReply);
+    };
+    device.connection = {
+      isConnected: true,
+      getSystemStatus: () =>
+        request("system", 0, () => replies.getSystemStatus()),
+      getSystemFlags: () => request("flags", 1, () => replies.getSystemFlags()),
+      getRadioStatus: () => request("radio", 2, () => replies.getRadioStatus()),
+      getDeviceStatus: () =>
+        request("devices", 3, () => replies.getDeviceStatus()),
+      close: async () => {},
+    } as unknown as V5SerialConnection;
+
+    const refresh = device.refresh();
+    await Bun.sleep(0);
+    expect(started).toEqual(["system", "flags", "radio", "devices"]);
+
+    for (const gate of gates) gate.resolve();
+    expect((await refresh)._unsafeUnwrap()).toBe(true);
+  });
+
   test("refresh does not mirror primary charging state to the partner", async () => {
     const device = new V5SerialDevice(serial);
     devices.push(device);
