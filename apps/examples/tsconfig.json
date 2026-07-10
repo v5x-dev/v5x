@@ -12,6 +12,7 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "noEmit": true,
+    "rootDir": "../..",
     "paths": {
       "@v5x/serial": ["../../packages/serial/src/index.ts"],
       "@v5x/web": ["../../packages/web/src/index.ts"],
