@@ -15,6 +15,8 @@ section to a dated package-version heading.
 
 ### @v5x/serial
 
+- Report partner-controller charging state as unavailable instead of mirroring
+  the primary controller's charging bit.
 - Add top-level declaration metadata for older TypeScript tooling.
 - Replace the `matchMode` and `activeProgram` setters with awaitable
   `setMatchMode()` and `setActiveProgram()` methods.

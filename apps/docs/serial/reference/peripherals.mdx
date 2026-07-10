@@ -15,3 +15,7 @@ description: "Read battery, controller, smart-device, button, settings, and radi
 These are state views created by `V5SerialDevice`. Get them from `device.brain`, `device.controllers`, `device.devices`, and `device.radio` rather than constructing them yourself.
 
 `V5Radio.changeChannel()` changes between `RadioChannelType.PIT` and `RadioChannelType.DOWNLOAD`.
+
+`V5Controller.isCharging` is `undefined` for the partner controller because the
+V5 system-status response reports a charging bit only for the primary
+controller.
