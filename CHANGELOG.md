@@ -8,7 +8,13 @@ section to a dated package-version heading.
 
 ### @v5x/cli
 
+- Add verbose stack traces, colored error output, and documented exit codes.
+
 ### @v5x/serial
+
+- Distinguish closed serial connections from device NACK responses.
+- Report partner-controller charging state as unavailable instead of mirroring
+  the primary controller's charging bit.
 
 ### @v5x/web
 

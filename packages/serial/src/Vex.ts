@@ -179,6 +179,7 @@ export enum AckType {
   CDC2_NACK_FILE_SYS_FULL = 220,
   TIMEOUT = 256,
   WRITE_ERROR = 257,
+  NOT_CONNECTED = 258,
 }
 
 export enum SmartDeviceType {

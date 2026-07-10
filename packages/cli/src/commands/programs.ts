@@ -65,28 +65,39 @@ export default function registerProgramsCommand(program: Sade) {
 
   program
     .command("start <slot>", "start a program slot on the V5 brain")
+    .option("--json", "print machine-readable JSON")
     .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(async (slot: string, options: PortSelectionOptions) => {
-      const slotNumber = parseSlotArgument(slot);
-      await withSelectedV5Device(options, async (device) => {
-        unwrapSerial(
-          await device.brain.runProgram(slotNumber),
-          `failed to start slot ${slot}`,
-        );
-        console.log(`started slot ${slot}`);
-      });
-    });
+    .action(
+      async (
+        slot: string,
+        options: { json?: boolean } & PortSelectionOptions,
+      ) => {
+        const slotNumber = parseSlotArgument(slot);
+        await withSelectedV5Device(options, async (device) => {
+          unwrapSerial(
+            await device.brain.runProgram(slotNumber),
+            `failed to start slot ${slot}`,
+          );
+          if (options.json === true)
+            printJson({ command: "start", slot: slotNumber, started: true });
+          else console.log(`started slot ${slot}`);
+        });
+      },
+    );
 
   program
     .command("stop", "stop the running program on the V5 brain")
+    .option("--json", "print machine-readable JSON")
     .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(async (options: PortSelectionOptions) => {
+    .action(async (options: { json?: boolean } & PortSelectionOptions) => {
       await withSelectedV5Device(options, async (device) => {
         unwrapSerial(
           await device.brain.stopProgram(),
           "failed to stop program",
         );
-        console.log("stopped program");
+        if (options.json === true)
+          printJson({ command: "stop", stopped: true });
+        else console.log("stopped program");
       });
     });
 }

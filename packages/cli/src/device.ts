@@ -2,6 +2,7 @@ import { V5SerialDevice } from "@v5x/serial";
 import { basename } from "node:path";
 import { serial, type Serial, type SerialPort } from "./adapter";
 import { requireOptionValue } from "./utils/guards";
+import { CliError, CLI_EXIT_CODE } from "./errors";
 
 export const V5X_PORT_ENV = "V5X_PORT";
 
@@ -80,7 +81,10 @@ class SelectedSerialAdapter extends EventTarget implements Serial {
       );
     });
     if (port) return port;
-    throw new Error(`No port found matching ${this.selector}`);
+    throw new CliError(
+      `No port found matching ${this.selector}`,
+      CLI_EXIT_CODE.NO_DEVICE,
+    );
   }
 }
 
@@ -108,8 +112,10 @@ export async function connectV5Device(
   try {
     const result = await device.connect();
     if (result.isErr()) {
-      throw new Error(
+      throw new CliError(
         `v5 device not connected: ${result.error.message ?? result.error.kind}`,
+        CLI_EXIT_CODE.NO_DEVICE,
+        { cause: result.error },
       );
     }
     return device;

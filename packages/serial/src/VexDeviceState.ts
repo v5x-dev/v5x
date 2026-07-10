@@ -121,7 +121,10 @@ export class V5SerialDeviceState {
     uniqueId: 0,
   };
 
-  controllers = [
+  controllers: [
+    { battery: number; isAvailable: boolean; isCharging: boolean | undefined },
+    { battery: number; isAvailable: boolean; isCharging: boolean | undefined },
+  ] = [
     {
       battery: 0,
       isAvailable: false,
@@ -446,6 +449,11 @@ export class V5Controller {
     return this.state.controllers[this.controllerIndex]!.isAvailable;
   }
 
+  /**
+   * Whether the controller is charging. The V5 system-status response only
+   * reports this state for the primary controller, so the partner controller
+   * returns `undefined`.
+   */
   get isCharging(): boolean | undefined {
     return this.state.controllers[this.controllerIndex]!.isCharging;
   }
