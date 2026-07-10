@@ -7,6 +7,12 @@ See the [complete CLI documentation](https://docs.v5x.dev/cli/overview) for work
 ## Install
 
 ```sh
+curl -fsSL https://v5x.dev/install.sh | sh
+```
+
+Alternatively, install the package with Bun 1.3.14 or newer:
+
+```sh
 bun add --global @v5x/cli
 ```
 
@@ -14,8 +20,8 @@ The CLI supports PROS, vexide, and VEXcode C++ projects. The corresponding
 compiler toolchain must be installed before building a project.
 
 The current CLI release supports Linux and macOS, matching the package
-metadata's `os` field. Bun 1.3.14 or newer is required. Windows is not
-published yet because the CLI needs a compatible serial backend there.
+metadata's `os` field. Windows is not published yet because the CLI needs a
+compatible serial backend there.
 For browser integrations, use
 `@v5x/serial` in a browser that implements Web Serial.
 
