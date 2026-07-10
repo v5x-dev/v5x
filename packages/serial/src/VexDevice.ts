@@ -50,6 +50,11 @@ export {
 
 type RefreshTimer = ReturnType<typeof setInterval>;
 
+export interface V5SerialDeviceOptions {
+  autoRefresh?: boolean;
+  refreshIntervalMs?: number;
+}
+
 function unrefTimerIfPossible(timer: RefreshTimer): void {
   if (typeof timer !== "object" || timer === null || !("unref" in timer))
     return;
@@ -86,6 +91,7 @@ export class V5SerialDevice extends VexSerialDevice {
     | undefined;
   private _refreshGeneration = 0;
   private _autoRefresh = false;
+  private _refreshIntervalMs = 200;
   private _isLastRefreshComplete = true;
   private readonly _brain = new V5Brain(this.state);
   private readonly _controllers: [V5Controller, V5Controller] = [
@@ -95,8 +101,15 @@ export class V5SerialDevice extends VexSerialDevice {
   private readonly _radio = new V5Radio(this.state);
   private readonly _deviceFacades: Array<V5SmartDevice | undefined> = [];
 
-  constructor(defaultSerial: Serial, autoRefresh = false) {
+  constructor(
+    defaultSerial: Serial,
+    options: boolean | V5SerialDeviceOptions = false,
+  ) {
     super(defaultSerial);
+    const autoRefresh =
+      typeof options === "boolean" ? options : (options.autoRefresh ?? false);
+    this.refreshIntervalMs =
+      typeof options === "boolean" ? 200 : (options.refreshIntervalMs ?? 200);
     this.autoRefresh = autoRefresh;
   }
 
@@ -111,6 +124,25 @@ export class V5SerialDevice extends VexSerialDevice {
       this._startRefreshInterval();
     } else {
       this._stopRefreshInterval();
+    }
+  }
+
+  get refreshIntervalMs(): number {
+    return this._refreshIntervalMs;
+  }
+
+  set refreshIntervalMs(value: number) {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new VexInvalidArgumentError(
+        "refreshIntervalMs must be a positive finite number",
+      );
+    }
+    if (this._refreshIntervalMs === value) return;
+
+    this._refreshIntervalMs = value;
+    if (this._refreshInterval !== undefined) {
+      this._stopRefreshInterval();
+      this._startRefreshInterval();
     }
   }
 
@@ -138,7 +170,7 @@ export class V5SerialDevice extends VexSerialDevice {
           })();
         }
       }
-    }, 200);
+    }, this._refreshIntervalMs);
     unrefTimerIfPossible(this._refreshInterval);
   }
 
@@ -632,34 +664,20 @@ export class V5SerialDevice extends VexSerialDevice {
       return ok(false);
     }
 
-    const ssPacket = await conn.getSystemStatus();
+    const [ssPacket, sfPacket, rdPacket, dsPacket] = await Promise.all([
+      conn.getSystemStatus(),
+      conn.getSystemFlags(),
+      conn.getRadioStatus(),
+      conn.getDeviceStatus(),
+    ]);
     if (generation !== this._refreshGeneration || this._disposed)
       return ok(false);
-    if (ssPacket.isErr()) {
-      this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return ok(false);
-    }
-
-    const sfPacket = await conn.getSystemFlags();
-    if (generation !== this._refreshGeneration || this._disposed)
-      return ok(false);
-    if (sfPacket.isErr()) {
-      this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return ok(false);
-    }
-
-    const rdPacket = await conn.getRadioStatus();
-    if (generation !== this._refreshGeneration || this._disposed)
-      return ok(false);
-    if (rdPacket.isErr()) {
-      this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return ok(false);
-    }
-
-    const dsPacket = await conn.getDeviceStatus();
-    if (generation !== this._refreshGeneration || this._disposed)
-      return ok(false);
-    if (dsPacket.isErr()) {
+    if (
+      ssPacket.isErr() ||
+      sfPacket.isErr() ||
+      rdPacket.isErr() ||
+      dsPacket.isErr()
+    ) {
       this._applySnapshotIfCurrent(generation, { isAvailable: false });
       return ok(false);
     }

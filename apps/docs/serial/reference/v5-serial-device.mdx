@@ -5,6 +5,11 @@ description: "High-level connection and state API for a V5 brain or controller."
 
 ```ts
 const device = new V5SerialDevice(navigator.serial);
+
+const slowerDevice = new V5SerialDevice(navigator.serial, {
+  autoRefresh: true,
+  refreshIntervalMs: 1_000,
+});
 ```
 
 ## Configuration
@@ -12,7 +17,8 @@ const device = new V5SerialDevice(navigator.serial);
 | Property                     | Default | Purpose                                |
 | ---------------------------- | ------- | -------------------------------------- |
 | `autoReconnect`              | `true`  | Allow reconnect behavior.              |
-| `autoRefresh`                | `true`  | Poll device state periodically.        |
+| `autoRefresh`                | `false` | Poll device state periodically.        |
+| `refreshIntervalMs`          | `200`   | Set the status polling interval.       |
 | `pauseRefreshOnFileTransfer` | `true`  | Avoid status polling during transfers. |
 
 ## State
@@ -31,4 +37,4 @@ const device = new V5SerialDevice(navigator.serial);
 | `setMatchMode(mode)`     | Update match mode and resolve after acknowledgement. |
 | `mockTouch(x, y, press)` | Send a brain touch event.                            |
 
-[View source](https://github.com/v5x-dev/v5x/blob/main/packages/serial/src/VexDevice.ts)
+[View source](https://better-hub.com/v5x-dev/v5x/blob/main/packages/serial/src/VexDevice.ts)
