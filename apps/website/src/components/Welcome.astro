@@ -24,7 +24,7 @@ const surfaces = [
     href: `${docsBase}/cli/overview`,
     Icon: Terminal,
     command: "v5x run --slot 1",
-    description: "create, build, upload, and run vex v5 projects from bun.",
+    description: "create, build, upload, and run vex v5 projects from your terminal.",
   },
   {
     name: "serial",
@@ -165,7 +165,7 @@ const workflows = [
             class="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-5 font-semibold text-white no-underline hover:bg-zinc-700 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:focus-visible:outline-[#b8baff]"
             href={`${docsBase}/quickstart`}
           >
-            bun add --global @v5x/cli
+            curl -fsSL v5x.dev/install.sh | sh
             <ArrowRight size={17} stroke-width={1.9} aria-hidden="true" />
           </a>
           <a

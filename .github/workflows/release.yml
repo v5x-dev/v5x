@@ -131,3 +131,39 @@ jobs:
         working-directory: ${{ steps.release.outputs.package_dir }}
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  cli-binaries:
+    if: ${{ startsWith(github.ref_name, '@v5x/cli@') }}
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Build standalone CLI binaries
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/serial build
+          mkdir -p artifacts
+
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            bun build packages/cli/src/index.ts \
+              --compile \
+              --target="bun-${target}" \
+              --outfile="artifacts/v5x-${target}"
+          done
+
+          cd artifacts
+          sha256sum v5x-* > SHA256SUMS
+      - name: Create GitHub release
+        run: |
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME" \
+            --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

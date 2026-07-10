@@ -3,14 +3,33 @@ title: "Install the CLI"
 description: "Install v5x and the compiler required by your project."
 ---
 
-## Install with Bun
+## Install the standalone CLI
+
+On Linux or macOS, run:
+
+```bash
+curl -fsSL https://v5x.dev/install.sh | sh
+v5x --version
+```
+
+This installs the latest release to `~/.local/bin/v5x`. Set
+`V5X_INSTALL_DIR` to use a different directory or `V5X_VERSION` to install a
+specific version:
+
+```bash
+curl -fsSL https://v5x.dev/install.sh | V5X_INSTALL_DIR=/usr/local/bin V5X_VERSION=0.0.23 sh
+```
+
+The standalone CLI does not require Bun.
+
+## Install with Bun instead
 
 ```bash
 bun add --global @v5x/cli
 v5x --version
 ```
 
-The CLI requires Bun 1.3.14 or newer on your `PATH`.
+This option requires Bun 1.3.14 or newer on your `PATH`.
 
 The current release supports Linux and macOS. Windows is not published yet
 because the CLI needs a compatible serial backend there. The `@v5x/serial`
