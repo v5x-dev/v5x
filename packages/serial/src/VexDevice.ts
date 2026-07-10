@@ -757,7 +757,9 @@ export class V5SerialDevice extends VexSerialDevice {
         {
           battery: controller1Battery,
           isAvailable: controller1Available,
-          isCharging: (flags2 & 0b10000000) !== 0,
+          // The system-status flags expose only the primary controller's
+          // charging bit. Do not present it as partner-controller state.
+          isCharging: undefined,
         },
       ],
       radio: {

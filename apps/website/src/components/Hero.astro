@@ -1,0 +1,22 @@
+---
+import { ArrowRight, Github } from "lucide-astro";
+
+const docsBase = "https://docs.v5x.dev";
+---
+
+<section class="flex min-h-[100svh] flex-col items-center justify-center py-14 text-center sm:py-20" aria-labelledby="site-title">
+  <div class="relative z-10 flex w-full max-w-5xl flex-col items-center">
+    <a class="mb-5 inline-flex items-center justify-center rounded-full p-2 text-zinc-500 no-underline hover:bg-black/5 hover:text-zinc-700 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-500 dark:hover:bg-white/[0.07] dark:hover:text-zinc-300 dark:focus-visible:outline-[#b8baff]" href="https://github.com/v5x-dev/v5x" aria-label="v5x on GitHub">
+      <Github size={18} stroke-width={1.8} aria-hidden="true" />
+    </a>
+    <h1 id="site-title" class="m-0 max-w-5xl text-[clamp(3.3rem,8.5vw,7rem)] leading-[0.9] font-semibold tracking-normal text-zinc-900 dark:text-white">modern tools for modern v5 teams</h1>
+    <p class="mt-6 max-w-2xl text-[1.05rem] leading-7 text-zinc-500 dark:text-zinc-400 sm:text-[1.18rem]">build from the terminal, talk to the brain from the browser, and ship team workflows on top of one small toolkit.</p>
+    <div class="mt-8 flex w-full max-w-xl flex-col gap-3 sm:flex-row sm:justify-center">
+      <a class="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-5 font-semibold text-white no-underline hover:bg-zinc-700 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:focus-visible:outline-[#b8baff]" href={`${docsBase}/quickstart`}>
+        curl -fsSL v5x.dev/install.sh | sh
+        <ArrowRight size={17} stroke-width={1.9} aria-hidden="true" />
+      </a>
+      <a class="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-black/[0.04] px-5 font-semibold text-zinc-900 no-underline hover:border-zinc-300 hover:bg-black/[0.08] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:border-white/12 dark:bg-white/[0.04] dark:text-white dark:hover:border-white/22 dark:hover:bg-white/[0.08] dark:focus-visible:outline-[#b8baff]" href={docsBase}>read the docs</a>
+    </div>
+  </div>
+</section>

@@ -1,4 +1,4 @@
 [test]
 coverageSkipTestFiles = true
 coveragePathIgnorePatterns = ["**/dist/**", "**/*.test-support.ts"]
-coverageThreshold = { line = 0.70, function = 0.69 }
+coverageThreshold = { line = 0.81, function = 0.85 }

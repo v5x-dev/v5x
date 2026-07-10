@@ -22,7 +22,7 @@ import {
   toDirectoryJson,
   toFileJson,
 } from "./dir";
-import { decodeCatText, formatCatText } from "./cat";
+import { decodeCatText, formatCatText, toCatJson } from "./cat";
 import {
   compareVersions,
   createDoctorReport,
@@ -165,6 +165,24 @@ describe("command output formatting", () => {
     expect(decodeCatText(bytes)).toBe("hi");
     expect(formatCatText(bytes)).toBe("hi\n");
     expect(formatCatText(new Uint8Array([0x68, 0x69, 0x0a]))).toBe("hi\n");
+  });
+
+  test("formats binary cat output as JSON-safe base64", () => {
+    const bytes = new Uint8Array([0x00, 0xff, 0x41]);
+
+    expect(toCatJson("user/data.bin", bytes)).toEqual({
+      command: "cat",
+      file: "user/data.bin",
+      bytes: 3,
+      encoding: "base64",
+      data: "AP9B",
+    });
+    expect(toCatJson("user/data.bin", bytes, "data.bin")).toEqual({
+      command: "cat",
+      file: "user/data.bin",
+      bytes: 3,
+      output: "data.bin",
+    });
   });
 
   test("formats listed programs with slots and UTC timestamps", () => {
@@ -348,17 +366,16 @@ describe("command output formatting", () => {
     expect(() => assertScreenshotOptions({})).not.toThrow();
   });
 
-  test("only enables Kitty screenshot previews on TTY stdout", () => {
-    const originalIsTTY = process.stdout.isTTY;
-    try {
-      (process.stdout as { isTTY: boolean }).isTTY = true;
-      expect(shouldPrintKittyRgb()).toBe(true);
+  test("only enables Kitty screenshot previews on supported TTYs", () => {
+    expect(shouldPrintKittyRgb({ TERM: "xterm-kitty" }, true)).toBe(true);
+    expect(shouldPrintKittyRgb({ TERM: "xterm-ghostty" }, true)).toBe(true);
+    expect(shouldPrintKittyRgb({ TERM_PROGRAM: "WezTerm" }, true)).toBe(true);
+    expect(shouldPrintKittyRgb({ KITTY_WINDOW_ID: "1" }, true)).toBe(true);
+    expect(shouldPrintKittyRgb({ WEZTERM_PANE: "1" }, true)).toBe(true);
 
-      (process.stdout as { isTTY: boolean }).isTTY = false;
-      expect(shouldPrintKittyRgb()).toBe(false);
-    } finally {
-      (process.stdout as { isTTY: boolean | undefined }).isTTY = originalIsTTY;
-    }
+    expect(shouldPrintKittyRgb({ TERM: "xterm-256color" }, true)).toBe(false);
+    expect(shouldPrintKittyRgb({ TERM_PROGRAM: "vscode" }, true)).toBe(false);
+    expect(shouldPrintKittyRgb({ TERM: "xterm-kitty" }, false)).toBe(false);
   });
 
   test("chunks Kitty RGB previews into protocol-sized payloads", () => {

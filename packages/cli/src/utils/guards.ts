@@ -15,7 +15,8 @@ export function requireOptionValue(
   option: string,
 ): string | undefined {
   if (typeof value === "boolean") {
-    throw new Error(`${option} requires a value`);
+    throw new CliError(`${option} requires a value`, CLI_EXIT_CODE.USAGE);
   }
   return value;
 }
+import { CliError, CLI_EXIT_CODE } from "../errors";

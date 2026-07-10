@@ -71,7 +71,23 @@ describe("request callbacks", () => {
     expect(await second).toBe(AckType.TIMEOUT);
     expect(connection.callbacksQueue).toHaveLength(1);
     await connection.close();
-    expect(await first).toBe(AckType.CDC2_NACK);
+    expect(await first).toBe(AckType.NOT_CONNECTED);
+  });
+
+  test("a write without an open connection has a distinct result", async () => {
+    const connection = new V5SerialConnection({} as Serial);
+
+    expect(await connection.writeDataAsync(new Uint8Array([1]))).toBe(
+      AckType.NOT_CONNECTED,
+    );
+  });
+
+  test("a typed request without an open connection reports not connected", async () => {
+    const connection = new V5SerialConnection({} as Serial);
+
+    const error = (await connection.query1())._unsafeUnwrapErr();
+    expect(error.kind).toBe("not-connected");
+    expect(error.ackType).toBeUndefined();
   });
 
   test("write failures clear only their callback and timer", async () => {
@@ -524,7 +540,7 @@ test("typed replies are not stolen by an earlier raw write", async () => {
 
   expect((await typed).isOk()).toBe(true);
   await connection.close();
-  expect(await rawWrite).toBe(AckType.CDC2_NACK);
+  expect(await rawWrite).toBe(AckType.NOT_CONNECTED);
   await reading;
 });
 

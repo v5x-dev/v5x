@@ -1,6 +1,7 @@
 import { Table } from "cmd-table";
 import type { Result } from "neverthrow";
 import type { VexSerialError } from "@v5x/serial";
+import { CliError, exitCodeForSerialError } from "../errors";
 
 export const utcTimestamp = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
@@ -43,7 +44,12 @@ export function unwrapSerial<T>(
   result: Result<T, VexSerialError>,
   message: string,
 ): T {
-  if (result.isErr())
-    throw new Error(formatSerialFailure(message, result.error));
+  if (result.isErr()) {
+    throw new CliError(
+      formatSerialFailure(message, result.error),
+      exitCodeForSerialError(result.error.kind),
+      { cause: result.error },
+    );
+  }
   return result.value;
 }

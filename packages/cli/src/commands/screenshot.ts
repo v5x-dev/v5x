@@ -105,8 +105,23 @@ export function assertScreenshotOptions(options: {
     throw new Error("--json requires --output");
 }
 
-export function shouldPrintKittyRgb(): boolean {
-  return process.stdout.isTTY === true;
+export function shouldPrintKittyRgb(
+  environment: NodeJS.ProcessEnv = process.env,
+  isTTY = process.stdout.isTTY,
+): boolean {
+  if (isTTY !== true) return false;
+
+  const term = environment.TERM?.toLowerCase();
+  const termProgram = environment.TERM_PROGRAM?.toLowerCase();
+  return (
+    environment.KITTY_WINDOW_ID !== undefined ||
+    environment.WEZTERM_PANE !== undefined ||
+    term === "xterm-kitty" ||
+    term?.includes("ghostty") === true ||
+    termProgram === "kitty" ||
+    termProgram === "ghostty" ||
+    termProgram === "wezterm"
+  );
 }
 
 export function formatKittyRgb(bytes: Uint8Array): string[] {
