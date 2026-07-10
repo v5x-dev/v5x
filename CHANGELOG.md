@@ -8,12 +8,20 @@ section to a dated package-version heading.
 
 ### @v5x/cli
 
+### @v5x/serial
+
+### @v5x/web
+
+## Releases
+
+### @v5x/cli 0.0.23 - 2026-07-08
+
 - Add `--port <path-or-id>` or `V5X_PORT` selection for V5 hardware commands.
 - Publish the CLI for Linux and macOS with Bun 1.3.14 or newer. Windows
   remains unsupported until the CLI has a compatible serial backend.
 - Verify packed source maps, executable permissions, and package contents.
 
-### @v5x/serial
+### @v5x/serial 0.5.6 - 2026-07-08
 
 - Add top-level declaration metadata for older TypeScript tooling.
 - Replace the `matchMode` and `activeProgram` setters with awaitable
@@ -29,4 +37,6 @@ section to a dated package-version heading.
   branch on failure categories without parsing messages.
 - Add `neverthrow` as a runtime dependency.
 
-### @v5x/web
+### @v5x/web 0.1.2 - 2026-07-08
+
+- Add the public `@v5x/web/testing` entry point for browser integration tests.
