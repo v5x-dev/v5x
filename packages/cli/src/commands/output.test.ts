@@ -348,17 +348,16 @@ describe("command output formatting", () => {
     expect(() => assertScreenshotOptions({})).not.toThrow();
   });
 
-  test("only enables Kitty screenshot previews on TTY stdout", () => {
-    const originalIsTTY = process.stdout.isTTY;
-    try {
-      (process.stdout as { isTTY: boolean }).isTTY = true;
-      expect(shouldPrintKittyRgb()).toBe(true);
+  test("only enables Kitty screenshot previews on supported TTYs", () => {
+    expect(shouldPrintKittyRgb({ TERM: "xterm-kitty" }, true)).toBe(true);
+    expect(shouldPrintKittyRgb({ TERM: "xterm-ghostty" }, true)).toBe(true);
+    expect(shouldPrintKittyRgb({ TERM_PROGRAM: "WezTerm" }, true)).toBe(true);
+    expect(shouldPrintKittyRgb({ KITTY_WINDOW_ID: "1" }, true)).toBe(true);
+    expect(shouldPrintKittyRgb({ WEZTERM_PANE: "1" }, true)).toBe(true);
 
-      (process.stdout as { isTTY: boolean }).isTTY = false;
-      expect(shouldPrintKittyRgb()).toBe(false);
-    } finally {
-      (process.stdout as { isTTY: boolean | undefined }).isTTY = originalIsTTY;
-    }
+    expect(shouldPrintKittyRgb({ TERM: "xterm-256color" }, true)).toBe(false);
+    expect(shouldPrintKittyRgb({ TERM_PROGRAM: "vscode" }, true)).toBe(false);
+    expect(shouldPrintKittyRgb({ TERM: "xterm-kitty" }, false)).toBe(false);
   });
 
   test("chunks Kitty RGB previews into protocol-sized payloads", () => {
