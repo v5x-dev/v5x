@@ -1,0 +1,29 @@
+---
+import { BookOpen, Github, Package } from "lucide-astro";
+
+const docsBase = "https://docs.v5x.dev";
+---
+
+<header class="flex min-h-12 items-center justify-between gap-4 border-b border-zinc-200 pr-12 dark:border-white/10">
+  <a
+    class="flex items-center gap-2 text-[0.95rem] font-semibold text-indigo-600 no-underline dark:text-[#b8baff]"
+    href="/"
+    aria-label="v5x home"
+  >
+    <svg class="size-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" aria-hidden="true">
+      <path d="M1 4.5h2.5L8 9.75 12.25 4.5h2.5L9 11.5h-2.25Z" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+    v5x
+  </a>
+  <nav class="flex items-center gap-1 text-[0.86rem]" aria-label="Primary navigation">
+    <a class="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-zinc-500 no-underline hover:bg-black/5 hover:text-zinc-900 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:outline-[#b8baff] sm:flex" href="https://www.npmjs.com/org/v5x">
+      <Package size={15} stroke-width={1.8} aria-hidden="true" /> npm
+    </a>
+    <a class="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-zinc-500 no-underline hover:bg-black/5 hover:text-zinc-900 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:outline-[#b8baff] sm:flex" href="https://github.com/v5x-dev/v5x">
+      <Github size={15} stroke-width={1.8} aria-hidden="true" /> github
+    </a>
+    <a class="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-2 font-medium text-white no-underline hover:bg-zinc-700 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 dark:focus-visible:outline-[#b8baff]" href={docsBase}>
+      <BookOpen size={15} stroke-width={1.8} aria-hidden="true" /> docs
+    </a>
+  </nav>
+</header>
