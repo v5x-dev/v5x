@@ -142,6 +142,137 @@ test("open discovers unopened authorized ports and emits connected when ready", 
   await connection.close();
 });
 
+test("concurrent opens join one transport attempt", async () => {
+  const portOpened = deferred<void>();
+  let getPortsCalls = 0;
+  let openCalls = 0;
+  let readable: ReadableStream<Uint8Array> | null = null;
+  let writable: WritableStream<Uint8Array> | null = null;
+  const port = {
+    get readable() {
+      return readable;
+    },
+    get writable() {
+      return writable;
+    },
+    getInfo: () => ({ usbVendorId: 10376, usbProductId: 1281 }),
+    open: async () => {
+      openCalls++;
+      await portOpened.promise;
+      readable = new ReadableStream<Uint8Array>();
+      writable = new WritableStream<Uint8Array>();
+    },
+    close: async () => {
+      readable = null;
+      writable = null;
+    },
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as unknown as SerialPort;
+  const connection = new V5SerialConnection({
+    getPorts: async () => {
+      getPortsCalls++;
+      return [port];
+    },
+  } as unknown as Serial);
+
+  const first = connection.open(0, false);
+  const second = connection.open(0, false);
+  await Bun.sleep(0);
+  expect(getPortsCalls).toBe(1);
+  expect(openCalls).toBe(1);
+
+  portOpened.resolve();
+  expect((await first)._unsafeUnwrap()).toBe("opened");
+  expect((await second)._unsafeUnwrap()).toBe("opened");
+  expect(connection.isConnected).toBe(true);
+  await connection.close();
+});
+
+test("a failed open clears its shared attempt so a later open can retry", async () => {
+  let attempts = 0;
+  let closes = 0;
+  let readable: ReadableStream<Uint8Array> | null = null;
+  let writable: WritableStream<Uint8Array> | null = null;
+  const port = {
+    get readable() {
+      return readable;
+    },
+    get writable() {
+      return writable;
+    },
+    getInfo: () => ({ usbVendorId: 10376, usbProductId: 1281 }),
+    open: async () => {
+      attempts++;
+      if (attempts === 1) throw new Error("first open failed");
+      readable = new ReadableStream<Uint8Array>();
+      writable = new WritableStream<Uint8Array>();
+    },
+    close: async () => {
+      closes++;
+      readable = null;
+      writable = null;
+    },
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as unknown as SerialPort;
+  const connection = new V5SerialConnection({
+    getPorts: async () => [port],
+  } as unknown as Serial);
+
+  const first = connection.open(0, false);
+  const joining = connection.open(0, false);
+  expect((await first).isErr()).toBe(true);
+  expect((await joining).isErr()).toBe(true);
+  expect(attempts).toBe(1);
+  expect(closes).toBe(1);
+
+  expect((await connection.open(0, false))._unsafeUnwrap()).toBe("opened");
+  expect(attempts).toBe(2);
+  await connection.close();
+});
+
+test("close waits for a pending open and cleans up its transport", async () => {
+  const portOpened = deferred<void>();
+  let closeCalls = 0;
+  let readable: ReadableStream<Uint8Array> | null = null;
+  let writable: WritableStream<Uint8Array> | null = null;
+  const port = {
+    get readable() {
+      return readable;
+    },
+    get writable() {
+      return writable;
+    },
+    getInfo: () => ({ usbVendorId: 10376, usbProductId: 1281 }),
+    open: async () => {
+      await portOpened.promise;
+      readable = new ReadableStream<Uint8Array>();
+      writable = new WritableStream<Uint8Array>();
+    },
+    close: async () => {
+      closeCalls++;
+      readable = null;
+      writable = null;
+    },
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as unknown as SerialPort;
+  const connection = new V5SerialConnection({
+    getPorts: async () => [port],
+  } as unknown as Serial);
+
+  const opening = connection.open(0, false);
+  await Bun.sleep(0);
+  const closing = connection.close();
+  portOpened.resolve();
+
+  expect((await opening)._unsafeUnwrap()).toBe("opened");
+  await closing;
+  expect(closeCalls).toBe(1);
+  expect(connection.isConnected).toBe(false);
+});
+
 test("throwing lifecycle listeners do not interrupt a connection", async () => {
   class TestConnection extends V5SerialConnection {
     warn(): void {

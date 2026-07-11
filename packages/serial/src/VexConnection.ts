@@ -117,6 +117,8 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   callbacksQueue: IPacketCallback[] = [];
   private _onPortDisconnect: (() => void) | null = null;
   private _closePromise: Promise<void> | null = null;
+  private _openPromise: Promise<Result<OpenResult, VexSerialError>> | null =
+    null;
   private _wasConnected = false;
   protected fileTransferTail: Promise<unknown> = Promise.resolve();
   protected fileTransferDepth = 0;
@@ -163,14 +165,24 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
 
   async close(): Promise<void> {
     if (this._closePromise) return this._closePromise;
-    if (!this._hasOpenResources()) return;
 
-    this._closePromise = this._doClose();
+    const closing = this._closeAfterOpen();
+    this._closePromise = closing;
     try {
-      await this._closePromise;
+      await closing;
     } finally {
-      this._closePromise = null;
+      if (this._closePromise === closing) this._closePromise = null;
     }
+  }
+
+  private async _closeAfterOpen(): Promise<void> {
+    // An open attempt owns partially acquired transport resources until it
+    // settles. Waiting here prevents close from seeing an empty connection and
+    // returning while that attempt later installs a port or stream lock.
+    const opening = this._openPromise;
+    if (opening !== null) await opening;
+    if (!this._hasOpenResources()) return;
+    await this._doClose();
   }
 
   private _hasOpenResources(): boolean {
@@ -274,13 +286,26 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
    * `"busy"` when the matching port is already held elsewhere, and
    * `"no-port"` when no matching port was selected. The result is `Err`
    * when a connection is already open (programmer error) or when the
-   * port fails to open (permissions, dead device, ...).
+   * port fails to open (permissions, dead device, ...). Concurrent calls
+   * join the same open attempt and receive its result.
    */
   open(
     use: number = 0,
     askUser: boolean = true,
   ): ResultAsync<OpenResult, VexSerialError> {
-    return new ResultAsync(this._open(use, askUser));
+    if (this._openPromise !== null) return new ResultAsync(this._openPromise);
+
+    const opening = this._open(use, askUser);
+    this._openPromise = opening;
+    void opening.then(
+      () => {
+        if (this._openPromise === opening) this._openPromise = null;
+      },
+      () => {
+        if (this._openPromise === opening) this._openPromise = null;
+      },
+    );
+    return new ResultAsync(opening);
   }
 
   private async _open(
@@ -339,7 +364,10 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
 
       return ok("opened");
     } catch (e) {
-      await this.close();
+      // Calling close() here would wait for this in-flight open attempt and
+      // deadlock. A concurrent close is already waiting for this attempt, so
+      // it is safe for the attempt to release the resources it acquired.
+      await this._doClose();
       return err(toVexSerialError(e, "io"));
     }
   }
