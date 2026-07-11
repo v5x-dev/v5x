@@ -115,10 +115,12 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   serial: Serial;
 
   callbacksQueue: IPacketCallback[] = [];
+  private pendingCommandTails = new Map<string, Promise<void>>();
   private _onPortDisconnect: (() => void) | null = null;
   private _closePromise: Promise<void> | null = null;
   private _openPromise: Promise<Result<OpenResult, VexSerialError>> | null =
     null;
+  private _isClosing = false;
   private _wasConnected = false;
   protected fileTransferTail: Promise<unknown> = Promise.resolve();
   protected fileTransferDepth = 0;
@@ -166,12 +168,14 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   async close(): Promise<void> {
     if (this._closePromise) return this._closePromise;
 
+    this._isClosing = true;
     const closing = this._closeAfterOpen();
     this._closePromise = closing;
     try {
       await closing;
     } finally {
       if (this._closePromise === closing) this._closePromise = null;
+      this._isClosing = false;
     }
   }
 
@@ -376,8 +380,53 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     rawData: DeviceBoundPacket | Uint8Array,
     timeout: number = 1000,
   ): Promise<HostBoundPacket | ArrayBuffer | AckType> {
+    if (rawData instanceof DeviceBoundPacket) {
+      return this.serializeCommand(
+        rawData.commandId,
+        rawData.commandExtendedId,
+        () => this.writeDataAsyncUnserialized(rawData, timeout),
+      );
+    }
+
+    return this.writeDataAsyncUnserialized(rawData, timeout);
+  }
+
+  /**
+   * A command ID identifies a reply packet type, not an individual request.
+   * Keep requests with the same reply identifiers off the wire until the
+   * preceding request has resolved, while allowing unrelated commands to run
+   * concurrently.
+   */
+  private async serializeCommand<T>(
+    commandId: number,
+    commandExtendedId: number | undefined,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const key = `${commandId}:${commandExtendedId ?? ""}`;
+    const previous = this.pendingCommandTails.get(key) ?? Promise.resolve();
+    let release = (): void => {};
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.pendingCommandTails.set(key, current);
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.pendingCommandTails.get(key) === current) {
+        this.pendingCommandTails.delete(key);
+      }
+    }
+  }
+
+  private async writeDataAsyncUnserialized(
+    rawData: DeviceBoundPacket | Uint8Array,
+    timeout: number,
+  ): Promise<HostBoundPacket | ArrayBuffer | AckType> {
     return new Promise<HostBoundPacket | ArrayBuffer | AckType>((resolve) => {
-      if (this.writer === undefined) {
+      if (this.writer === undefined || this._isClosing) {
         resolve(AckType.NOT_CONNECTED);
         return;
       }

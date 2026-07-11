@@ -20,6 +20,8 @@ import {
   LinkFileH2DPacket,
   LinkFileReplyD2HPacket,
   PacketEncoder,
+  ReadKeyValueH2DPacket,
+  ReadKeyValueReplyD2HPacket,
   ReadFileReplyD2HPacket,
   ScreenCaptureH2DPacket,
   ScreenCaptureReplyD2HPacket,
@@ -63,6 +65,176 @@ function cdc2Reply(
 }
 
 describe("request callbacks", () => {
+  test("serializes same-command requests so replies cannot be swapped", async () => {
+    class ReadableConnection extends V5SerialConnection {
+      start(): Promise<void> {
+        return this.startReader();
+      }
+    }
+
+    let replyStream: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        replyStream = controller;
+      },
+    });
+    const writes: Uint8Array[] = [];
+    const connection = new ReadableConnection({} as Serial);
+    connection.reader = stream.getReader();
+    connection.writer = {
+      write: async (data: Uint8Array) => {
+        writes.push(data);
+      },
+      close: async () => {},
+      releaseLock: () => {},
+    } as unknown as WritableStreamDefaultWriter<unknown>;
+
+    const first = connection.request(
+      new ReadKeyValueH2DPacket("first"),
+      ReadKeyValueReplyD2HPacket,
+    );
+    const second = connection.request(
+      new ReadKeyValueH2DPacket("second"),
+      ReadKeyValueReplyD2HPacket,
+    );
+    const reading = connection.start();
+
+    for (let i = 0; i < 100 && writes.length === 0; i++) await Bun.sleep(0);
+    expect(writes).toHaveLength(1);
+
+    // Only the first request is in flight, so this reply cannot silently be
+    // delivered to the second request even if the device would reply out of
+    // order when both were transmitted together.
+    replyStream?.enqueue(
+      cdc2Reply(86, 46, AckType.CDC2_ACK, new TextEncoder().encode("first\0")),
+    );
+    expect((await first)._unsafeUnwrap().value).toBe("first");
+
+    for (let i = 0; i < 100 && writes.length === 1; i++) await Bun.sleep(0);
+    expect(writes).toHaveLength(2);
+    replyStream?.enqueue(
+      cdc2Reply(86, 46, AckType.CDC2_ACK, new TextEncoder().encode("second\0")),
+    );
+    expect((await second)._unsafeUnwrap().value).toBe("second");
+
+    await connection.close();
+    await reading;
+  });
+
+  test("releases same-command serialization after a timeout", async () => {
+    const connection = connectionWithWriter();
+    const writes: Uint8Array[] = [];
+    connection.writer = {
+      write: async (data: Uint8Array) => {
+        writes.push(data);
+      },
+      close: async () => {},
+      releaseLock: () => {},
+    } as unknown as WritableStreamDefaultWriter<unknown>;
+
+    const first = connection.writeDataAsync(
+      new ReadKeyValueH2DPacket("first"),
+      1,
+    );
+    const second = connection.writeDataAsync(
+      new ReadKeyValueH2DPacket("second"),
+      100,
+    );
+
+    expect(await first).toBe(AckType.TIMEOUT);
+    for (let i = 0; i < 100 && writes.length === 1; i++) await Bun.sleep(0);
+    expect(writes).toHaveLength(2);
+
+    await connection.close();
+    expect(await second).toBe(AckType.NOT_CONNECTED);
+  });
+
+  test("releases same-command serialization after a write failure", async () => {
+    const connection = connectionWithWriter();
+    let attempts = 0;
+    connection.writer = {
+      write: async () => {
+        attempts++;
+        if (attempts === 1) throw new Error("write failed");
+      },
+      close: async () => {},
+      releaseLock: () => {},
+    } as unknown as WritableStreamDefaultWriter<unknown>;
+
+    const first = connection.writeDataAsync(
+      new ReadKeyValueH2DPacket("first"),
+      100,
+    );
+    const second = connection.writeDataAsync(
+      new ReadKeyValueH2DPacket("second"),
+      100,
+    );
+
+    expect(await first).toBe(AckType.WRITE_ERROR);
+    for (let i = 0; i < 100 && attempts === 1; i++) await Bun.sleep(0);
+    expect(attempts).toBe(2);
+
+    await connection.close();
+    expect(await second).toBe(AckType.NOT_CONNECTED);
+  });
+
+  test("keeps requests with distinct reply IDs concurrent", async () => {
+    const connection = connectionWithWriter();
+    const writes: Uint8Array[] = [];
+    connection.writer = {
+      write: async (data: Uint8Array) => {
+        writes.push(data);
+      },
+      close: async () => {},
+      releaseLock: () => {},
+    } as unknown as WritableStreamDefaultWriter<unknown>;
+
+    const keyValue = connection.writeDataAsync(
+      new ReadKeyValueH2DPacket("key"),
+      100,
+    );
+    const clearUp = connection.writeDataAsync(
+      new FileClearUpH2DPacket(FileVendor.USER),
+      100,
+    );
+
+    for (let i = 0; i < 100 && writes.length < 2; i++) await Bun.sleep(0);
+    expect(writes).toHaveLength(2);
+
+    await connection.close();
+    expect(await keyValue).toBe(AckType.NOT_CONNECTED);
+    expect(await clearUp).toBe(AckType.NOT_CONNECTED);
+  });
+
+  test("close releases queued same-command requests", async () => {
+    const connection = connectionWithWriter();
+    const writes: Uint8Array[] = [];
+    connection.writer = {
+      write: async (data: Uint8Array) => {
+        writes.push(data);
+      },
+      close: async () => {},
+      releaseLock: () => {},
+    } as unknown as WritableStreamDefaultWriter<unknown>;
+
+    const first = connection.writeDataAsync(
+      new ReadKeyValueH2DPacket("first"),
+      100,
+    );
+    const second = connection.writeDataAsync(
+      new ReadKeyValueH2DPacket("second"),
+      100,
+    );
+
+    for (let i = 0; i < 100 && writes.length === 0; i++) await Bun.sleep(0);
+    expect(writes).toHaveLength(1);
+    await connection.close();
+
+    expect(await first).toBe(AckType.NOT_CONNECTED);
+    expect(await second).toBe(AckType.NOT_CONNECTED);
+    expect(writes).toHaveLength(1);
+  });
+
   test("a timeout resolves its own concurrent request", async () => {
     const connection = connectionWithWriter();
     const first = connection.writeDataAsync(new Uint8Array([1]), 100);
