@@ -260,6 +260,51 @@ test("automatic refresh failures are emitted instead of left unhandled", async (
   expect(await emitted).toBeInstanceOf(Error);
 });
 
+test("throwing refresh error listeners do not duplicate errors or stall refresh", async () => {
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  const timer = { unref: () => {} } as unknown as RefreshTimer;
+  let refreshInterval: (() => void) | undefined;
+
+  globalThis.setInterval = ((callback: () => void) => {
+    refreshInterval = callback;
+    return timer;
+  }) as typeof globalThis.setInterval;
+  globalThis.clearInterval = (() => {}) as typeof globalThis.clearInterval;
+
+  try {
+    const device = new V5SerialDevice(serial);
+    devices.push(device);
+    device.connection = {
+      isConnected: true,
+      close: async () => {},
+    } as unknown as V5SerialConnection;
+    device.refresh = () => errAsync(new VexIoError("refresh failed"));
+
+    const errors: unknown[] = [];
+    device.on("error", () => {
+      throw new Error("first listener failed");
+    });
+    device.on("error", (error) => errors.push(error));
+
+    device.autoRefresh = true;
+    expect(refreshInterval).toBeDefined();
+    refreshInterval!();
+    expect(
+      (await sleepUntil(() => errors.length === 1, 1000, 10))._unsafeUnwrap(),
+    ).toBe(true);
+    refreshInterval!();
+    expect(
+      (await sleepUntil(() => errors.length === 2, 1000, 10))._unsafeUnwrap(),
+    ).toBe(true);
+
+    expect(errors).toHaveLength(2);
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
 test("automatic refresh is opt-in", async () => {
   const device = new V5SerialDevice(serial);
   devices.push(device);
@@ -515,6 +560,71 @@ test("reusing a connection does not stack disconnected listeners", async () => {
 
   await device.disconnect();
   expect(disconnectedListeners.size).toBe(0);
+});
+
+test("throwing disconnected listeners do not prevent automatic reconnect", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  let disconnected: (() => void) | undefined;
+  let reconnects = 0;
+  const connection = {
+    isConnected: true,
+    query1: () => okAsync({} as never),
+    on: (event: string, listener: () => void) => {
+      if (event === "disconnected") disconnected = listener;
+    },
+    remove: () => {},
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+  device.refresh = () => okAsync<boolean>(true);
+  device.reconnect = () => {
+    reconnects++;
+    return okAsync(undefined);
+  };
+
+  let laterListenerCalls = 0;
+  device.on("disconnected", () => {
+    throw new Error("first listener failed");
+  });
+  device.on("disconnected", () => laterListenerCalls++);
+
+  await device.connect(connection);
+  expect(disconnected).toBeDefined();
+  expect(() => disconnected!()).not.toThrow();
+  expect(laterListenerCalls).toBe(1);
+  expect(reconnects).toBe(1);
+});
+
+test("throwing reconnect error listeners do not reject or emit twice", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  let disconnected: (() => void) | undefined;
+  const connection = {
+    isConnected: true,
+    query1: () => okAsync({} as never),
+    on: (event: string, listener: () => void) => {
+      if (event === "disconnected") disconnected = listener;
+    },
+    remove: () => {},
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+  device.refresh = () => okAsync<boolean>(true);
+  device.reconnect = () => errAsync(new VexIoError("reconnect failed"));
+
+  const errors: unknown[] = [];
+  device.on("error", () => {
+    throw new Error("first listener failed");
+  });
+  device.on("error", (error) => errors.push(error));
+
+  await device.connect(connection);
+  expect(disconnected).toBeDefined();
+  expect(() => disconnected!()).not.toThrow();
+  expect(
+    (await sleepUntil(() => errors.length === 1, 1000, 10))._unsafeUnwrap(),
+  ).toBe(true);
+  expect(errors).toHaveLength(1);
+  expect(errors[0]).toBeInstanceOf(VexIoError);
 });
 
 test("disconnect invalidates and closes a pending supplied connection", async () => {
