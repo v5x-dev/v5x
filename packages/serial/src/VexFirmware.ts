@@ -287,7 +287,10 @@ async function flashFactoryImage(
     linkedFile: undefined,
   };
 
-  const upload = await conn.uploadFileToDevice(writeRequest, (c, t) => {
+  // The caller owns the connection-level transaction for the complete
+  // BOOT-and-ASSETS sequence. Re-acquiring it here would deadlock, so use the
+  // unlocked primitive just as multi-file program uploads do.
+  const upload = await conn.uploadFileToDeviceUnlocked(writeRequest, (c, t) => {
     pcb(`UPLOAD ${label}`, c, t);
   });
   if (upload.isErr()) return err(upload.error);
@@ -467,39 +470,47 @@ async function runUploadFirmware(
   pcb("UNZIP VEXOS", 1, 1);
 
   return state.withRefreshPaused(async () => {
-    const boot = images.find((image) => image.name.endsWith("BOOT.bin"));
-    if (boot === undefined) {
-      return err(new VexFirmwareError("VEXos archive is missing BOOT.bin"));
+    try {
+      return await conn.withFileTransfer(async () => {
+        const boot = images.find((image) => image.name.endsWith("BOOT.bin"));
+        if (boot === undefined) {
+          return err(new VexFirmwareError("VEXos archive is missing BOOT.bin"));
+        }
+        const assertImage = images.find((image) =>
+          image.name.endsWith("assets.bin"),
+        );
+        if (assertImage === undefined) {
+          return err(
+            new VexFirmwareError("VEXos archive is missing assets.bin"),
+          );
+        }
+
+        const bootFlash = await flashFactoryImage(
+          conn,
+          {
+            image: boot,
+            label: "BOOT",
+            downloadTarget: FileDownloadTarget.FILE_TARGET_B1,
+          },
+          pcb,
+        );
+        if (bootFlash.isErr()) return err(bootFlash.error);
+
+        const assetsFlash = await flashFactoryImage(
+          conn,
+          {
+            image: assertImage,
+            label: "ASSETS",
+            downloadTarget: FileDownloadTarget.FILE_TARGET_A1,
+          },
+          pcb,
+        );
+        if (assetsFlash.isErr()) return err(assetsFlash.error);
+
+        return ok(true);
+      });
+    } catch (e) {
+      return err(toVexSerialError(e, "firmware"));
     }
-    const assertImage = images.find((image) =>
-      image.name.endsWith("assets.bin"),
-    );
-    if (assertImage === undefined) {
-      return err(new VexFirmwareError("VEXos archive is missing assets.bin"));
-    }
-
-    const bootFlash = await flashFactoryImage(
-      conn,
-      {
-        image: boot,
-        label: "BOOT",
-        downloadTarget: FileDownloadTarget.FILE_TARGET_B1,
-      },
-      pcb,
-    );
-    if (bootFlash.isErr()) return err(bootFlash.error);
-
-    const assetsFlash = await flashFactoryImage(
-      conn,
-      {
-        image: assertImage,
-        label: "ASSETS",
-        downloadTarget: FileDownloadTarget.FILE_TARGET_A1,
-      },
-      pcb,
-    );
-    if (assetsFlash.isErr()) return err(assetsFlash.error);
-
-    return ok(true);
   });
 }
