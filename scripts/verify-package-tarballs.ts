@@ -45,6 +45,28 @@ async function run(command: string[]): Promise<void> {
   }
 }
 
+async function verifyNpmInstall(archives: string[]): Promise<void> {
+  const directory = await mkdtemp(join(tmpdir(), "v5x-npm-install-"));
+
+  try {
+    await Bun.write(
+      join(directory, "package.json"),
+      JSON.stringify({ name: "v5x-tarball-smoke", private: true }),
+    );
+    await run([
+      "npm",
+      "install",
+      "--ignore-scripts",
+      "--no-package-lock",
+      "--prefix",
+      directory,
+      ...archives.map((archive) => resolve(archive)),
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 async function listFiles(directory: string, prefix = ""): Promise<string[]> {
   const entries = await readdir(join(directory, prefix), {
     withFileTypes: true,
@@ -98,9 +120,10 @@ function verifyExport(
   }
 }
 
-function verifyManifest(
+export function verifyManifest(
   packageName: PackageName,
   parsed: Record<string, unknown>,
+  expectedSerialVersion?: string,
 ): void {
   if (packageName === "@v5x/serial") {
     const exports = parsed.exports;
@@ -184,9 +207,29 @@ function verifyManifest(
       "./dist/solid/index.js",
     );
   }
+
+  if (packageName !== "@v5x/serial") {
+    const dependencies = parsed.dependencies;
+    const serialVersion = isRecord(dependencies)
+      ? dependencies["@v5x/serial"]
+      : undefined;
+    if (
+      typeof serialVersion !== "string" ||
+      serialVersion.startsWith("workspace:") ||
+      (expectedSerialVersion !== undefined &&
+        serialVersion !== expectedSerialVersion)
+    ) {
+      throw new Error(
+        `${packageName} must depend on @v5x/serial at the expected released version`,
+      );
+    }
+  }
 }
 
-async function verifyArchive(archive: string): Promise<PackageName> {
+export async function verifyArchive(
+  archive: string,
+  expectedSerialVersion?: string,
+): Promise<PackageName> {
   const archiveName = basename(archive);
   const directory = await mkdtemp(join(tmpdir(), "v5x-package-"));
 
@@ -197,7 +240,7 @@ async function verifyArchive(archive: string): Promise<PackageName> {
     const { name: packageName, manifest } = await readPackageIdentity(
       join(packageRoot, "package.json"),
     );
-    verifyManifest(packageName, manifest);
+    verifyManifest(packageName, manifest, expectedSerialVersion);
     const allowedRoots = new Set(["LICENSE", "README.md", "package.json"]);
     const unexpected = files.filter(
       (file) => !file.startsWith("dist/") && !allowedRoots.has(file),
@@ -310,17 +353,35 @@ function getPackedSizeBudget(packageName: PackageName): {
   return { bytes: 2_000_000, label: "2 MB" };
 }
 
-const archives = process.argv.slice(2);
-if (archives.length === 0) {
-  throw new Error(
-    "Pass one or more @v5x/serial, @v5x/cli, or @v5x/web tarballs to this script",
-  );
-}
-const verifiedPackages = new Set<PackageName>();
-for (const archive of archives) {
-  const packageName = await verifyArchive(archive);
-  if (verifiedPackages.has(packageName)) {
-    throw new Error(`Received duplicate tarball for ${packageName}`);
+function parseArguments(args: string[]): {
+  archives: string[];
+  expectedSerialVersion?: string;
+} {
+  const [first, second, ...archives] = args;
+  if (first !== "--serial-version") return { archives: args };
+  if (second === undefined || second.startsWith("-")) {
+    throw new Error("--serial-version requires a concrete version");
   }
-  verifiedPackages.add(packageName);
+
+  return { archives, expectedSerialVersion: second };
+}
+
+if (import.meta.main) {
+  const { archives, expectedSerialVersion } = parseArguments(
+    process.argv.slice(2),
+  );
+  if (archives.length === 0) {
+    throw new Error(
+      "Pass one or more @v5x/serial, @v5x/cli, or @v5x/web tarballs to this script",
+    );
+  }
+  const verifiedPackages = new Set<PackageName>();
+  for (const archive of archives) {
+    const packageName = await verifyArchive(archive, expectedSerialVersion);
+    if (verifiedPackages.has(packageName)) {
+      throw new Error(`Received duplicate tarball for ${packageName}`);
+    }
+    verifiedPackages.add(packageName);
+  }
+  await verifyNpmInstall(archives);
 }

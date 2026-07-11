@@ -52,6 +52,7 @@ jobs:
           esac
 
           package_json_version="$(bun -e 'const packageJson = await Bun.file(process.argv[2]).json(); console.log(packageJson.version);' "$package_dir/package.json")"
+          serial_version="$(bun -e 'const packageJson = await Bun.file(process.argv[2]).json(); console.log(packageJson.version);' packages/serial/package.json)"
           if [ "$package_json_version" != "$version" ]; then
             echo "$package_name tag version $version does not match $package_dir/package.json version $package_json_version" >&2
             exit 1
@@ -62,6 +63,7 @@ jobs:
             echo "package_dir=$package_dir"
             echo "tarball_glob=$tarball_glob"
             echo "version=$version"
+            echo "serial_version=$serial_version"
           } >> "$GITHUB_OUTPUT"
       - name: Check changelog entry
         run: |
@@ -110,14 +112,31 @@ jobs:
       - name: Audit
         if: ${{ !cancelled() }}
         run: bun audit
-      - name: Pack and verify package
+      - name: Check serial release dependency
+        if: ${{ steps.release.outputs.package_name != '@v5x/serial' }}
         run: |
           set -euo pipefail
-          smoke_dir="$(mktemp -d)"
+          serial_version="${{ steps.release.outputs.serial_version }}"
+          published_serial_version="$(npm view "@v5x/serial@${serial_version}" version)"
+          if [ "$published_serial_version" != "$serial_version" ]; then
+            echo "@v5x/serial@${serial_version} must be published before releasing ${{ steps.release.outputs.package_name }}" >&2
+            exit 1
+          fi
+      - name: Pack and verify package
+        id: package
+        run: |
+          set -euo pipefail
+          release_dir="$(mktemp -d)"
           cd "${{ steps.release.outputs.package_dir }}"
-          bun pm pack --destination "$smoke_dir"
+          bun pm pack --destination "$release_dir"
           cd "$GITHUB_WORKSPACE"
-          bun scripts/verify-package-tarballs.ts "$smoke_dir"/${{ steps.release.outputs.tarball_glob }}
+          tarballs=("$release_dir"/${{ steps.release.outputs.tarball_glob }})
+          if [ "${#tarballs[@]}" -ne 1 ] || [ ! -f "${tarballs[0]}" ]; then
+            echo "Expected exactly one packed tarball in $release_dir" >&2
+            exit 1
+          fi
+          bun scripts/verify-package-tarballs.ts --serial-version "${{ steps.release.outputs.serial_version }}" "${tarballs[0]}"
+          echo "tarball=${tarballs[0]}" >> "$GITHUB_OUTPUT"
       - name: Configure npm
         run: |
           set -euo pipefail
@@ -127,8 +146,7 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish to npm
-        run: npm publish --provenance --access public
-        working-directory: ${{ steps.release.outputs.package_dir }}
+        run: npm publish "${{ steps.package.outputs.tarball }}" --provenance --access public
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 

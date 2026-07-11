@@ -61,8 +61,10 @@ Pushing one of those tags starts the release workflow for that package only.
 The tag version must match the selected package's `package.json` version. The
 workflow installs dependencies with Bun, packs the selected package, runs
 `bun scripts/verify-package-tarballs.ts` against the generated tarball, and
-publishes from that package directory with `npm publish --provenance --access
-public`.
+publishes that same tarball with `npm publish --provenance --access public`.
+CLI and web releases require the checked-out `@v5x/serial` version to already
+be available from npm, and their packed manifests must depend on that exact
+version.
 
 Before pushing a tag, move the released package's notes out of the Unreleased
 section and into a dated heading using this exact format:

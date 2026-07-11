@@ -9,6 +9,7 @@ section to a dated package-version heading.
 ### @v5x/cli
 
 - Add verbose stack traces, colored error output, and documented exit codes.
+- Publish the verified tarball and require its serial dependency to be released.
 
 ### @v5x/serial
 
@@ -25,6 +26,7 @@ section to a dated package-version heading.
 - Isolate snapshot subscriber exceptions from connection lifecycle operations.
 - Prevent delayed device-disconnect and refresh-failure cleanup from publishing
   stale lifecycle state over a newer disconnect or connection attempt.
+- Publish the verified tarball and require its serial dependency to be released.
 
 ## Releases
 
