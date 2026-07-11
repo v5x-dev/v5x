@@ -12,6 +12,8 @@ section to a dated package-version heading.
 
 ### @v5x/serial
 
+- Serialize typed requests that share reply command IDs so out-of-order device
+  replies cannot be delivered to the wrong caller.
 - Distinguish closed serial connections from device NACK responses.
 - Report partner-controller charging state as unavailable instead of mirroring
   the primary controller's charging bit.
