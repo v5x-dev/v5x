@@ -18,6 +18,8 @@ section to a dated package-version heading.
 
 ### @v5x/web
 
+- Isolate snapshot subscriber exceptions from connection lifecycle operations.
+
 ## Releases
 
 ### @v5x/cli 0.0.23 - 2026-07-08

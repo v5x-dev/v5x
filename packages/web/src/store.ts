@@ -11,7 +11,14 @@ export function createListenerSet() {
 
   return {
     emit(): void {
-      for (const listener of listeners) listener();
+      for (const listener of listeners) {
+        try {
+          listener();
+        } catch {
+          // Subscribers observe state changes and must not affect the client
+          // lifecycle or prevent the remaining subscribers from running.
+        }
+      }
     },
     subscribe(listener: V5StoreListener): V5Unsubscribe {
       listeners.add(listener);
