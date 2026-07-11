@@ -260,6 +260,31 @@ describe("createV5Client", () => {
     expect(snapshot.error?.code).toBe("connect-failed");
   });
 
+  test("does not publish connected when initial synchronization loses the device", async () => {
+    const statuses: V5ConnectionStatus[] = [];
+    const client = createClient({
+      autoRefresh: true,
+      connect: () =>
+        errAsync(
+          new VexSerialError(
+            "not-connected",
+            "initial device refresh did not produce a current snapshot",
+          ),
+        ),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    });
+    client.subscribe(() => statuses.push(client.getSnapshot().status));
+
+    expect(await client.connect()).toBe(false);
+    expect(statuses).toEqual(["connecting", "error"]);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "error",
+      connected: false,
+      device: null,
+    });
+  });
+
   test("disconnect is idempotent", async () => {
     let disconnects = 0;
     const client = createClient({
