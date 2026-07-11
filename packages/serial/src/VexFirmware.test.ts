@@ -165,6 +165,101 @@ test("firmware flashing keeps factory enable, upload, and status polling exclusi
   }
 });
 
+test("firmware flashing converts thrown factory requests and releases its transaction", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const connection = new V5SerialConnection(serial);
+  let refreshWasPaused = false;
+  let competingTransferRan = false;
+  let competingTransfer: Promise<void> | undefined;
+
+  Object.defineProperty(connection, "isConnected", { value: true });
+  connection.request = (() => {
+    refreshWasPaused = device.state.isRefreshPaused;
+    competingTransfer = connection.withFileTransfer(async () => {
+      competingTransferRan = true;
+    });
+    throw new Error("factory enable transport threw");
+  }) as unknown as typeof connection.request;
+  device.connection = connection;
+
+  const archive = zipSync({
+    "1.2.3/BOOT.bin": new Uint8Array([1, 2]),
+    "1.2.3/assets.bin": new Uint8Array([3, 4]),
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(async () => new Response(archive), {
+    preconnect: originalFetch.preconnect,
+  });
+
+  try {
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.2.3",
+    );
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr()).toMatchObject({
+      kind: "firmware",
+      message: "factory enable transport threw",
+    });
+    expect(refreshWasPaused).toBe(true);
+    expect(device.state.isRefreshPaused).toBe(false);
+    await competingTransfer;
+    expect(competingTransferRan).toBe(true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("firmware flashing releases refresh pause after a thrown image upload", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const connection = new V5SerialConnection(serial);
+  const factoryReply = protocolReply(FactoryEnableReplyD2HPacket);
+  let refreshWasPaused = false;
+  let competingTransferRan = false;
+  let competingTransfer: Promise<void> | undefined;
+
+  Object.defineProperty(connection, "isConnected", { value: true });
+  connection.request = (() =>
+    okAsync(factoryReply)) as unknown as typeof connection.request;
+  connection.uploadFileToDeviceUnlocked = async () => {
+    refreshWasPaused = device.state.isRefreshPaused;
+    competingTransfer = connection.withFileTransfer(async () => {
+      competingTransferRan = true;
+    });
+    throw new Error("factory image upload threw");
+  };
+  device.connection = connection;
+
+  const archive = zipSync({
+    "1.2.3/BOOT.bin": new Uint8Array([1, 2]),
+    "1.2.3/assets.bin": new Uint8Array([3, 4]),
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(async () => new Response(archive), {
+    preconnect: originalFetch.preconnect,
+  });
+
+  try {
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.2.3",
+    );
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr()).toMatchObject({
+      kind: "firmware",
+      message: "factory image upload threw",
+    });
+    expect(refreshWasPaused).toBe(true);
+    expect(device.state.isRefreshPaused).toBe(false);
+    await competingTransfer;
+    expect(competingTransferRan).toBe(true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("firmware upload reports which factory image upload was rejected", async () => {
   const device = new V5SerialDevice(serial);
   devices.push(device);
