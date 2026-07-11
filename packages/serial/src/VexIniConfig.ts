@@ -43,6 +43,16 @@ class IniSectionBuilder<
     const value = rawValue.toString();
     if (omitIfEmpty && value.length === 0) return;
 
+    // VEX program INI values are quoted, but the brain's parser does not
+    // define an escaping syntax. Reject characters that could terminate the
+    // value or inject another property/section instead of emitting malformed
+    // metadata that can make an otherwise valid upload unusable.
+    if (/["\u0000-\u001f\u007f]/.test(value)) {
+      throw new Error(
+        `INI value for ${this.name}.${String(key)} contains an unsupported character`,
+      );
+    }
+
     const formattedKey = this.keyTransform(key).padEnd(12).slice(0, 12);
     const trimmedValue = value.slice(0, maxValueLength);
     this.addLine(`${formattedKey} = "${trimmedValue}"`);

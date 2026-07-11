@@ -74,15 +74,26 @@ axis         = "1"`);
 button       = "A"`);
 });
 
-test("preserves values without nonstandard escaping", () => {
+test("preserves backslashes without nonstandard escaping", () => {
   const config = new ProgramIniConfig();
-  config.program.name = 'robot"name';
   config.program.description = String.raw`C:\robot`;
   config.program.date = "2026-07-08T12:34:56.000Z";
 
   const content = config.createIni();
 
-  expect(content).toContain('name         = "robot"name"');
   expect(content).toContain(String.raw`description  = "C:\robot"`);
   expect(content).not.toContain("\\x");
+});
+
+test.each([
+  ['robot"name', "quote"],
+  ["robot\n[config]", "newline"],
+  ["robot\u0000name", "control character"],
+])("rejects an INI-breaking %s", (name) => {
+  const config = new ProgramIniConfig();
+  config.program.name = name;
+
+  expect(() => config.createIni()).toThrow(
+    "INI value for program.name contains an unsupported character",
+  );
 });
