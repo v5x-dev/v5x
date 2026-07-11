@@ -439,6 +439,145 @@ test("connect opens and retains a supplied connection", async () => {
   expect(device.connection).toBe(connection);
 });
 
+test("connect requires its initial refresh to produce a current snapshot", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  let connected = true;
+  let disconnected: (() => void) | undefined;
+  let removes = 0;
+  let closes = 0;
+  const connection = {
+    get isConnected() {
+      return connected;
+    },
+    query1: () => okAsync({} as never),
+    ...buildReply({ system: { uniqueId: 0x1234 } }),
+    on: (event: string, listener: () => void) => {
+      if (event === "disconnected") disconnected = listener;
+    },
+    remove: (event: string, listener: () => void) => {
+      if (event === "disconnected" && listener === disconnected) {
+        removes++;
+        disconnected = undefined;
+      }
+    },
+    close: async () => {
+      closes++;
+      connected = false;
+    },
+  } as unknown as V5SerialConnection;
+
+  expect((await device.connect(connection)).isOk()).toBe(true);
+  expect(device.connection).toBe(connection);
+  expect(device.brain.uniqueId).toBe(0x1234);
+
+  await device.disconnect();
+  expect(closes).toBe(1);
+  expect(removes).toBe(1);
+});
+
+test("connect discards a connection when its initial refresh is incomplete", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  let connected = true;
+  let disconnected: (() => void) | undefined;
+  let removes = 0;
+  let closes = 0;
+  const connection = {
+    get isConnected() {
+      return connected;
+    },
+    query1: () => okAsync({} as never),
+    ...buildReply({}),
+    getSystemStatus: () => errAsync(new VexProtocolError("status nack")),
+    on: (event: string, listener: () => void) => {
+      if (event === "disconnected") disconnected = listener;
+    },
+    remove: (event: string, listener: () => void) => {
+      if (event === "disconnected" && listener === disconnected) {
+        removes++;
+        disconnected = undefined;
+      }
+    },
+    close: async () => {
+      closes++;
+      connected = false;
+    },
+  } as unknown as V5SerialConnection;
+
+  const result = await device.connect(connection);
+
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexNotConnectedError);
+  expect(result._unsafeUnwrapErr().message).toContain("initial device refresh");
+  expect(device.connection).toBeUndefined();
+  expect(disconnected).toBeUndefined();
+  expect(removes).toBe(1);
+  expect(closes).toBe(1);
+});
+
+for (const autoReconnect of [false, true]) {
+  test(`disconnect during initial refresh fails connect and cleans up when autoReconnect is ${autoReconnect}`, async () => {
+    const device = new V5SerialDevice(serial);
+    devices.push(device);
+    device.autoReconnect = autoReconnect;
+    const replies = Array.from({ length: 4 }, () => createDeferred<void>());
+    let refreshRequests = 0;
+    let connected = true;
+    let disconnected: (() => void) | undefined;
+    let removes = 0;
+    let reconnects = 0;
+    const nextReply = () => {
+      const reply = replies[refreshRequests++];
+      if (reply === undefined) throw new Error("unexpected refresh request");
+      return new ResultAsync(reply.promise.then(() => ok({} as never)));
+    };
+    const connection = {
+      get isConnected() {
+        return connected;
+      },
+      query1: () => okAsync({} as never),
+      getSystemStatus: nextReply,
+      getSystemFlags: nextReply,
+      getRadioStatus: nextReply,
+      getDeviceStatus: nextReply,
+      on: (event: string, listener: () => void) => {
+        if (event === "disconnected") disconnected = listener;
+      },
+      remove: (event: string, listener: () => void) => {
+        if (event === "disconnected" && listener === disconnected) {
+          removes++;
+          disconnected = undefined;
+        }
+      },
+      close: async () => {
+        connected = false;
+      },
+    } as unknown as V5SerialConnection;
+    device.reconnect = () => {
+      reconnects++;
+      return okAsync(undefined);
+    };
+
+    const pending = device.connect(connection);
+    expect(
+      (await sleepUntil(() => refreshRequests === 4, 100))._unsafeUnwrap(),
+    ).toBe(true);
+    expect(refreshRequests).toBe(4);
+
+    connected = false;
+    disconnected?.();
+    for (const reply of replies) reply.resolve();
+
+    const result = await pending;
+    expect(result.isErr()).toBe(true);
+    expect(device.connection).toBeUndefined();
+    expect(disconnected).toBeUndefined();
+    expect(removes).toBe(1);
+    expect(reconnects).toBe(autoReconnect ? 1 : 0);
+  });
+}
+
 test("connect stops after requestPort returns an unresponsive port again", async () => {
   let readable: ReadableStream<Uint8Array> | null = null;
   let writable: WritableStream<Uint8Array> | null = null;

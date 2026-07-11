@@ -412,13 +412,8 @@ export class V5SerialDevice extends VexSerialDevice {
     }
     if (!connection.isConnected) return err(new VexNotConnectedError());
 
-    await this.doAfterConnect(connection, generation);
-    if (
-      !this._isLifecycleCurrent(generation) ||
-      this.connection !== connection
-    ) {
-      return this._staleLifecycleResult();
-    }
+    const initialized = await this.doAfterConnect(connection, generation);
+    if (initialized.isErr()) return initialized;
 
     return ok(undefined);
   }
@@ -579,13 +574,8 @@ export class V5SerialDevice extends VexSerialDevice {
     }
     if (!connection.isConnected) return err(new VexNotConnectedError());
 
-    await this.doAfterConnect(connection, generation);
-    if (
-      !this._isLifecycleCurrent(generation) ||
-      this.connection !== connection
-    ) {
-      return this._staleLifecycleResult();
-    }
+    const initialized = await this.doAfterConnect(connection, generation);
+    if (initialized.isErr()) return initialized;
 
     return ok(undefined);
   }
@@ -629,12 +619,12 @@ export class V5SerialDevice extends VexSerialDevice {
   private async doAfterConnect(
     connection: V5SerialConnection,
     generation: number,
-  ): Promise<void> {
+  ): Promise<Result<void, VexSerialError>> {
     if (
       !this._isLifecycleCurrent(generation) ||
       this.connection !== connection
     ) {
-      return;
+      return this._staleLifecycleResult();
     }
 
     const listener = () => {
@@ -645,12 +635,16 @@ export class V5SerialDevice extends VexSerialDevice {
       ) {
         return;
       }
+      // A physical disconnect invalidates the in-flight initialization as
+      // well as the committed connection. In particular, a refresh that was
+      // already waiting for replies must not turn this into a successful
+      // connect after the transport has gone away.
+      this._lifecycleGeneration++;
+      this._refreshGeneration++;
+      this.connection = undefined;
+      this._detachDisconnectListener();
       this._emitSafely("disconnected", undefined);
-      if (
-        this.autoReconnect &&
-        this._isLifecycleCurrent(generation) &&
-        this.connection === connection
-      ) {
+      if (this.autoReconnect && !this._disposed) {
         void this.reconnect().mapErr((error) =>
           this._emitSafely("error", error),
         );
@@ -659,7 +653,45 @@ export class V5SerialDevice extends VexSerialDevice {
     connection.on("disconnected", listener);
     this._disconnectListener = { connection, listener };
 
-    await this.refresh();
+    const refreshed = await this.refresh();
+    if (
+      !this._isLifecycleCurrent(generation) ||
+      this.connection !== connection ||
+      !connection.isConnected
+    ) {
+      return this._staleLifecycleResult();
+    }
+    if (refreshed.isErr()) {
+      await this._discardConnection(connection, generation);
+      return err(refreshed.error);
+    }
+    if (!refreshed.value) {
+      await this._discardConnection(connection, generation);
+      return err(
+        new VexNotConnectedError(
+          "initial device refresh did not produce a current snapshot",
+        ),
+      );
+    }
+
+    return ok(undefined);
+  }
+
+  private async _discardConnection(
+    connection: V5SerialConnection,
+    generation: number,
+  ): Promise<void> {
+    if (
+      !this._isLifecycleCurrent(generation) ||
+      this.connection !== connection
+    ) {
+      return;
+    }
+    this._lifecycleGeneration++;
+    this._refreshGeneration++;
+    this.connection = undefined;
+    this._detachDisconnectListener();
+    await connection.close();
   }
 
   /**
