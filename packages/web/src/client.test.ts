@@ -157,6 +157,69 @@ describe("createV5Client", () => {
     expect(calls).toBe(0);
   });
 
+  test("subscriber exceptions do not affect successful connect, refresh, or disconnect", async () => {
+    const statuses: V5ConnectionStatus[] = [];
+    let disposes = 0;
+    const client = createClient({
+      autoRefresh: true,
+      state: createFakeDeviceState(),
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      dispose: async () => {
+        disposes++;
+      },
+      refresh: () => okAsync(true),
+    });
+
+    client.subscribe(() => {
+      throw new Error("subscriber failed");
+    });
+    client.subscribe(() => statuses.push(client.getSnapshot().status));
+
+    expect(await client.connect()).toBe(true);
+    await client.refresh();
+    await client.disconnect();
+
+    expect(disposes).toBe(1);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "idle",
+      connected: false,
+      error: null,
+    });
+    expect(statuses).toEqual([
+      "connecting",
+      "connected",
+      "connected",
+      "disconnecting",
+      "idle",
+    ]);
+  });
+
+  test("subscriber exceptions do not alter error or idle publications", async () => {
+    const statuses: V5ConnectionStatus[] = [];
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => errAsync(new VexSerialError("io", "connect failed")),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    });
+
+    client.subscribe(() => {
+      throw new Error("subscriber failed");
+    });
+    client.subscribe(() => statuses.push(client.getSnapshot().status));
+
+    expect(await client.connect()).toBe(false);
+    expect(client.getSnapshot().error?.code).toBe("connect-failed");
+    await client.disconnect();
+
+    expect(client.getSnapshot()).toMatchObject({
+      status: "idle",
+      error: null,
+    });
+    expect(statuses).toEqual(["connecting", "error", "idle"]);
+  });
+
   test("successful connect transitions through connecting to connected", async () => {
     const statuses: V5ConnectionStatus[] = [];
     const client = createClient({
@@ -497,6 +560,85 @@ describe("createV5Client", () => {
     expect(snapshot.error?.code).toBe("disconnect-error");
     expect(disposes).toBe(1);
     expect(disconnected).toBeUndefined();
+  });
+
+  test("device events tolerate throwing subscribers", async () => {
+    let disconnected: (() => void) | undefined;
+    let disposes = 0;
+    let publications = 0;
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      dispose: async () => {
+        disposes++;
+      },
+      refresh: () => okAsync(true),
+      on: (eventName, listener) => {
+        if (eventName === "disconnected") {
+          disconnected = () => {
+            const onDisconnected = listener as () => void;
+            onDisconnected();
+          };
+        }
+      },
+    });
+
+    client.subscribe(() => {
+      throw new Error("subscriber failed");
+    });
+    client.subscribe(() => {
+      publications++;
+    });
+
+    await client.connect();
+    disconnected?.();
+    await delay(0);
+
+    expect(client.getSnapshot()).toMatchObject({
+      status: "error",
+      connected: false,
+      error: expect.objectContaining({ code: "disconnect-error" }),
+    });
+    expect(disposes).toBe(1);
+    expect(publications).toBe(3);
+  });
+
+  test("device error events tolerate throwing subscribers", async () => {
+    let deviceError: ((error: unknown) => void) | undefined;
+    let disposes = 0;
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      dispose: async () => {
+        disposes++;
+      },
+      refresh: () => okAsync(true),
+      on: (eventName, listener) => {
+        if (eventName === "error") {
+          deviceError = (error) => {
+            const onError = listener as (eventError: unknown) => void;
+            onError(error);
+          };
+        }
+      },
+    });
+
+    client.subscribe(() => {
+      throw new Error("subscriber failed");
+    });
+
+    await client.connect();
+    deviceError?.(new Error("device failed"));
+    await delay(0);
+
+    expect(client.getSnapshot()).toMatchObject({
+      status: "error",
+      connected: false,
+      error: expect.objectContaining({ code: "refresh-error" }),
+    });
+    expect(disposes).toBe(1);
   });
 
   test("thrown refresh errors follow the refresh failure lifecycle", async () => {
