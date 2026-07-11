@@ -11,6 +11,7 @@ import {
   V5SerialDeviceState,
   V5SmartDevice,
   VexSerialDevice,
+  type VexSerialDeviceEvents,
 } from "./VexDeviceState.js";
 import { sleepUntil, sleepUntilAsync } from "./VexFirmware.js";
 import {
@@ -101,6 +102,23 @@ export class V5SerialDevice extends VexSerialDevice {
   private readonly _radio = new V5Radio(this.state);
   private readonly _deviceFacades: Array<V5SmartDevice | undefined> = [];
 
+  /**
+   * Device lifecycle events are notifications only: consumer callbacks must
+   * not alter automatic refresh or reconnect work that produced them.
+   */
+  private _emitSafely<K extends keyof VexSerialDeviceEvents>(
+    eventName: K,
+    data: VexSerialDeviceEvents[K],
+  ): void {
+    try {
+      this.emit(eventName, data);
+    } catch {
+      // The emitter invokes every listener before rethrowing their failures.
+      // Suppress that aggregate here because this is library-owned control
+      // flow, not an application-owned direct emit call.
+    }
+  }
+
   constructor(
     defaultSerial: Serial,
     options: boolean | V5SerialDeviceOptions = false,
@@ -161,9 +179,9 @@ export class V5SerialDevice extends VexSerialDevice {
           void (async () => {
             try {
               const r = await this.refresh();
-              if (r.isErr()) this.emit("error", r.error);
+              if (r.isErr()) this._emitSafely("error", r.error);
             } catch (error: unknown) {
-              this.emit("error", error);
+              this._emitSafely("error", error);
             } finally {
               this._isLastRefreshComplete = true;
             }
@@ -627,13 +645,15 @@ export class V5SerialDevice extends VexSerialDevice {
       ) {
         return;
       }
-      this.emit("disconnected", undefined);
+      this._emitSafely("disconnected", undefined);
       if (
         this.autoReconnect &&
         this._isLifecycleCurrent(generation) &&
         this.connection === connection
       ) {
-        void this.reconnect().mapErr((e) => this.emit("error", e));
+        void this.reconnect().mapErr((error) =>
+          this._emitSafely("error", error),
+        );
       }
     };
     connection.on("disconnected", listener);

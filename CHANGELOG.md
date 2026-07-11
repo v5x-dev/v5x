@@ -15,6 +15,8 @@ section to a dated package-version heading.
 - Distinguish closed serial connections from device NACK responses.
 - Report partner-controller charging state as unavailable instead of mirroring
   the primary controller's charging bit.
+- Keep throwing device event listeners from interrupting automatic refresh or
+  reconnect lifecycle work.
 
 ### @v5x/web
 
