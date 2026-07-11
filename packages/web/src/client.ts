@@ -207,7 +207,7 @@ class V5WebClient implements V5Client {
 
   async connect(): Promise<boolean> {
     if (!this.supported || this.serial === undefined) return false;
-    if (this.status === "connected") return true;
+    if (this.status === "connected" && this.device !== null) return true;
     if (this.status === "connecting" || this.status === "disconnecting") {
       return false;
     }
@@ -378,12 +378,11 @@ class V5WebClient implements V5Client {
     this.detachDeviceListeners?.();
     this.detachDeviceListeners = null;
     this.stopRefreshTimer();
+    this.setState("error", normalizedError, null);
 
     if (device !== null) {
       await this.tryDisposeDevice(device);
     }
-
-    this.setState("error", normalizedError, null);
   }
 
   private attachDeviceListeners(
@@ -426,12 +425,12 @@ class V5WebClient implements V5Client {
     this.detachDeviceListeners?.();
     this.detachDeviceListeners = null;
     this.stopRefreshTimer();
-    await this.tryDisposeDevice(device);
     this.setState(
       "error",
       new V5WebError("disconnect-error", "V5 device disconnected."),
       null,
     );
+    await this.tryDisposeDevice(device);
   }
 
   private publishDeviceSnapshot(device: V5DeviceLike): void {

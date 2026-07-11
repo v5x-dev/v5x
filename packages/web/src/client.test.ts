@@ -641,6 +641,133 @@ describe("createV5Client", () => {
     expect(disposes).toBe(1);
   });
 
+  test("disconnect during delayed device-disconnect cleanup clears the error and lets a new connection win", async () => {
+    const disposeDeferred = createDeferred<void>();
+    const disposeStarted = createDeferred<void>();
+    const disposeFinished = createDeferred<void>();
+    let disconnected: (() => void) | undefined;
+    let firstDisposes = 0;
+    const firstDevice: FakeDevice = {
+      autoRefresh: true,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      dispose: async () => {
+        firstDisposes++;
+        disposeStarted.resolve(undefined);
+        await disposeDeferred.promise;
+        disposeFinished.resolve(undefined);
+      },
+      refresh: () => okAsync(true),
+      on: (eventName, listener) => {
+        if (eventName === "disconnected") {
+          disconnected = () => (listener as () => void)();
+        }
+      },
+    };
+    const secondDevice: FakeDevice = {
+      autoRefresh: true,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    };
+    const devices = [firstDevice, secondDevice];
+    let factoryCalls = 0;
+    const client = createV5ClientWithFactory({ serial }, () => {
+      const device = devices[factoryCalls++];
+      if (device === undefined)
+        throw new Error("unexpected device factory call");
+      return device;
+    });
+
+    await client.connect();
+    disconnected?.();
+    await disposeStarted.promise;
+
+    expect(client.getSnapshot()).toMatchObject({
+      status: "error",
+      connected: false,
+      error: { code: "disconnect-error" },
+    });
+    await client.disconnect();
+    expect(client.getSnapshot()).toMatchObject({
+      status: "idle",
+      connected: false,
+      error: null,
+    });
+
+    expect(await client.connect()).toBe(true);
+    disposeDeferred.resolve(undefined);
+    await disposeFinished.promise;
+
+    expect(firstDisposes).toBe(1);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "connected",
+      connected: true,
+      error: null,
+    });
+  });
+
+  test("delayed refresh-failure cleanup cannot overwrite an explicit disconnect or reconnection", async () => {
+    const disposeDeferred = createDeferred<void>();
+    const disposeStarted = createDeferred<void>();
+    const disposeFinished = createDeferred<void>();
+    let firstDisposes = 0;
+    const firstDevice: FakeDevice = {
+      autoRefresh: true,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      dispose: async () => {
+        firstDisposes++;
+        disposeStarted.resolve(undefined);
+        await disposeDeferred.promise;
+        disposeFinished.resolve(undefined);
+      },
+      refresh: () => errAsync(new VexSerialError("io", "refresh failed")),
+    };
+    const secondDevice: FakeDevice = {
+      autoRefresh: true,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    };
+    const devices = [firstDevice, secondDevice];
+    let factoryCalls = 0;
+    const client = createV5ClientWithFactory({ serial }, () => {
+      const device = devices[factoryCalls++];
+      if (device === undefined)
+        throw new Error("unexpected device factory call");
+      return device;
+    });
+
+    await client.connect();
+    const refreshPromise = client.refresh();
+    await disposeStarted.promise;
+
+    expect(client.getSnapshot()).toMatchObject({
+      status: "error",
+      connected: false,
+      error: { code: "refresh-error" },
+    });
+    await client.disconnect();
+    expect(client.getSnapshot()).toMatchObject({
+      status: "idle",
+      connected: false,
+      error: null,
+    });
+    expect(await client.connect()).toBe(true);
+
+    disposeDeferred.resolve(undefined);
+    await disposeFinished.promise;
+    await refreshPromise;
+
+    expect(firstDisposes).toBe(1);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "connected",
+      connected: true,
+      error: null,
+    });
+  });
+
   test("thrown refresh errors follow the refresh failure lifecycle", async () => {
     const refreshError = new Error("refresh threw");
     let disconnects = 0;
