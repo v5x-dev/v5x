@@ -1,11 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { zipSync } from "fflate";
-import { errAsync, okAsync } from "neverthrow";
+import { errAsync, ok, okAsync } from "neverthrow";
 import { V5SerialDevice } from "./VexDevice";
 import { V5SerialConnection } from "./VexConnection";
 import { VexFirmwareError, VexProtocolError } from "./VexError";
 import {
+  FactoryEnableH2DPacket,
   FactoryEnableReplyD2HPacket,
+  FactoryStatusH2DPacket,
   FactoryStatusReplyD2HPacket,
 } from "./VexPacketModels";
 import { protocolReply } from "./protocol.test-support";
@@ -46,7 +48,8 @@ test("firmware upload validates an archive and uploads both images", async () =>
           replyIndex++
         ],
       ),
-    uploadFileToDevice: uploadFile,
+    withFileTransfer: async <T>(operation: () => Promise<T>) => operation(),
+    uploadFileToDeviceUnlocked: uploadFile,
     close: async () => {},
   } as unknown as V5SerialConnection;
 
@@ -78,6 +81,90 @@ test("firmware upload validates an archive and uploads both images", async () =>
   }
 });
 
+test("firmware flashing keeps factory enable, upload, and status polling exclusive", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const connection = new V5SerialConnection(serial);
+  const events: string[] = [];
+  const queuedTransfers: Promise<void>[] = [];
+  const factoryReply = protocolReply(FactoryEnableReplyD2HPacket);
+  const finishedReply = protocolReply(FactoryStatusReplyD2HPacket, {
+    status: 0,
+    percent: 100,
+  });
+
+  Object.defineProperty(connection, "isConnected", { value: true });
+  connection.request = ((
+    packet: Parameters<V5SerialConnection["request"]>[0],
+  ) => {
+    if (packet instanceof FactoryEnableH2DPacket) {
+      events.push("enable");
+      queuedTransfers.push(
+        connection.withFileTransfer(async () => {
+          events.push("competing-enable");
+        }),
+      );
+      return okAsync(factoryReply);
+    }
+    if (packet instanceof FactoryStatusH2DPacket) {
+      events.push("status");
+      queuedTransfers.push(
+        connection.withFileTransfer(async () => {
+          events.push("competing-status");
+        }),
+      );
+      return okAsync(finishedReply);
+    }
+    throw new Error("unexpected firmware packet");
+  }) as unknown as typeof connection.request;
+  connection.uploadFileToDevice = () => {
+    throw new Error("factory flashing must not re-acquire the transfer queue");
+  };
+  connection.uploadFileToDeviceUnlocked = async () => {
+    events.push("upload");
+    queuedTransfers.push(
+      connection.withFileTransfer(async () => {
+        events.push("competing-upload");
+      }),
+    );
+    return ok(true);
+  };
+  device.connection = connection;
+
+  const archive = zipSync({
+    "1.2.3/BOOT.bin": new Uint8Array([1, 2]),
+    "1.2.3/assets.bin": new Uint8Array([3, 4]),
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(async () => new Response(archive), {
+    preconnect: originalFetch.preconnect,
+  });
+
+  try {
+    const result = await device.brain.uploadFirmware(
+      "https://example.test/",
+      "1.2.3",
+    );
+    expect(result._unsafeUnwrap()).toBe(true);
+    expect(events.slice(0, 6)).toEqual([
+      "enable",
+      "upload",
+      "status",
+      "enable",
+      "upload",
+      "status",
+    ]);
+    await Promise.all(queuedTransfers);
+    expect(events.slice(6)).toHaveLength(6);
+    expect(
+      events.slice(6).every((event) => event.startsWith("competing-")),
+    ).toBe(true);
+    expect(device.state.isRefreshPaused).toBe(false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("firmware upload reports which factory image upload was rejected", async () => {
   const device = new V5SerialDevice(serial);
   devices.push(device);
@@ -92,7 +179,8 @@ test("firmware upload reports which factory image upload was rejected", async ()
     isConnected: true,
     request: () =>
       okAsync([factoryReply, finishedReply, factoryReply][replyIndex++]),
-    uploadFileToDevice: (): ReturnType<
+    withFileTransfer: async <T>(operation: () => Promise<T>) => operation(),
+    uploadFileToDeviceUnlocked: (): ReturnType<
       V5SerialConnection["uploadFileToDevice"]
     > => okAsync<boolean>(uploadIndex++ === 0),
     close: async () => {},
@@ -133,7 +221,8 @@ test("firmware upload propagates factory status request failures", async () => {
         okAsync(factoryReply),
         errAsync(new VexProtocolError("expected factory status reply")),
       ][replyIndex++],
-    uploadFileToDevice: (): ReturnType<
+    withFileTransfer: async <T>(operation: () => Promise<T>) => operation(),
+    uploadFileToDeviceUnlocked: (): ReturnType<
       V5SerialConnection["uploadFileToDevice"]
     > => okAsync<boolean>(true),
     close: async () => {},
@@ -169,7 +258,8 @@ test("firmware upload reports factory status deadline expiry", async () => {
   device.connection = {
     isConnected: true,
     request: () => okAsync(factoryReply),
-    uploadFileToDevice: (): ReturnType<
+    withFileTransfer: async <T>(operation: () => Promise<T>) => operation(),
+    uploadFileToDeviceUnlocked: (): ReturnType<
       V5SerialConnection["uploadFileToDevice"]
     > => okAsync<boolean>(true),
     close: async () => {},
