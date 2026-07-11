@@ -323,6 +323,13 @@ class V5WebClient implements V5Client {
           device,
           generation,
         );
+      } else if (!result.value) {
+        await this.handleRefreshFailure(
+          undefined,
+          "V5 device refresh did not produce a current snapshot.",
+          device,
+          generation,
+        );
       } else {
         this.publishDeviceSnapshot(device);
       }

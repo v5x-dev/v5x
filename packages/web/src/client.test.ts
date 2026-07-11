@@ -376,6 +376,35 @@ describe("createV5Client", () => {
     expect(disposes).toBe(1);
   });
 
+  test("unsuccessful refreshes detach and dispose the stale device", async () => {
+    let disposes = 0;
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      dispose: async () => {
+        disposes++;
+      },
+      refresh: () => okAsync(false),
+    });
+
+    await client.connect();
+    await client.refresh();
+    const snapshot = client.getSnapshot();
+
+    expect(snapshot).toMatchObject({
+      status: "error",
+      connected: false,
+      device: null,
+    });
+    expect(snapshot.error).toBeInstanceOf(V5WebError);
+    expect(snapshot.error?.code).toBe("refresh-error");
+    expect(snapshot.error?.message).toBe(
+      "V5 device refresh did not produce a current snapshot.",
+    );
+    expect(disposes).toBe(1);
+  });
+
   test("refresh calls coalesce while a refresh is already in flight", async () => {
     const refreshDeferred = createDeferred<boolean>();
     let refreshes = 0;
