@@ -19,6 +19,7 @@ export class PacketView extends DataView<ArrayBuffer> {
     const view = new PacketView(
       packet.data.buffer as ArrayBuffer,
       packet.data.byteOffset,
+      packet.data.byteLength,
     );
     view.position = packet.ackIndex + 1;
     return view;
