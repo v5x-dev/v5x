@@ -976,6 +976,43 @@ test("reader discards a corrupt CDC reply and continues to the next reply", asyn
   await reading;
 });
 
+test("validates a CDC reply independently from a coalesced simple reply", async () => {
+  class ReadableConnection extends V5SerialConnection {
+    start(): Promise<void> {
+      return this.startReader();
+    }
+  }
+
+  const extended = cdc2Reply(86, 30, AckType.CDC2_ACK);
+  const simple = query1Reply(AckType.CDC2_ACK);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array([...extended, ...simple]));
+    },
+  });
+  const connection = new ReadableConnection({} as Serial);
+  connection.reader = stream.getReader();
+  connection.writer = {
+    write: async () => {},
+    close: async () => {},
+    releaseLock: () => {},
+  } as unknown as WritableStreamDefaultWriter<unknown>;
+
+  const extendedResult = connection.request(
+    new FileClearUpH2DPacket(FileVendor.USER),
+    FileClearUpReplyD2HPacket,
+  );
+  const simpleResult = connection.query1();
+  const reading = connection.start();
+
+  expect((await extendedResult).isOk()).toBe(true);
+  expect((await simpleResult).isOk()).toBe(true);
+  expect(connection.callbacksQueue).toHaveLength(0);
+
+  await connection.close();
+  await reading;
+});
+
 describe("whole-program upload atomicity", () => {
   test("INI, cold, and binary uploads share one transaction", async () => {
     const connection = new V5SerialConnection({} as Serial);
