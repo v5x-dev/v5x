@@ -108,6 +108,34 @@ function createFakeDeviceState(): NonNullable<V5DeviceLike["state"]> {
 }
 
 describe("createV5Client", () => {
+  test.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    0,
+    -1,
+  ])("rejects invalid refresh interval %p", (refreshIntervalMs) => {
+    expect(() =>
+      createV5ClientWithFactory({ serial, refreshIntervalMs }, () => ({
+        autoRefresh: true,
+        connect: () => okAsync(undefined),
+        disconnect: async () => {},
+        refresh: () => okAsync(true),
+      })),
+    ).toThrow("refreshIntervalMs must be a positive finite number");
+  });
+
+  test("accepts a positive finite refresh interval", () => {
+    expect(() =>
+      createV5ClientWithFactory({ serial, refreshIntervalMs: 1 }, () => ({
+        autoRefresh: true,
+        connect: () => okAsync(undefined),
+        disconnect: async () => {},
+        refresh: () => okAsync(true),
+      })),
+    ).not.toThrow();
+  });
+
   test("starts unsupported when no serial object exists", () => {
     const client = createV5ClientWithFactory({}, () => ({
       autoRefresh: false,
