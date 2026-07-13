@@ -2,6 +2,7 @@ import type { SerialPort as BunSerialPortRaw } from "bun-serialport";
 import { readdir, realpath, readlink } from "node:fs/promises";
 import { join } from "node:path";
 import { platform } from "node:os";
+import { mapWithConcurrency } from "./utils/concurrency";
 
 export interface SerialPortFilter {
   usbVendorId?: number;
@@ -48,6 +49,24 @@ async function listPorts(): Promise<AdapterPortInfo[]> {
 type ReadTextFile = (path: string) => Promise<string>;
 
 const readTextFile: ReadTextFile = (path) => Bun.file(path).text();
+
+export const LINUX_DISCOVERY_CONCURRENCY = 8;
+
+interface LinuxDiscoveryOperations {
+  readdir(path: string): Promise<string[]>;
+  realpath(path: string): Promise<string>;
+  readlink(path: string): Promise<string>;
+  readUsbAttributes(
+    device: string,
+  ): Promise<Pick<AdapterPortInfo, "vendorId" | "productId" | "serialNumber">>;
+}
+
+const linuxDiscoveryOperations: LinuxDiscoveryOperations = {
+  readdir,
+  realpath,
+  readlink,
+  readUsbAttributes: readLinuxUsbDeviceAttributes,
+};
 
 export async function readLinuxUsbDeviceAttributes(
   device: string,
@@ -241,31 +260,50 @@ export class WebSerialAdapter extends EventTarget implements Serial {
   constructor(
     private readonly os: NodeJS.Platform = platform(),
     private readonly list: () => Promise<AdapterPortInfo[]> = listPorts,
+    private readonly linux: LinuxDiscoveryOperations = linuxDiscoveryOperations,
   ) {
     super();
   }
 
   private async listLinuxPorts(): Promise<AdapterPortInfo[]> {
-    const ttys = await readdir("/sys/class/tty").catch(() => []);
-    const ports: AdapterPortInfo[] = [];
+    const ttys = await this.linux
+      .readdir("/sys/class/tty")
+      .then((names) => names.toSorted())
+      .catch(() => []);
+    const usbAttributes = new Map<
+      string,
+      ReturnType<LinuxDiscoveryOperations["readUsbAttributes"]>
+    >();
 
-    for (const name of ttys) {
-      try {
-        const device = await realpath(`/sys/class/tty/${name}/device`);
-        const subsystem = await readlink(join(device, "subsystem")).catch(
-          () => "",
-        );
-        const info: AdapterPortInfo = { path: `/dev/${name}` };
+    const ports = await mapWithConcurrency(
+      ttys,
+      LINUX_DISCOVERY_CONCURRENCY,
+      async (name): Promise<AdapterPortInfo | undefined> => {
+        try {
+          const device = await this.linux.realpath(
+            `/sys/class/tty/${name}/device`,
+          );
+          const subsystem = await this.linux
+            .readlink(join(device, "subsystem"))
+            .catch(() => "");
+          const info: AdapterPortInfo = { path: `/dev/${name}` };
 
-        if (subsystem.includes("usb")) {
-          Object.assign(info, await readLinuxUsbDeviceAttributes(device));
+          if (subsystem.includes("usb")) {
+            let attributes = usbAttributes.get(device);
+            if (attributes === undefined) {
+              attributes = this.linux.readUsbAttributes(device);
+              usbAttributes.set(device, attributes);
+            }
+            Object.assign(info, await attributes);
+          }
+          return info;
+        } catch {
+          // Not a real device or no permission.
+          return undefined;
         }
-        ports.push(info);
-      } catch {
-        // Not a real device or no permission.
-      }
-    }
-    return ports;
+      },
+    );
+    return ports.filter((port) => port !== undefined);
   }
 
   async getPorts(): Promise<SerialPort[]> {

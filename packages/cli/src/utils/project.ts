@@ -8,6 +8,9 @@ import {
 import { detectProgramType, type ProgramType } from "./detect";
 import { isRecord } from "./guards";
 import { runProcess } from "./process";
+import { mapWithConcurrency } from "./concurrency";
+
+export const ARTIFACT_DISCOVERY_CONCURRENCY = 8;
 
 export interface ProjectInfo {
   path: string;
@@ -155,23 +158,72 @@ async function existingFile(
   return (await stat(path).catch(() => undefined))?.isFile() ? path : undefined;
 }
 
-async function newestNamedBinary(
+export interface ArtifactFileInfo {
+  isDirectory(): boolean;
+  isFile(): boolean;
+  mtimeMs: number;
+}
+
+export interface BinaryDiscoveryOperations {
+  stat(path: string): Promise<ArtifactFileInfo>;
+  scan(root: string, name: string): AsyncIterable<string>;
+}
+
+const binaryDiscoveryOperations: BinaryDiscoveryOperations = {
+  stat,
+  scan(root, name) {
+    return new Bun.Glob(`**/${name}.bin`).scan({ cwd: root, onlyFiles: true });
+  },
+};
+
+function newestCandidate(
+  candidates: Array<{ path: string; modified: number } | undefined>,
+): string | undefined {
+  return candidates
+    .filter((candidate) => candidate !== undefined)
+    .sort(
+      (left, right) =>
+        right.modified - left.modified ||
+        (left.path < right.path ? -1 : left.path > right.path ? 1 : 0),
+    )[0]?.path;
+}
+
+export async function newestNamedBinary(
   root: string,
   name: string,
+  operations: BinaryDiscoveryOperations = binaryDiscoveryOperations,
 ): Promise<string | undefined> {
-  if (!(await stat(root).catch(() => undefined))?.isDirectory())
+  if (!(await operations.stat(root).catch(() => undefined))?.isDirectory())
     return undefined;
 
-  let newest: { path: string; modified: number } | undefined;
-  const glob = new Bun.Glob(`**/${name}.bin`);
-  for await (const relativePath of glob.scan({ cwd: root, onlyFiles: true })) {
+  const conventionalPaths = [
+    resolve(root, "armv7a-vex-v5", "release", `${name}.bin`),
+    resolve(root, "release", `${name}.bin`),
+  ];
+  const conventional = await mapWithConcurrency(
+    conventionalPaths,
+    ARTIFACT_DISCOVERY_CONCURRENCY,
+    async (path) => {
+      const info = await operations.stat(path).catch(() => undefined);
+      return info?.isFile() ? { path, modified: info.mtimeMs } : undefined;
+    },
+  );
+
+  const paths: string[] = [];
+  const conventionalPathSet = new Set(conventionalPaths);
+  for await (const relativePath of operations.scan(root, name)) {
     const path = resolve(root, relativePath);
-    const { mtimeMs } = await stat(path);
-    if (newest === undefined || mtimeMs > newest.modified) {
-      newest = { path, modified: mtimeMs };
-    }
+    if (!conventionalPathSet.has(path)) paths.push(path);
   }
-  return newest?.path;
+  const candidates = await mapWithConcurrency(
+    paths,
+    ARTIFACT_DISCOVERY_CONCURRENCY,
+    async (path) => {
+      const info = await operations.stat(path).catch(() => undefined);
+      return info?.isFile() ? { path, modified: info.mtimeMs } : undefined;
+    },
+  );
+  return newestCandidate([...conventional, ...candidates]);
 }
 
 export async function findProgramArtifact(
@@ -253,12 +305,17 @@ async function validateProgramArtifact(
 export async function validateProgramArtifacts(
   artifacts: ProgramArtifacts,
 ): Promise<ValidatedProgramArtifacts> {
+  const [hot, cold] = await Promise.allSettled([
+    validateProgramArtifact(artifacts.hot, "hot"),
+    artifacts.cold === undefined
+      ? Promise.resolve(undefined)
+      : validateProgramArtifact(artifacts.cold, "cold"),
+  ]);
+  if (hot.status === "rejected") throw hot.reason;
+  if (cold.status === "rejected") throw cold.reason;
   return {
-    hot: await validateProgramArtifact(artifacts.hot, "hot"),
-    cold:
-      artifacts.cold === undefined
-        ? undefined
-        : await validateProgramArtifact(artifacts.cold, "cold"),
+    hot: hot.value,
+    cold: cold.value,
   };
 }
 

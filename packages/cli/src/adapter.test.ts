@@ -67,8 +67,11 @@ await mock.module("bun-serialport", () => ({
   list: async () => [],
 }));
 
-const { WebSerialAdapter, readLinuxUsbDeviceAttributes } =
-  await import("./adapter");
+const {
+  LINUX_DISCOVERY_CONCURRENCY,
+  WebSerialAdapter,
+  readLinuxUsbDeviceAttributes,
+} = await import("./adapter");
 
 describe("WebSerialAdapter", () => {
   test("reads Linux USB vendor, product, and serial attributes", async () => {
@@ -114,6 +117,48 @@ describe("WebSerialAdapter", () => {
       productId: "0501",
       serialNumber: undefined,
     });
+  });
+
+  test("discovers a large Linux TTY set with bounded concurrency and stable ordering", async () => {
+    const names = Array.from(
+      { length: 100 },
+      (_, index) => `ttyACM${String(99 - index).padStart(3, "0")}`,
+    );
+    names.push("denied");
+    let active = 0;
+    let maximumActive = 0;
+    let attributeReads = 0;
+
+    const adapter = new WebSerialAdapter("linux", async () => [], {
+      readdir: async () => names,
+      realpath: async (path) => {
+        if (path.endsWith("/denied/device")) throw new Error("EACCES");
+        active++;
+        maximumActive = Math.max(maximumActive, active);
+        await Bun.sleep(1);
+        active--;
+        const index = Number(path.match(/ttyACM(\d+)/)?.[1] ?? 0);
+        return `/sys/devices/usb-${index % 10}`;
+      },
+      readlink: async () => "/sys/bus/usb",
+      readUsbAttributes: async () => {
+        attributeReads++;
+        await Bun.sleep(1);
+        return { vendorId: "2888", productId: "0501" };
+      },
+    });
+
+    const ports = await adapter.getPorts();
+
+    expect(maximumActive).toBeGreaterThan(1);
+    expect(maximumActive).toBeLessThanOrEqual(LINUX_DISCOVERY_CONCURRENCY);
+    expect(attributeReads).toBe(10);
+    expect(ports.map((port) => port.getInfo().path)).toEqual(
+      names
+        .filter((name) => name !== "denied")
+        .toSorted()
+        .map((name) => `/dev/${name}`),
+    );
   });
 
   test("reuses port objects so open state is shared", async () => {

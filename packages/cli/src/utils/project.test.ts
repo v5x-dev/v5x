@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, truncate, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { detectProgramType } from "./detect";
 import {
@@ -8,6 +8,8 @@ import {
   findProgramArtifact,
   findProgramArtifacts,
   inspectProject,
+  newestNamedBinary,
+  ARTIFACT_DISCOVERY_CONCURRENCY,
   PROGRAM_ARTIFACT_SIZE_LIMIT,
   validateProgramArtifacts,
 } from "./project";
@@ -104,6 +106,67 @@ test("does not upload an unrelated binary from the project tree", async () => {
   };
 
   expect(findProgramArtifact(project)).rejects.toThrow("pass --file");
+});
+
+test("stats large artifact candidate sets concurrently and resolves ties deterministically", async () => {
+  const root = resolve("/synthetic/target");
+  const relativePaths = Array.from(
+    { length: 100 },
+    (_, index) => `profile-${String(99 - index).padStart(3, "0")}/robot.bin`,
+  );
+  let active = 0;
+  let maximumActive = 0;
+
+  const artifact = await newestNamedBinary(root, "robot", {
+    async stat(path) {
+      if (path === root) {
+        return { isDirectory: () => true, isFile: () => false, mtimeMs: 0 };
+      }
+      if (path.includes("release")) throw new Error("ENOENT");
+      active++;
+      maximumActive = Math.max(maximumActive, active);
+      await Bun.sleep(1);
+      active--;
+      const newest =
+        path.includes("profile-041") || path.includes("profile-042");
+      return {
+        isDirectory: () => false,
+        isFile: () => true,
+        mtimeMs: newest ? 2 : 1,
+      };
+    },
+    scan: async function* () {
+      for (const path of relativePaths) yield path;
+    },
+  });
+
+  expect(maximumActive).toBeGreaterThan(1);
+  expect(maximumActive).toBeLessThanOrEqual(ARTIFACT_DISCOVERY_CONCURRENCY);
+  expect(artifact).toBe(resolve(root, "profile-041/robot.bin"));
+});
+
+test("checks conventional Cargo output first and still chooses the newest fallback", async () => {
+  const root = resolve("/synthetic/target");
+  const conventional = resolve(root, "armv7a-vex-v5/release/robot.bin");
+  const fallback = resolve(root, "debug/robot.bin");
+  let conventionalChecked = false;
+
+  expect(
+    await newestNamedBinary(root, "robot", {
+      async stat(path) {
+        if (path === conventional) conventionalChecked = true;
+        return {
+          isDirectory: () => path === root,
+          isFile: () => path === conventional || path === fallback,
+          mtimeMs: path === fallback ? 20 : path === conventional ? 10 : 0,
+        };
+      },
+      scan: async function* () {
+        expect(conventionalChecked).toBe(true);
+        yield "debug/robot.bin";
+      },
+    }),
+  ).toBe(fallback);
 });
 
 test("finds both halves of a PROS package", async () => {
