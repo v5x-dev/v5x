@@ -180,6 +180,7 @@ class V5WebClient implements V5Client {
   private refreshPromise: Promise<void> | null = null;
   private generation = 0;
   private detachDeviceListeners: (() => void) | null = null;
+  private snapshot: V5Snapshot;
 
   constructor(options: V5ClientOptions, createDevice: V5DeviceFactory) {
     if (
@@ -197,9 +198,14 @@ class V5WebClient implements V5Client {
     this.refreshIntervalMs = options.refreshIntervalMs;
     this.createDevice = createDevice;
     this.status = this.supported ? "idle" : "unsupported";
+    this.snapshot = this.createSnapshot();
   }
 
   getSnapshot(): V5Snapshot {
+    return this.snapshot;
+  }
+
+  private createSnapshot(): V5Snapshot {
     const { status } = this;
     return {
       status,
@@ -365,6 +371,7 @@ class V5WebClient implements V5Client {
     this.status = status;
     this.error = error;
     this.setDeviceSnapshot(deviceSnapshot);
+    this.snapshot = this.createSnapshot();
     this.listeners.emit();
   }
 
@@ -450,6 +457,7 @@ class V5WebClient implements V5Client {
     const snapshot = createDeviceSnapshot(device.state, this.deviceSnapshot);
     if (snapshot === this.deviceSnapshot) return;
     this.setDeviceSnapshot(snapshot);
+    this.snapshot = this.createSnapshot();
     this.listeners.emit();
   }
 

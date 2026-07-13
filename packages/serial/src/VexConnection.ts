@@ -77,6 +77,18 @@ type HostBoundPacketType<T extends HostBoundPacket> = {
   name: string;
 };
 
+interface PendingPacketCallback extends IPacketCallback {
+  active: boolean;
+  next: PendingPacketCallback | undefined;
+  previous: PendingPacketCallback | undefined;
+  queue: PendingPacketQueue;
+}
+
+interface PendingPacketQueue {
+  head: PendingPacketCallback | undefined;
+  tail: PendingPacketCallback | undefined;
+}
+
 const thePacketEncoder = PacketEncoder.getInstance();
 const SCREEN_CAPTURE_HEIGHT = 272;
 const SCREEN_CAPTURE_WIDTH = 480;
@@ -114,7 +126,11 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   port: SerialPort | undefined;
   serial: Serial;
 
-  callbacksQueue: IPacketCallback[] = [];
+  private pendingCallbacks = new Map<string, PendingPacketQueue>();
+  private rawCallbacks: PendingPacketQueue = {
+    head: undefined,
+    tail: undefined,
+  };
   private pendingCommandTails = new Map<string, Promise<void>>();
   private _onPortDisconnect: (() => void) | null = null;
   private _closePromise: Promise<void> | null = null;
@@ -124,6 +140,24 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   private _wasConnected = false;
   protected fileTransferTail: Promise<unknown> = Promise.resolve();
   protected fileTransferDepth = 0;
+
+  /** Pending callbacks, exposed as a snapshot for backwards compatibility. */
+  get callbacksQueue(): IPacketCallback[] {
+    const callbacks: IPacketCallback[] = [];
+    for (const queue of this.pendingCallbacks.values()) {
+      for (let callback = queue.head; callback; callback = callback.next) {
+        callbacks.push(callback);
+      }
+    }
+    for (
+      let callback = this.rawCallbacks.head;
+      callback;
+      callback = callback.next
+    ) {
+      callbacks.push(callback);
+    }
+    return callbacks;
+  }
 
   get isConnected(): boolean {
     return (
@@ -195,13 +229,13 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
       this.reader !== undefined ||
       this.writer !== undefined ||
       this._onPortDisconnect !== null ||
-      this.callbacksQueue.length > 0
+      this.hasPendingCallbacks()
     );
   }
 
   private async _doClose(): Promise<void> {
     // 1. Reject every pending callback so callers don't hang.
-    for (const callback of this.callbacksQueue.splice(0)) {
+    for (const callback of this.drainPendingCallbacks()) {
       clearTimeout(callback.timeout);
       callback.callback(AckType.NOT_CONNECTED);
     }
@@ -433,14 +467,24 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
 
       const data: Uint8Array =
         rawData instanceof DeviceBoundPacket ? rawData.data : rawData;
-      const cb = {
+      const queue =
+        rawData instanceof DeviceBoundPacket
+          ? this.getPendingQueue(
+              rawData.commandId,
+              rawData.commandExtendedId,
+              true,
+            )
+          : this.rawCallbacks;
+      const cb: PendingPacketCallback = {
+        active: true,
         callback: resolve,
         timeout: setTimeout(() => {
-          const index = this.callbacksQueue.indexOf(cb);
-          if (index === -1) return;
-          this.callbacksQueue.splice(index, 1);
+          if (!this.removePendingCallback(cb)) return;
           cb.callback(AckType.TIMEOUT);
         }, timeout),
+        next: undefined,
+        previous: undefined,
+        queue,
         wantedCommandId:
           rawData instanceof DeviceBoundPacket ? rawData.commandId : undefined,
         wantedCommandExId:
@@ -448,12 +492,10 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
             ? rawData.commandExtendedId
             : undefined,
       };
-      this.callbacksQueue.push(cb);
+      this.enqueuePendingCallback(cb);
 
       this.writer.write(data).catch(() => {
-        const index = this.callbacksQueue.indexOf(cb);
-        if (index === -1) return;
-        this.callbacksQueue.splice(index, 1);
+        if (!this.removePendingCallback(cb)) return;
         clearTimeout(cb.timeout);
         resolve(AckType.WRITE_ERROR);
       });
@@ -553,34 +595,13 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
           }
         }
 
-        // Route the reply to the first callback wanting these command
-        // IDs. Untyped callbacks (raw writes, which want nothing in
-        // particular) are only used as a fallback so they cannot steal
-        // a reply from a typed request that is also in flight.
-        let matchIdx = -1;
-        let untypedIdx = -1;
-        for (let i = 0; i < this.callbacksQueue.length; i++) {
-          const candidate = this.callbacksQueue[i]!;
-          if (
-            candidate.wantedCommandId === undefined &&
-            candidate.wantedCommandExId === undefined
-          ) {
-            if (untypedIdx === -1) untypedIdx = i;
-            continue;
-          }
-          if (
-            (candidate.wantedCommandId === undefined ||
-              candidate.wantedCommandId === cmdId) &&
-            (candidate.wantedCommandExId === undefined ||
-              candidate.wantedCommandExId === cmdExId)
-          ) {
-            matchIdx = i;
-            break;
-          }
-        }
-        if (matchIdx === -1) matchIdx = untypedIdx;
+        // Typed requests are routed directly by command pair. Raw callbacks
+        // are a separate FIFO fallback and therefore cannot steal typed
+        // replies.
+        const callbackInfo =
+          this.shiftPendingCallback(cmdId!, cmdExId) ?? this.shiftRawCallback();
 
-        if (matchIdx === -1) {
+        if (callbackInfo === undefined) {
           this.reportWarning("received a reply with no matching request", {
             commandId: cmdId,
             commandExtendedId: cmdExId,
@@ -589,7 +610,6 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
           continue;
         }
 
-        const callbackInfo: IPacketCallback = this.callbacksQueue[matchIdx]!;
         const wantedCmdId = callbackInfo.wantedCommandId;
         const wantedCmdExId = callbackInfo.wantedCommandExId;
 
@@ -619,8 +639,6 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
         }
 
         clearTimeout(callbackInfo.timeout);
-
-        this.callbacksQueue.splice(matchIdx, 1);
       } catch (e) {
         if (!(e instanceof Error && e.message === "No data")) {
           this.reportWarning("reader loop stopped by a read error", {
@@ -634,6 +652,102 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
       } finally {
         cache.discard(sliceIdx);
       }
+  }
+
+  private pendingKey(commandId: number, commandExtendedId: number | undefined) {
+    return `${commandId}:${commandExtendedId ?? ""}`;
+  }
+
+  private getPendingQueue(
+    commandId: number,
+    commandExtendedId: number | undefined,
+    create: boolean,
+  ): PendingPacketQueue {
+    const key = this.pendingKey(commandId, commandExtendedId);
+    let queue = this.pendingCallbacks.get(key);
+    if (queue === undefined && create) {
+      const created = { head: undefined, tail: undefined };
+      this.pendingCallbacks.set(key, created);
+      queue = created;
+    }
+    return queue ?? { head: undefined, tail: undefined };
+  }
+
+  private enqueuePendingCallback(callback: PendingPacketCallback): void {
+    const tail = callback.queue.tail;
+    callback.previous = tail;
+    if (tail === undefined) callback.queue.head = callback;
+    else tail.next = callback;
+    callback.queue.tail = callback;
+  }
+
+  private removePendingCallback(callback: PendingPacketCallback): boolean {
+    if (!callback.active) return false;
+    callback.active = false;
+    const { queue, previous, next } = callback;
+    if (previous === undefined) queue.head = next;
+    else previous.next = next;
+    if (next === undefined) queue.tail = previous;
+    else next.previous = previous;
+    callback.previous = undefined;
+    callback.next = undefined;
+    if (
+      queue !== this.rawCallbacks &&
+      queue.head === undefined &&
+      callback.wantedCommandId !== undefined
+    ) {
+      this.pendingCallbacks.delete(
+        this.pendingKey(callback.wantedCommandId, callback.wantedCommandExId),
+      );
+    }
+    return true;
+  }
+
+  private shiftPendingCallback(
+    commandId: number,
+    commandExtendedId: number | undefined,
+  ): PendingPacketCallback | undefined {
+    const queue = this.getPendingQueue(commandId, commandExtendedId, false);
+    const callback = queue.head;
+    if (callback !== undefined) this.removePendingCallback(callback);
+    return callback;
+  }
+
+  private shiftRawCallback(): PendingPacketCallback | undefined {
+    const callback = this.rawCallbacks.head;
+    if (callback !== undefined) this.removePendingCallback(callback);
+    return callback;
+  }
+
+  private hasPendingCallbacks(): boolean {
+    return (
+      this.pendingCallbacks.size > 0 || this.rawCallbacks.head !== undefined
+    );
+  }
+
+  private drainPendingCallbacks(): PendingPacketCallback[] {
+    const callbacks: PendingPacketCallback[] = [];
+    for (const queue of this.pendingCallbacks.values()) {
+      for (let callback = queue.head; callback; ) {
+        const next = callback.next;
+        callback.active = false;
+        callback.previous = undefined;
+        callback.next = undefined;
+        callbacks.push(callback);
+        callback = next;
+      }
+    }
+    for (let callback = this.rawCallbacks.head; callback; ) {
+      const next = callback.next;
+      callback.active = false;
+      callback.previous = undefined;
+      callback.next = undefined;
+      callbacks.push(callback);
+      callback = next;
+    }
+    this.pendingCallbacks.clear();
+    this.rawCallbacks = { head: undefined, tail: undefined };
+    return callbacks;
   }
 
   query1(): ResultAsync<Query1ReplyD2HPacket, VexSerialError> {

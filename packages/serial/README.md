@@ -115,3 +115,33 @@ bun run build
 ```
 
 The build emits JavaScript bundles and TypeScript declarations under `dist/`.
+
+### Packet registry and browser bundle measurement
+
+The complete entry point registers every reply class explicitly. Packet
+decoding no longer discovers classes by enumerating the packet-model module at
+runtime. Consumers that only need framing, CRC, packet base classes, and a
+custom reply registry can import `@v5x/serial/packet-core`; that entry point
+does not retain file-transfer, firmware, screenshot, or dashboard models.
+Register only the reply classes the application accepts with
+`PacketEncoder.getInstance().registerPacketTypes(...)`.
+
+Run `bun run measure:bundles` in this package to report reproducible minified
+byte sizes for the complete browser entry and the packet-core entry.
+
+### File-transfer window semantics
+
+The `windowSize` returned by `InitFileTransferReplyD2HPacket` is the maximum
+data size for one `ReadFile` or `WriteFile` block. It is not a count of blocks
+that may be outstanding. This follows from the wire model: read and write
+replies carry only the shared CDC2 command and function IDs; write replies have
+no address, sequence number, or request identifier with which to correlate an
+individual outstanding block. A read address can validate a reply after it is
+routed, but cannot make write failures unambiguous.
+
+Transfers therefore intentionally remain stop-and-wait. The advertised value
+is clamped to the library's 4096-byte block limit and used only as the chunk
+size. There is no safe before/after pipelining benchmark to run because the
+protocol does not expose the correlation needed to enable pipelining without
+risking data corruption. Hardware throughput remains dependent on one USB
+round trip per block.
