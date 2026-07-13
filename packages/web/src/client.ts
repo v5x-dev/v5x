@@ -111,6 +111,10 @@ export interface V5DeviceSnapshot {
 
 export interface V5ClientOptions {
   serial?: Serial;
+  /**
+   * Background refresh interval in milliseconds. When provided, this must be
+   * a positive finite number.
+   */
   refreshIntervalMs?: number;
 }
 
@@ -178,6 +182,15 @@ class V5WebClient implements V5Client {
   private detachDeviceListeners: (() => void) | null = null;
 
   constructor(options: V5ClientOptions, createDevice: V5DeviceFactory) {
+    if (
+      options.refreshIntervalMs !== undefined &&
+      (!Number.isFinite(options.refreshIntervalMs) ||
+        options.refreshIntervalMs <= 0)
+    ) {
+      throw new RangeError(
+        "refreshIntervalMs must be a positive finite number",
+      );
+    }
     this.serial = options.serial ?? getDefaultSerial();
     this.supported = isWebSerialSupported(this.serial);
     this.unavailableReason = getWebSerialUnavailableReason(this.serial);

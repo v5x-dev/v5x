@@ -22,6 +22,10 @@ if (connected) {
 
 Web Serial is browser-only and requires HTTPS or `localhost`. Call `connect()` from a user gesture so the browser can show the permission prompt.
 
+Pass `refreshIntervalMs` to enable background refreshes. When provided, it must
+be a positive finite number; `createV5Client()` throws a `RangeError` for zero,
+negative, `NaN`, or infinite values.
+
 When Web Serial is unavailable, `V5Snapshot.unavailableReason` and
 `getWebSerialUnavailableReason()` return one of these stable strings, in this
 detection order:
