@@ -217,7 +217,6 @@ describe("createV5Client", () => {
     expect(statuses).toEqual([
       "connecting",
       "connected",
-      "connected",
       "disconnecting",
       "idle",
     ]);
@@ -575,6 +574,30 @@ describe("createV5Client", () => {
     expect(snapshot.device?.brain.battery.batteryPercent).toBe(82);
     expect(snapshot.device?.brain.activeProgram).toBe(3);
     expect(snapshot.device?.radio.isConnected).toBe(true);
+  });
+
+  test("unchanged refreshes preserve the device snapshot and do not notify", async () => {
+    const state = createFakeDeviceState();
+    const client = createClient({
+      autoRefresh: true,
+      state,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    });
+    let notifications = 0;
+    client.subscribe(() => notifications++);
+
+    await client.connect();
+    const before = client.getSnapshot();
+    notifications = 0;
+
+    await client.refresh();
+    const after = client.getSnapshot();
+
+    expect(after.deviceVersion).toBe(before.deviceVersion);
+    expect(after.device).toBe(before.device);
+    expect(notifications).toBe(0);
   });
 
   test("device disconnected events detach the device and publish an error snapshot", async () => {

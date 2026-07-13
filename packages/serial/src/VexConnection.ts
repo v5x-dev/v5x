@@ -484,9 +484,9 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   }
 
   protected async readData(
-    cache: Uint8Array,
+    cache: ReceiveBuffer,
     expectedSize: number,
-  ): Promise<Uint8Array> {
+  ): Promise<void> {
     if (this.reader == null) throw new Error("No reader");
 
     while (cache.byteLength < expectedSize) {
@@ -494,56 +494,56 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
 
       if (isDone) throw new Error("No data");
 
-      cache = binaryArrayJoin(cache, readData as Uint8Array);
+      cache.append(readData as Uint8Array);
     }
-
-    return cache;
   }
 
   protected async startReader(): Promise<void> {
-    let cache: Uint8Array = new Uint8Array([]);
+    const cache = new ReceiveBuffer();
     let sliceIdx = 0;
     for (;;)
       try {
-        cache = await this.readData(cache, 5);
+        await this.readData(cache, 5);
         sliceIdx = 0;
 
-        while (!thePacketEncoder.validateHeader(cache)) {
-          const nextHeader = cache.findIndex(
+        while (!thePacketEncoder.validateHeader(cache.bytes)) {
+          const bytes = cache.bytes;
+          const nextHeader = bytes.findIndex(
             (byte, index) =>
               index > 0 &&
               byte === PacketEncoder.HEADER_TO_HOST[0] &&
-              cache[index + 1] === PacketEncoder.HEADER_TO_HOST[1],
+              bytes[index + 1] === PacketEncoder.HEADER_TO_HOST[1],
           );
           if (nextHeader >= 0) {
-            cache = cache.slice(nextHeader);
+            cache.discard(nextHeader);
           } else {
-            cache = cache.slice(
-              cache.at(-1) === PacketEncoder.HEADER_TO_HOST[0]
+            cache.discard(
+              bytes.at(-1) === PacketEncoder.HEADER_TO_HOST[0]
                 ? -1
-                : cache.length,
+                : bytes.length,
             );
           }
-          cache = await this.readData(cache, 5);
+          await this.readData(cache, 5);
         }
 
-        const payloadExpectedSize = thePacketEncoder.getPayloadSize(cache);
-        const n = thePacketEncoder.getHostHeaderLength(cache);
+        const payloadExpectedSize = thePacketEncoder.getPayloadSize(
+          cache.bytes,
+        );
+        const n = thePacketEncoder.getHostHeaderLength(cache.bytes);
         const totalSize = n + payloadExpectedSize;
 
-        cache = await this.readData(cache, totalSize);
+        await this.readData(cache, totalSize);
         sliceIdx = totalSize;
+        const packet = cache.copy(totalSize);
 
-        const cmdId = cache[2];
+        const cmdId = packet[2];
         const hasExtId = cmdId === 88 || cmdId === 86;
-        const cmdExId = hasExtId ? cache[n] : undefined;
+        const cmdExId = hasExtId ? packet[n] : undefined;
 
-        const ack = cache[n + 1];
+        const ack = packet[n + 1];
 
         if (hasExtId) {
-          if (
-            !thePacketEncoder.validateMessageCdc(cache.subarray(0, totalSize))
-          ) {
+          if (!thePacketEncoder.validateMessageCdc(packet)) {
             this.reportWarning("discarding a reply with an invalid CDC CRC", {
               commandId: cmdId,
               commandExtendedId: cmdExId,
@@ -593,7 +593,6 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
         const wantedCmdId = callbackInfo.wantedCommandId;
         const wantedCmdExId = callbackInfo.wantedCommandExId;
 
-        const data = cache.slice(0, sliceIdx);
         const PackageType = thePacketEncoder.getPacketType(
           wantedCmdId,
           wantedCmdExId,
@@ -605,15 +604,10 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
               { commandId: wantedCmdId, commandExtendedId: wantedCmdExId },
             );
           }
-          callbackInfo.callback(
-            data.buffer.slice(
-              data.byteOffset,
-              data.byteOffset + data.byteLength,
-            ),
-          );
+          callbackInfo.callback(packet.buffer);
         } else {
-          if (PackageType.isValidPacket(data, n)) {
-            callbackInfo.callback(new PackageType(data));
+          if (PackageType.isValidPacket(packet, n)) {
+            callbackInfo.callback(new PackageType(packet));
           } else {
             this.reportWarning(
               "reply failed packet validation; delivering its ack instead",
@@ -631,14 +625,14 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
         if (!(e instanceof Error && e.message === "No data")) {
           this.reportWarning("reader loop stopped by a read error", {
             error: e,
-            pendingBytes: cache,
+            pendingBytes: cache.bytes,
           });
         }
 
         await this.close();
         break;
       } finally {
-        cache = cache.slice(sliceIdx);
+        cache.discard(sliceIdx);
       }
   }
 
@@ -908,7 +902,7 @@ export class V5SerialConnection extends VexSerialConnection {
         }
 
         const receivedSize = Math.min(p2.length, remainingSize);
-        fileBuf.set(new Uint8Array(p2.buf, 0, receivedSize), bufferOffset);
+        fileBuf.set(p2.buf.subarray(0, receivedSize), bufferOffset);
         bufferOffset += receivedSize;
         nextAddress += receivedSize;
         progressCallback?.(bufferOffset, fileSize);
@@ -1263,17 +1257,66 @@ export class V5SerialConnection extends VexSerialConnection {
   }
 }
 
-function binaryArrayJoin(
-  left: Uint8Array | ArrayBuffer | null,
-  right: Uint8Array | ArrayBuffer | null,
-): Uint8Array {
-  const leftSize = left != null ? left.byteLength : 0;
-  const rightSize = right != null ? right.byteLength : 0;
-  const all = new Uint8Array(leftSize + rightSize);
-  if (all.length === 0) return new Uint8Array();
-  if (left != null) all.set(new Uint8Array(left), 0);
-  if (right != null) all.set(new Uint8Array(right), leftSize);
-  return all;
+/**
+ * A growable receive queue. Parsed packets are copied out before their bytes
+ * are discarded, so views into this reusable storage never escape the reader.
+ */
+class ReceiveBuffer {
+  private storage: Uint8Array<ArrayBuffer> = new Uint8Array(0);
+  private start = 0;
+  private end = 0;
+
+  get byteLength(): number {
+    return this.end - this.start;
+  }
+
+  get bytes(): Uint8Array<ArrayBuffer> {
+    return this.storage.subarray(this.start, this.end);
+  }
+
+  append(chunk: Uint8Array): void {
+    this.reserve(chunk.byteLength);
+    this.storage.set(chunk, this.end);
+    this.end += chunk.byteLength;
+  }
+
+  copy(length: number): Uint8Array<ArrayBuffer> {
+    return this.bytes.slice(0, length);
+  }
+
+  discard(length: number): void {
+    this.start += length < 0 ? this.byteLength + length : length;
+    if (this.start < 0) this.start = 0;
+    if (this.start > this.end) this.start = this.end;
+    if (this.start === this.end) {
+      this.start = 0;
+      this.end = 0;
+    } else if (this.start >= 4096 && this.start * 2 >= this.storage.length) {
+      this.storage.copyWithin(0, this.start, this.end);
+      this.end -= this.start;
+      this.start = 0;
+    }
+  }
+
+  private reserve(additional: number): void {
+    const required = this.byteLength + additional;
+    if (this.storage.length - this.end >= additional) return;
+
+    if (this.storage.length >= required) {
+      this.storage.copyWithin(0, this.start, this.end);
+      this.end = this.byteLength;
+      this.start = 0;
+      return;
+    }
+
+    const storage: Uint8Array<ArrayBuffer> = new Uint8Array(
+      Math.max(required, Math.max(64, this.storage.length * 2)),
+    );
+    storage.set(this.bytes);
+    this.end = this.byteLength;
+    this.start = 0;
+    this.storage = storage;
+  }
 }
 
 function getTransferChunkSize(windowSize: number): number {
