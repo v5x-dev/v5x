@@ -17,7 +17,13 @@ import rm from "./commands/rm";
 import run from "./commands/run";
 import screenshot from "./commands/screenshot";
 import upload from "./commands/upload";
-import { cliExitCode, formatCliError, isVerbose } from "./errors";
+import {
+  cliExitCode,
+  formatCliError,
+  formatCliJsonError,
+  isJsonOutput,
+  isVerbose,
+} from "./errors";
 
 const program = sade("v5x")
   .version(pkg.version)
@@ -46,6 +52,10 @@ for (const register of commands) register(program);
 try {
   await program.parse(process.argv);
 } catch (error) {
-  console.error(formatCliError(error, isVerbose()));
+  console.error(
+    isJsonOutput()
+      ? formatCliJsonError(error)
+      : formatCliError(error, isVerbose()),
+  );
   process.exitCode = cliExitCode(error);
 }

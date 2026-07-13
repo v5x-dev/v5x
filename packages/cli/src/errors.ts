@@ -43,6 +43,19 @@ export function isVerbose(
   return argv.includes("--verbose") || environment.V5X_DEBUG === "1";
 }
 
+export function isJsonOutput(argv: string[] = process.argv): boolean {
+  return argv.includes("--json");
+}
+
+export function formatCliJsonError(error: unknown): string {
+  return JSON.stringify({
+    error: {
+      message: error instanceof Error ? error.message : String(error),
+      exitCode: cliExitCode(error),
+    },
+  });
+}
+
 export function formatCliError(error: unknown, verbose: boolean): string {
   const detail =
     verbose && error instanceof Error && error.stack

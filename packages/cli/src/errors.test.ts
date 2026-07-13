@@ -6,6 +6,8 @@ import {
   cliExitCode,
   exitCodeForSerialError,
   formatCliError,
+  formatCliJsonError,
+  isJsonOutput,
   isVerbose,
 } from "./errors";
 
@@ -26,6 +28,43 @@ describe("CLI errors", () => {
     expect(isVerbose(["bun", "v5x", "--verbose"], {})).toBe(true);
     expect(isVerbose(["bun", "v5x"], { V5X_DEBUG: "1" })).toBe(true);
     expect(isVerbose(["bun", "v5x"], {})).toBe(false);
+  });
+
+  test("detects JSON output regardless of argument position", () => {
+    expect(isJsonOutput(["bun", "v5x", "devices", "--json"])).toBe(true);
+    expect(isJsonOutput(["bun", "v5x", "devices"])).toBe(false);
+  });
+
+  test.each([
+    ["usage", new CliError("missing slot", CLI_EXIT_CODE.USAGE), 2],
+    [
+      "no-device",
+      new CliError("no V5 device found", CLI_EXIT_CODE.NO_DEVICE),
+      3,
+    ],
+    [
+      "serial/device",
+      new CliError("read failed: protocol", CLI_EXIT_CODE.DEVICE, {
+        cause: new VexSerialError("protocol", "bad response"),
+      }),
+      4,
+    ],
+    ["generic", new Error("unexpected failure"), 1],
+  ])("formats %s failures with the stable JSON shape", (_, error, exitCode) => {
+    expect(JSON.parse(formatCliJsonError(error))).toEqual({
+      error: { message: error.message, exitCode },
+    });
+  });
+
+  test("does not expose stack traces or serial error kinds in JSON", () => {
+    const error = new CliError("device operation failed", CLI_EXIT_CODE.IO, {
+      cause: new VexSerialError("io", "port closed"),
+    });
+    const output = formatCliJsonError(error);
+
+    expect(output).not.toContain("stack");
+    expect(output).not.toContain('"kind"');
+    expect(output).not.toContain("port closed");
   });
 
   test("prints a concise error by default and a stack when verbose", () => {
