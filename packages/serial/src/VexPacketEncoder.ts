@@ -1,6 +1,5 @@
 import { CrcGenerator } from "./VexCRC.js";
 import { HostBoundPacket, Packet } from "./VexPacketBase.js";
-import * as AllPackets from "./VexPacketModels.js";
 
 const textEncoder = new TextEncoder();
 const HEADER_TO_DEVICE = Uint8Array.of(201, 54, 184, 71);
@@ -37,20 +36,17 @@ export class PacketEncoder {
     return Packet.ENCODER;
   }
 
-  private constructor() {
-    for (const packet of Object.values(AllPackets)) {
-      if (
-        typeof packet === "function" &&
-        packet.prototype instanceof HostBoundPacket
-      ) {
-        const type = packet as typeof HostBoundPacket;
-        let byExtendedId = this.allPacketsTable.get(type.COMMAND_ID);
-        if (byExtendedId === undefined) {
-          byExtendedId = new Map();
-          this.allPacketsTable.set(type.COMMAND_ID, byExtendedId);
-        }
-        byExtendedId.set(type.COMMAND_EXTENDED_ID, type);
+  private constructor() {}
+
+  /** Register reply packet classes without retaining an entire module object. */
+  registerPacketTypes(types: Iterable<typeof HostBoundPacket>): void {
+    for (const type of types) {
+      let byExtendedId = this.allPacketsTable.get(type.COMMAND_ID);
+      if (byExtendedId === undefined) {
+        byExtendedId = new Map();
+        this.allPacketsTable.set(type.COMMAND_ID, byExtendedId);
       }
+      byExtendedId.set(type.COMMAND_EXTENDED_ID, type);
     }
   }
 

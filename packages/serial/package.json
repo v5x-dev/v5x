@@ -12,16 +12,22 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./packet-core": {
+      "types": "./dist/VexPacketCore.d.ts",
+      "import": "./dist/packet-core.js",
+      "require": "./dist/packet-core.cjs"
     }
   },
   "scripts": {
     "build": "bun run clean && bun run build:dts && bun run build:esm && bun run build:cjs",
-    "build:esm": "bun build ./src/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external unzipit --external neverthrow",
-    "build:cjs": "bun build ./src/index.ts --target node --format cjs --sourcemap=linked --outdir ./dist --entry-naming=index.cjs --external unzipit --external neverthrow",
+    "build:esm": "bun build ./src/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external unzipit --external neverthrow && bun build ./src/VexPacketCore.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=packet-core.js",
+    "build:cjs": "bun build ./src/index.ts --target node --format cjs --sourcemap=linked --outdir ./dist --entry-naming=index.cjs --external unzipit --external neverthrow && bun build ./src/VexPacketCore.ts --target node --format cjs --sourcemap=linked --outdir ./dist --entry-naming=packet-core.cjs",
     "build:dts": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
     "test": "bun test",
+    "measure:bundles": "bun ./scripts/measure-bundles.ts",
     "prepack": "bun run build && bun ../../scripts/add-dom-serial-references.ts dist",
     "clean": "rm -rf dist"
   },

@@ -16,9 +16,15 @@ import {
   ReadFileReplyD2HPacket,
   ReadKeyValueH2DPacket,
   WriteKeyValueH2DPacket,
+  Query1ReplyD2HPacket,
 } from "./VexPacket";
 
 const encoder = PacketEncoder.getInstance();
+
+test("the explicit reply registry preserves packet lookup", () => {
+  expect(encoder.getPacketType(33, undefined)).toBe(Query1ReplyD2HPacket);
+  expect(encoder.getPacketType(86, 20)).toBe(ReadFileReplyD2HPacket);
+});
 
 function hostPacket(
   command: number,

@@ -600,6 +600,24 @@ describe("createV5Client", () => {
     expect(notifications).toBe(0);
   });
 
+  test("getSnapshot preserves identity until a state change", async () => {
+    const client = createClient({
+      autoRefresh: true,
+      state: createFakeDeviceState(),
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    });
+    const initial = client.getSnapshot();
+
+    expect(client.getSnapshot()).toBe(initial);
+    await client.connect();
+
+    const connected = client.getSnapshot();
+    expect(connected).not.toBe(initial);
+    expect(client.getSnapshot()).toBe(connected);
+  });
+
   test("device disconnected events detach the device and publish an error snapshot", async () => {
     let disconnected: (() => void) | undefined;
     let disposes = 0;
