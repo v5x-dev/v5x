@@ -10,6 +10,7 @@ import {
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { unzipSync } from "fflate";
 import { hasErrorCode, isRecord, requireOptionValue } from "./guards";
+import { mapWithConcurrency } from "./concurrency";
 
 export type ProjectToolchain = "pros" | "vexide";
 
@@ -40,6 +41,7 @@ export interface CreateProjectOptions {
 const FETCH_TIMEOUT_MS = 30_000;
 const PROS_ARCHIVE_LIMIT = 64 * 1024 * 1024;
 const PROS_EXTRACTED_LIMIT = 256 * 1024 * 1024;
+export const SCAFFOLD_WRITE_CONCURRENCY = 8;
 const DEFAULT_PROS_TEMPLATE: ProsTemplateSource = {
   tag: "4.2.2",
   archiveUrl:
@@ -180,17 +182,31 @@ async function writeFiles(
   root: string,
   files: Record<string, string | Uint8Array>,
 ): Promise<void> {
-  for (const [relativePath, content] of Object.entries(files)) {
+  const entries = Object.entries(files);
+  const paths = entries.map(([relativePath, content]) => {
     if (
       isAbsolute(relativePath) ||
       relativePath.split(/[\\/]/).includes("..")
     ) {
       throw new Error(`template contains an unsafe path: ${relativePath}`);
     }
-    const path = join(root, relativePath);
-    await mkdir(dirname(path), { recursive: true });
-    await Bun.write(path, content);
-  }
+    return { path: join(root, relativePath), content };
+  });
+  const directories = [...new Set(paths.map(({ path }) => dirname(path)))];
+  await mapWithConcurrency(
+    directories,
+    SCAFFOLD_WRITE_CONCURRENCY,
+    async (directory) => {
+      await mkdir(directory, { recursive: true });
+    },
+  );
+  await mapWithConcurrency(
+    paths,
+    SCAFFOLD_WRITE_CONCURRENCY,
+    async ({ path, content }) => {
+      await Bun.write(path, content);
+    },
+  );
 }
 
 async function createProsProject(

@@ -135,17 +135,21 @@ export async function uploadProgram(
     run: options.run,
   });
   const validated = await validateProgramArtifacts(artifacts);
-  const bytes = await Bun.file(validated.hot.path).bytes();
-  const coldBytes = validated.cold
-    ? await Bun.file(validated.cold.path).bytes()
-    : undefined;
+  const [bytes, coldBytes] = await Promise.allSettled([
+    Bun.file(validated.hot.path).bytes(),
+    validated.cold
+      ? Bun.file(validated.cold.path).bytes()
+      : Promise.resolve(undefined),
+  ]);
+  if (bytes.status === "rejected") throw bytes.reason;
+  if (coldBytes.status === "rejected") throw coldBytes.reason;
 
   await withSelectedV5Device(options, async (device) => {
     const progress = reportProgress();
     const uploaded = await device.brain.uploadProgram(
       config,
-      bytes,
-      coldBytes,
+      bytes.value,
+      coldBytes.value,
       progress,
     );
     progress.finish();
