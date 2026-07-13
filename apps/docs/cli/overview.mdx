@@ -23,3 +23,22 @@ v5x run --slot 2
 </CardGroup>
 
 Run `v5x <command> --help` for the exact syntax of your installed version.
+
+## JSON errors
+
+Commands that support `--json` also return machine-readable failures. A failure
+is written to standard error as one JSON object and the command exits with its
+existing non-zero status:
+
+```json
+{ "error": { "message": "no V5 device found", "exitCode": 3 } }
+```
+
+The stable error object contains:
+
+- `message`: a human-readable description of the failure.
+- `exitCode`: the same numeric status returned by the process.
+
+Serial error kinds and stack traces are not included, including when `--verbose`
+or `V5X_DEBUG=1` is set. Without `--json`, failures retain their human-readable
+format and `--verbose` continues to show stack traces.
