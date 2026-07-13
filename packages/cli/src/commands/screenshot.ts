@@ -8,7 +8,17 @@ const WIDTH = 480;
 const HEIGHT = 272;
 const ROW_BYTES = WIDTH * 3;
 const KITTY_CHUNK_BYTES = 4096;
+const KITTY_RAW_CHUNK_BYTES = (KITTY_CHUNK_BYTES / 4) * 3;
 type ScreenshotFormat = "png" | "ppm";
+
+const PNG_CRC32_TABLE = new Uint32Array(256);
+for (let index = 0; index < PNG_CRC32_TABLE.length; index++) {
+  let value = index;
+  for (let bit = 0; bit < 8; bit++) {
+    value = (value >>> 1) ^ (value & 1 ? 0xedb88320 : 0);
+  }
+  PNG_CRC32_TABLE[index] = value >>> 0;
+}
 
 function assertScreenshotSize(bytes: Uint8Array): void {
   if (bytes.length !== ROW_BYTES * HEIGHT) {
@@ -16,13 +26,10 @@ function assertScreenshotSize(bytes: Uint8Array): void {
   }
 }
 
-function crc32(bytes: Uint8Array): number {
+export function pngCrc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
   for (const byte of bytes) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit++) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-    }
+    crc = (crc >>> 8) ^ PNG_CRC32_TABLE[(crc ^ byte) & 0xff]!;
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
@@ -33,7 +40,7 @@ function pngChunk(type: string, data: Uint8Array): Buffer {
   chunk.write(type, 4, "ascii");
   chunk.set(data, 8);
   chunk.writeUInt32BE(
-    crc32(chunk.subarray(4, 8 + data.length)),
+    pngCrc32(chunk.subarray(4, 8 + data.length)),
     8 + data.length,
   );
   return chunk;
@@ -124,24 +131,27 @@ export function shouldPrintKittyRgb(
   );
 }
 
-export function formatKittyRgb(bytes: Uint8Array): string[] {
+export function* iterateKittyRgb(bytes: Uint8Array): Generator<string> {
   assertScreenshotSize(bytes);
-  const base64 = Buffer.from(bytes).toString("base64");
-  const chunks: string[] = [];
-  for (let offset = 0; offset < base64.length; offset += KITTY_CHUNK_BYTES) {
-    const payload = base64.slice(offset, offset + KITTY_CHUNK_BYTES);
-    const more = offset + KITTY_CHUNK_BYTES < base64.length;
+  for (let offset = 0; offset < bytes.length; offset += KITTY_RAW_CHUNK_BYTES) {
+    const payload = Buffer.from(
+      bytes.subarray(offset, offset + KITTY_RAW_CHUNK_BYTES),
+    ).toString("base64");
+    const more = offset + KITTY_RAW_CHUNK_BYTES < bytes.length;
     const control =
       offset === 0
         ? `a=T,f=24,s=${WIDTH},v=${HEIGHT},c=40,m=${more ? 1 : 0}`
         : `m=${more ? 1 : 0}`;
-    chunks.push(`\x1b_G${control};${payload}\x1b\\${more ? "" : "\n"}`);
+    yield `\x1b_G${control};${payload}\x1b\\${more ? "" : "\n"}`;
   }
-  return chunks;
+}
+
+export function formatKittyRgb(bytes: Uint8Array): string[] {
+  return Array.from(iterateKittyRgb(bytes));
 }
 
 function printKittyRgb(bytes: Uint8Array): void {
-  for (const chunk of formatKittyRgb(bytes)) process.stdout.write(chunk);
+  for (const chunk of iterateKittyRgb(bytes)) process.stdout.write(chunk);
 }
 
 export default function registerScreenshotCommand(program: Sade) {

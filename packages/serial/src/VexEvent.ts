@@ -39,8 +39,16 @@ export class VexEventEmitter<
   }
 
   emit<K extends EventMapKey<TEvents>>(eventName: K, data: TEvents[K]): void {
+    const listeners = this.handlerMap.get(eventName);
+    if (listeners === undefined || listeners.length === 0) return;
+
+    if (listeners.length === 1) {
+      listeners[0]!(data);
+      return;
+    }
+
     const errors: unknown[] = [];
-    for (const callback of [...(this.handlerMap.get(eventName) ?? [])]) {
+    for (const callback of [...listeners]) {
       try {
         callback(data);
       } catch (error: unknown) {

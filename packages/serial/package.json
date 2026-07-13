@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
     "test": "bun test",
+    "benchmark:screen-capture": "bun ./benchmarks/screen-capture.ts",
     "measure:bundles": "bun ./scripts/measure-bundles.ts",
     "prepack": "bun run build && bun ../../scripts/add-dom-serial-references.ts dist",
     "clean": "rm -rf dist"

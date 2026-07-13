@@ -7,6 +7,7 @@ import {
   USER_FLASH_USR_CODE_START,
 } from "./Vex";
 import { V5SerialConnection } from "./VexConnection";
+import { convertScreenCapture } from "./VexScreenCapture";
 import {
   type HostBoundPacket,
   EraseFileH2DPacket,
@@ -1335,6 +1336,24 @@ test("captureScreen converts the device framebuffer from BGRA to RGB", async () 
   const pixels = result._unsafeUnwrap();
   expect(pixels).toHaveLength(480 * 272 * 3);
   expect(pixels.slice(0, 3)).toEqual(new Uint8Array([1, 2, 3]));
+});
+
+test("screen conversion skips row padding and converts the final pixel", () => {
+  const framebuffer = new Uint8Array(512 * 272 * 4);
+  const lastVisiblePixel = (271 * 512 + 479) * 4;
+  const firstPaddingPixel = (271 * 512 + 480) * 4;
+  framebuffer.set([30, 20, 10, 255], lastVisiblePixel);
+  framebuffer.set([60, 50, 40, 255], firstPaddingPixel);
+
+  const pixels = convertScreenCapture(framebuffer);
+
+  expect(pixels.slice(-3)).toEqual(new Uint8Array([10, 20, 30]));
+});
+
+test("screen conversion rejects invalid framebuffer sizes", () => {
+  expect(() => convertScreenCapture(new Uint8Array(512 * 272 * 4 - 1))).toThrow(
+    "bad screen capture framebuffer size: 557055; expected 557056",
+  );
 });
 
 test("captureScreen waits behind an in-flight transfer", async () => {
