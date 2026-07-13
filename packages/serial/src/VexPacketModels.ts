@@ -516,17 +516,14 @@ export class ReadFileReplyD2HPacket extends HostBoundPacket {
   static COMMAND_EXTENDED_ID = 20;
   addr: number;
   length: number;
-  buf: ArrayBuffer;
+  buf: Uint8Array;
 
   constructor(data: DataArray) {
     super(data);
     const view = PacketView.fromPacket(this);
     this.addr = view.nextUint32();
     this.length = this.payloadSize - 8;
-    this.buf = this.data.slice(
-      view.position,
-      view.position + this.length,
-    ).buffer;
+    this.buf = this.data.subarray(view.position, view.position + this.length);
   }
 }
 

@@ -60,7 +60,8 @@ test("read replies parse their address and exact data bytes", () => {
 
   expect(reply.addr).toBe(0x03800000);
   expect(reply.length).toBe(3);
-  expect(new Uint8Array(reply.buf)).toEqual(new Uint8Array([1, 2, 3]));
+  expect(reply.buf).toEqual(new Uint8Array([1, 2, 3]));
+  expect(reply.buf.buffer).toBe(reply.data.buffer);
 });
 
 describe("fixed-width text fields", () => {

@@ -519,7 +519,7 @@ function readReply(addr: number, bytes: number[]) {
   ) as ReadFileReplyD2HPacket;
   reply.addr = addr;
   reply.length = bytes.length;
-  reply.buf = new Uint8Array(bytes).buffer;
+  reply.buf = new Uint8Array(bytes);
   return reply;
 }
 
@@ -929,6 +929,38 @@ test("reader resynchronizes after leading garbage", async () => {
   } as unknown as WritableStreamDefaultWriter<unknown>;
   const result = connection.query1();
   const reading = connection.start();
+  expect((await result).isOk()).toBe(true);
+  await connection.close();
+  await reading;
+});
+
+test("reader parses a reply delivered one byte at a time", async () => {
+  class ReadableConnection extends V5SerialConnection {
+    start(): Promise<void> {
+      return this.startReader();
+    }
+  }
+
+  let replyStream: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      replyStream = controller;
+    },
+  });
+  const connection = new ReadableConnection({} as Serial);
+  connection.reader = stream.getReader();
+  connection.writer = {
+    write: async () => {},
+    close: async () => {},
+    releaseLock: () => {},
+  } as unknown as WritableStreamDefaultWriter<unknown>;
+  const result = connection.query1();
+  const reading = connection.start();
+
+  for (const byte of query1Reply(AckType.CDC2_ACK)) {
+    replyStream?.enqueue(Uint8Array.of(byte));
+  }
+
   expect((await result).isOk()).toBe(true);
   await connection.close();
   await reading;

@@ -842,7 +842,26 @@ export class V5SerialDevice extends VexSerialDevice {
 
     this.state.matchMode = snapshot.matchMode;
     this.state.isFieldControllerConnected = snapshot.isFieldControllerConnected;
-    Object.assign(this.state.brain, snapshot.brain);
+    const brain = this.state.brain;
+    brain.activeProgram = snapshot.brain.activeProgram;
+    brain.battery.batteryPercent = snapshot.brain.battery.batteryPercent;
+    brain.battery.isCharging = snapshot.brain.battery.isCharging;
+    brain.button.isPressed = snapshot.brain.button.isPressed;
+    brain.button.isDoublePressed = snapshot.brain.button.isDoublePressed;
+    if (brain.cpu0Version.compare(snapshot.brain.cpu0Version) !== 0) {
+      brain.cpu0Version = snapshot.brain.cpu0Version;
+    }
+    if (brain.cpu1Version.compare(snapshot.brain.cpu1Version) !== 0) {
+      brain.cpu1Version = snapshot.brain.cpu1Version;
+    }
+    brain.isAvailable = snapshot.brain.isAvailable;
+    brain.settings.isScreenReversed = snapshot.brain.settings.isScreenReversed;
+    brain.settings.isWhiteTheme = snapshot.brain.settings.isWhiteTheme;
+    brain.settings.usingLanguage = snapshot.brain.settings.usingLanguage;
+    if (brain.systemVersion.compare(snapshot.brain.systemVersion) !== 0) {
+      brain.systemVersion = snapshot.brain.systemVersion;
+    }
+    brain.uniqueId = snapshot.brain.uniqueId;
     Object.assign(this.state.controllers[0]!, snapshot.controllers[0]);
     Object.assign(this.state.controllers[1]!, snapshot.controllers[1]);
     Object.assign(this.state.radio, snapshot.radio);
@@ -851,9 +870,34 @@ export class V5SerialDevice extends VexSerialDevice {
     for (const device of snapshot.devices) {
       if (device != null) next[device.port] = device;
     }
-    this.state.devices = next;
+    if (!sameSmartDeviceSlots(this.state.devices, next)) {
+      this.state.devices = next;
+    }
     return true;
   }
+}
+
+function sameSmartDeviceSlots(
+  left: Array<ISmartDeviceInfo | undefined>,
+  right: Array<ISmartDeviceInfo | undefined>,
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((device, index) => {
+      const next = right[index];
+      return (
+        device === next ||
+        (device !== undefined &&
+          next !== undefined &&
+          device.port === next.port &&
+          device.type === next.type &&
+          device.status === next.status &&
+          device.betaversion === next.betaversion &&
+          device.version === next.version &&
+          device.bootversion === next.bootversion)
+      );
+    })
+  );
 }
 
 interface V5SerialDeviceSnapshot {
