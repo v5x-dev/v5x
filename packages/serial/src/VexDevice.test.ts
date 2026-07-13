@@ -1160,6 +1160,36 @@ describe("refresh snapshot safety", () => {
     expect(device.controllers[1].isCharging).toBeUndefined();
   });
 
+  test("unchanged smart-device telemetry preserves the state array", async () => {
+    const device = new V5SerialDevice(serial);
+    devices.push(device);
+    device.connection = {
+      isConnected: true,
+      ...buildReply({
+        devices: {
+          count: 1,
+          devices: [
+            {
+              port: 1,
+              type: 2,
+              status: 3,
+              betaversion: 4,
+              version: 5,
+              bootversion: 6,
+            },
+          ],
+        },
+      }),
+      close: async () => {},
+    } as unknown as V5SerialConnection;
+
+    expect((await device.refresh())._unsafeUnwrap()).toBe(true);
+    const previousDevices = device.state.devices;
+
+    expect((await device.refresh())._unsafeUnwrap()).toBe(true);
+    expect(device.state.devices).toBe(previousDevices);
+  });
+
   test("partial refresh failure preserves the previous coherent snapshot", async () => {
     const device = new V5SerialDevice(serial);
     devices.push(device);
