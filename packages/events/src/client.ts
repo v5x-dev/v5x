@@ -33,6 +33,7 @@ const DEFAULT_BASE_URL = "https://events.vex.com/api/v2";
 
 type QueryValue = DateInput | boolean | number | readonly (number | string)[];
 type QueryEntry = readonly [name: string, value: QueryValue | undefined];
+type ResponseShape = "object" | "paginated";
 
 export interface RequestOptions {
   signal?: AbortSignal;
@@ -188,6 +189,34 @@ function normalizeErrorBody(value: unknown): ApiErrorBody | string | null {
   return typeof value === "string" ? value : null;
 }
 
+function isJsonContentType(contentType: string): boolean {
+  const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
+  return (
+    mediaType === "application/json" || mediaType?.endsWith("+json") === true
+  );
+}
+
+function isObjectResponse(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPaginatedResponse(value: unknown): boolean {
+  if (!isObjectResponse(value)) return false;
+  return (
+    (value.data === undefined || Array.isArray(value.data)) &&
+    (value.meta === undefined || isObjectResponse(value.meta))
+  );
+}
+
+function hasResponseShape<T>(
+  value: unknown,
+  responseShape: ResponseShape,
+): value is T {
+  return responseShape === "paginated"
+    ? isPaginatedResponse(value)
+    : isObjectResponse(value);
+}
+
 export class VexEventsClient {
   readonly events: EventsResource;
   readonly teams: TeamsResource;
@@ -211,64 +240,92 @@ export class VexEventsClient {
 
     this.events = {
       list: (options = {}, request) =>
-        this.request("/events", eventEntries(options), request),
-      get: (id, request) => this.request(`/events/${id}`, [], request),
+        this.request("/events", eventEntries(options), request, "paginated"),
+      get: (id, request) =>
+        this.request(`/events/${id}`, [], request, "object"),
       teams: (id, options = {}, request) =>
-        this.request(`/events/${id}/teams`, eventTeamEntries(options), request),
+        this.request(
+          `/events/${id}/teams`,
+          eventTeamEntries(options),
+          request,
+          "paginated",
+        ),
       skills: (id, options = {}, request) =>
         this.request(
           `/events/${id}/skills`,
           eventSkillEntries(options),
           request,
+          "paginated",
         ),
       awards: (id, options = {}, request) =>
         this.request(
           `/events/${id}/awards`,
           eventAwardEntries(options),
           request,
+          "paginated",
         ),
       matches: (id, division, options = {}, request) =>
         this.request(
           `/events/${id}/divisions/${division}/matches`,
           divisionMatchEntries(options),
           request,
+          "paginated",
         ),
       finalistRankings: (id, division, options = {}, request) =>
         this.request(
           `/events/${id}/divisions/${division}/finalistRankings`,
           divisionRankingEntries(options),
           request,
+          "paginated",
         ),
       rankings: (id, division, options = {}, request) =>
         this.request(
           `/events/${id}/divisions/${division}/rankings`,
           divisionRankingEntries(options),
           request,
+          "paginated",
         ),
     };
 
     this.teams = {
       list: (options = {}, request) =>
-        this.request("/teams", teamEntries(options), request),
-      get: (id, request) => this.request(`/teams/${id}`, [], request),
+        this.request("/teams", teamEntries(options), request, "paginated"),
+      get: (id, request) => this.request(`/teams/${id}`, [], request, "object"),
       events: (id, options = {}, request) =>
-        this.request(`/teams/${id}/events`, teamEventEntries(options), request),
+        this.request(
+          `/teams/${id}/events`,
+          teamEventEntries(options),
+          request,
+          "paginated",
+        ),
       matches: (id, options = {}, request) =>
         this.request(
           `/teams/${id}/matches`,
           teamMatchEntries(options),
           request,
+          "paginated",
         ),
       rankings: (id, options = {}, request) =>
         this.request(
           `/teams/${id}/rankings`,
           teamRankingEntries(options),
           request,
+          "paginated",
         ),
       skills: (id, options = {}, request) =>
-        this.request(`/teams/${id}/skills`, teamSkillEntries(options), request),
+        this.request(
+          `/teams/${id}/skills`,
+          teamSkillEntries(options),
+          request,
+          "paginated",
+        ),
       awards: (id, options = {}, request) =>
-        this.request(`/teams/${id}/awards`, teamAwardEntries(options), request),
+        this.request(
+          `/teams/${id}/awards`,
+          teamAwardEntries(options),
+          request,
+          "paginated",
+        ),
     };
 
     this.programs = {
@@ -277,19 +334,23 @@ export class VexEventsClient {
           "/programs",
           [...paginationEntries(options), ["id[]", options.ids]],
           request,
+          "paginated",
         ),
-      get: (id, request) => this.request(`/programs/${id}`, [], request),
+      get: (id, request) =>
+        this.request(`/programs/${id}`, [], request, "object"),
     };
 
     this.seasons = {
       list: (options = {}, request) =>
-        this.request("/seasons", seasonEntries(options), request),
-      get: (id, request) => this.request(`/seasons/${id}`, [], request),
+        this.request("/seasons", seasonEntries(options), request, "paginated"),
+      get: (id, request) =>
+        this.request(`/seasons/${id}`, [], request, "object"),
       events: (id, options = {}, request) =>
         this.request(
           `/seasons/${id}/events`,
           seasonEventEntries(options),
           request,
+          "paginated",
         ),
     };
   }
@@ -298,6 +359,7 @@ export class VexEventsClient {
     path: string,
     query: readonly QueryEntry[],
     options: RequestOptions | undefined,
+    responseShape: ResponseShape,
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
     appendQuery(url, query);
@@ -312,7 +374,7 @@ export class VexEventsClient {
     });
 
     const contentType = response.headers.get("content-type") ?? "";
-    const isJson = contentType.includes("application/json");
+    const isJson = isJsonContentType(contentType);
     let body: unknown;
     try {
       body = isJson ? await response.json() : await response.text();
@@ -340,7 +402,14 @@ export class VexEventsClient {
       );
     }
 
-    return body as T;
+    if (!hasResponseShape<T>(body, responseShape)) {
+      throw new VexEventsResponseError(
+        `VEX Events API returned an invalid response for ${path}`,
+        url.toString(),
+      );
+    }
+
+    return body;
   }
 }
 

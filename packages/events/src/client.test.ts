@@ -243,4 +243,41 @@ describe("VexEventsClient", () => {
       "VEX Events API returned a non-JSON response",
     );
   });
+
+  test("accepts structured JSON content types", async () => {
+    const mockFetch: Fetch = async () =>
+      new Response(JSON.stringify({ id: 1, name: "V5RC" }), {
+        headers: { "content-type": "application/problem+json; charset=utf-8" },
+      });
+    const client = new VexEventsClient({ token: "token", fetch: mockFetch });
+
+    await expect(client.programs.get(1)).resolves.toEqual({
+      id: 1,
+      name: "V5RC",
+    });
+  });
+
+  test("rejects malformed paginated success responses with endpoint context", async () => {
+    const { client } = createMockClient({ data: {}, meta: [] });
+
+    const error = await client.events.list().catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsResponseError);
+    expect(error).toMatchObject({
+      message: "VEX Events API returned an invalid response for /events",
+      url: "https://example.test/api/v2/events",
+    });
+  });
+
+  test("rejects malformed single-resource success responses", async () => {
+    const { client } = createMockClient([]);
+
+    const error = await client.teams.get(1).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsResponseError);
+    expect(error).toHaveProperty(
+      "message",
+      "VEX Events API returned an invalid response for /teams/1",
+    );
+  });
 });
