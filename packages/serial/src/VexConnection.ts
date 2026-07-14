@@ -71,6 +71,10 @@ import {
   FileClearUpReplyD2HPacket,
 } from "./VexPacket.js";
 import { type VexFirmwareVersion } from "./VexFirmwareVersion.js";
+import {
+  convertScreenCapture,
+  SCREEN_CAPTURE_FRAMEBUFFER_SIZE,
+} from "./VexScreenCapture.js";
 
 type HostBoundPacketType<T extends HostBoundPacket> = {
   new (data: ArrayBuffer | Uint8Array): T;
@@ -90,11 +94,6 @@ interface PendingPacketQueue {
 }
 
 const thePacketEncoder = PacketEncoder.getInstance();
-const SCREEN_CAPTURE_HEIGHT = 272;
-const SCREEN_CAPTURE_WIDTH = 480;
-const SCREEN_CAPTURE_CHANNELS = 3;
-const SCREEN_CAPTURE_MESSAGE_WIDTH = 512;
-const SCREEN_CAPTURE_MESSAGE_CHANNELS = 4;
 
 /** Outcome of {@link VexSerialConnection.open}. */
 export type OpenResult = "opened" | "busy" | "no-port";
@@ -1305,10 +1304,7 @@ export class V5SerialConnection extends VexSerialConnection {
         filename: "screen",
         vendor: FileVendor.SYS,
         loadAddress: 0,
-        size:
-          SCREEN_CAPTURE_MESSAGE_WIDTH *
-          SCREEN_CAPTURE_HEIGHT *
-          SCREEN_CAPTURE_MESSAGE_CHANNELS,
+        size: SCREEN_CAPTURE_FRAMEBUFFER_SIZE,
       },
       FileDownloadTarget.FILE_TARGET_CBUF,
       progressCallback,
@@ -1437,28 +1433,6 @@ function getTransferChunkSize(windowSize: number): number {
   return windowSize > 0 && windowSize <= USER_PROG_CHUNK_SIZE
     ? windowSize
     : USER_PROG_CHUNK_SIZE;
-}
-
-function convertScreenCapture(framebuffer: Uint8Array): Uint8Array {
-  const pixels = new Uint8Array(
-    SCREEN_CAPTURE_WIDTH * SCREEN_CAPTURE_HEIGHT * SCREEN_CAPTURE_CHANNELS,
-  );
-
-  for (let row = 0; row < SCREEN_CAPTURE_HEIGHT; row++) {
-    for (let column = 0; column < SCREEN_CAPTURE_WIDTH; column++) {
-      const source =
-        (row * SCREEN_CAPTURE_MESSAGE_WIDTH + column) *
-        SCREEN_CAPTURE_MESSAGE_CHANNELS;
-      const target =
-        (row * SCREEN_CAPTURE_WIDTH + column) * SCREEN_CAPTURE_CHANNELS;
-
-      pixels[target] = framebuffer[source + 2] ?? 0;
-      pixels[target + 1] = framebuffer[source + 1] ?? 0;
-      pixels[target + 2] = framebuffer[source] ?? 0;
-    }
-  }
-
-  return pixels;
 }
 
 /**

@@ -75,6 +75,47 @@ describe("VexEventEmitter", () => {
     expect(values).toEqual([7]);
   });
 
+  test("snapshots multiple listeners during emission", () => {
+    const emitter = new VexEventEmitter<{ update: number }>();
+    const values: string[] = [];
+    const removed = (value: number) => values.push(`removed:${value}`);
+    const added = (value: number) => values.push(`added:${value}`);
+
+    emitter.on("update", (value) => {
+      values.push(`first:${value}`);
+      emitter.remove("update", removed);
+      emitter.on("update", added);
+    });
+    emitter.on("update", removed);
+
+    emitter.emit("update", 1);
+    emitter.emit("update", 2);
+
+    expect(values).toEqual(["first:1", "removed:1", "first:2", "added:2"]);
+  });
+
+  test("preserves single and aggregate listener errors", () => {
+    const emitter = new VexEventEmitter<{ update: undefined }>();
+    const first = new Error("first");
+    const second = new Error("second");
+    emitter.on("update", () => {
+      throw first;
+    });
+
+    expect(() => emitter.emit("update", undefined)).toThrow(first);
+
+    emitter.on("update", () => {
+      throw second;
+    });
+    try {
+      emitter.emit("update", undefined);
+      throw new Error("expected emit to throw");
+    } catch (error: unknown) {
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toEqual([first, second]);
+    }
+  });
+
   test("preserves symbol event names through VexEventTarget", () => {
     const target = new VexEventTarget();
     const event = Symbol("update");

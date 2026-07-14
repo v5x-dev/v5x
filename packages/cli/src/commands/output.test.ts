@@ -42,7 +42,9 @@ import {
   encodeScreenshotPng,
   encodeScreenshotPpm,
   formatKittyRgb,
+  iterateKittyRgb,
   parseScreenshotFormat,
+  pngCrc32,
   shouldPrintKittyRgb,
   toScreenshotJson,
 } from "./screenshot";
@@ -325,6 +327,11 @@ describe("command output formatting", () => {
     expect(ppm.subarray(0, 15).toString("ascii")).toBe("P6\n480 272\n255\n");
   });
 
+  test("calculates PNG CRC32 known vectors", () => {
+    expect(pngCrc32(new Uint8Array())).toBe(0);
+    expect(pngCrc32(Buffer.from("123456789", "ascii"))).toBe(0xcbf43926);
+  });
+
   test("rejects bad screenshot framebuffer sizes", () => {
     expect(() => encodeScreenshotPng(new Uint8Array([0]))).toThrow(
       "bad screenshot size: 1",
@@ -395,6 +402,20 @@ describe("command output formatting", () => {
     expect(chunks.at(-1)).toEndWith("\x1b\\\n");
     expect(payloads.every((payload) => payload.length <= 4096)).toBe(true);
     expect(payloads.join("")).toBe(Buffer.from(rgb).toString("base64"));
+  });
+
+  test("lazily yields first, middle, and final Kitty control flags", () => {
+    const iterator = iterateKittyRgb(new Uint8Array(480 * 272 * 3));
+
+    expect(iterator.next().value).toStartWith(
+      "\x1b_Ga=T,f=24,s=480,v=272,c=40,m=1;",
+    );
+    expect(iterator.next().value).toStartWith("\x1b_Gm=1;");
+
+    let final = "";
+    for (const chunk of iterator) final = chunk;
+    expect(final).toStartWith("\x1b_Gm=0;");
+    expect(final).toEndWith("\x1b\\\n");
   });
 });
 
