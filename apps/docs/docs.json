@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "v5x",
-  "description": "Build, upload, and manage VEX V5 programs with the v5x CLI, serial library, and web bindings.",
+  "description": "Build, upload, and manage VEX V5 programs and competition data with the v5x toolchain.",
   "seo": {
     "indexing": "all",
     "metatags": {
@@ -135,6 +135,16 @@
           {
             "group": "Framework bindings",
             "pages": ["web/react", "web/svelte", "web/solid"]
+          }
+        ]
+      },
+      {
+        "tab": "Events",
+        "icon": "calendar-days",
+        "groups": [
+          {
+            "group": "Events API",
+            "pages": ["events/overview"]
           }
         ]
       }

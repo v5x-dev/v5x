@@ -20,6 +20,10 @@ This is a fork of [v5-serial-protocol](https://github.com/LemLib/v5-serial-proto
 
 A browser workflow layer for v5 Web Serial applications. It wraps `@v5x/serial` with a small subscription-based client that tracks connection status, Web Serial support, and normalized errors. Framework bindings for React, Svelte, and Solid ship as subpath exports.
 
+### [@v5x/events](https://github.com/v5x-dev/v5x/tree/main/packages/events)
+
+A strictly typed client for the VEX Events API v2. It covers events, teams, programs, seasons, matches, rankings, skills, and awards in browsers and server runtimes.
+
 ## Documentation development
 
 ```sh

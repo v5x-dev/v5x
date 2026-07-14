@@ -1,0 +1,60 @@
+---
+title: "Events API"
+description: "Query VEX events, teams, matches, rankings, skills, awards, programs, and seasons."
+---
+
+`@v5x/events` is a strictly typed TypeScript client for the VEX Events API v2.
+It works in browsers, Bun, and modern Node.js runtimes with `fetch`.
+
+```sh
+bun add @v5x/events
+```
+
+Create a personal access token in your VEX Events account, then initialize the
+client:
+
+```ts
+import { VexEventsClient } from "@v5x/events";
+
+const vex = new VexEventsClient({
+  token: process.env.VEX_EVENTS_TOKEN!,
+});
+```
+
+The client groups the complete API under four resources: `events`, `teams`,
+`programs`, and `seasons`.
+
+```ts
+const teams = await vex.teams.list({
+  numbers: ["123A", "456B"],
+  registered: true,
+  perPage: 100,
+});
+
+const matches = await vex.events.matches(eventId, divisionId, {
+  teams: [teamId],
+  rounds: [2],
+});
+
+for (const match of matches.data ?? []) {
+  console.log(match.name, match.alliances);
+}
+```
+
+Options use camelCase names and normal arrays. The client translates these to
+the API's `snake_case` and repeated `field[]` parameters. Date filters accept
+an RFC 3339 string or a `Date`; `Date` values are serialized with
+`toISOString()`.
+
+Every response model and filter is exported as a TypeScript type. HTTP errors
+throw `VexEventsApiError`, which includes `status`, `statusText`, `body`, and
+the requested `url`. An `AbortSignal` can be passed separately from filters:
+
+```ts
+const controller = new AbortController();
+
+await vex.events.list(
+  { eventTypes: ["tournament"], page: 1 },
+  { signal: controller.signal },
+);
+```

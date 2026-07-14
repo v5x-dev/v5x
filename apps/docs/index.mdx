@@ -1,11 +1,11 @@
 ---
 title: "v5x docs"
-description: "Build and manage VEX V5 programs from the command line, browser JavaScript, or framework apps."
+description: "Build and manage VEX V5 programs and query competition data from TypeScript."
 ---
 
-v5x is a set of tools for developing on the VEX V5 platform. It talks directly to a V5 brain over USB from terminal workflows, browser applications, and framework apps.
+v5x is a set of tools for developing on the VEX V5 platform. It talks directly to a V5 brain over USB from terminal workflows, browser applications, and framework apps, and provides typed access to VEX competition data.
 
-<CardGroup cols={3}>
+<CardGroup cols={2}>
   <Card title="Use the CLI" icon="terminal" href="/cli/overview">
     Build, upload, run, and inspect V5 programs from a terminal.
   </Card>
@@ -16,6 +16,10 @@ v5x is a set of tools for developing on the VEX V5 platform. It talks directly t
     Manage browser connection state directly or through React, Svelte, and Solid
     bindings.
   </Card>
+  <Card title="Query VEX Events" icon="calendar-days" href="/events/overview">
+    Query teams, events, matches, rankings, skills, awards, programs, and
+    seasons.
+  </Card>
 </CardGroup>
 
 ## Packages
@@ -25,6 +29,7 @@ v5x is a set of tools for developing on the VEX V5 platform. It talks directly t
 | `@v5x/cli`    | You want a ready-to-use workflow for PROS, vexide, or VEXcode C++ projects.         |
 | `@v5x/serial` | You are building a browser application that connects to a brain through Web Serial. |
 | `@v5x/web`    | You want browser connection state plus `react`, `svelte`, or `solid` bindings.      |
+| `@v5x/events` | You want typed access to VEX competition events, teams, matches, and related data.  |
 
 <Note>
   v5x is an independent project. It is not an official VEX Robotics product.
