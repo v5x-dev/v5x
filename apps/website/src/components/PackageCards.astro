@@ -1,17 +1,18 @@
 ---
-import { ArrowRight, Monitor, Terminal, Usb } from "lucide-astro";
+import { ArrowRight, CalendarDays, Monitor, Terminal, Usb } from "lucide-astro";
 
 const docsBase = "https://docs.v5x.dev";
 const surfaces = [
   { name: "cli", packageName: "@v5x/cli", href: `${docsBase}/cli/overview`, Icon: Terminal, command: "v5x run --slot 1", description: "create, build, upload, and run vex v5 projects from your terminal." },
   { name: "serial", packageName: "@v5x/serial", href: `${docsBase}/serial/overview`, Icon: Usb, command: "new V5SerialDevice(navigator.serial)", description: "use the v5 serial protocol from secure browser apps." },
   { name: "web", packageName: "@v5x/web", href: `${docsBase}/web/overview`, Icon: Monitor, command: "createV5Client().connect()", description: "keep web serial connection state predictable in app ui." },
+  { name: "events", packageName: "@v5x/events", href: `${docsBase}/events/overview`, Icon: CalendarDays, command: "vex.events.list({ seasons: [196] })", description: "query vex competition data through a strictly typed client." },
 ];
 ---
 
 <section class="pb-10" aria-label="product surfaces">
   <div class="w-full rounded-2xl border border-zinc-200 bg-white p-2 shadow-[0_30px_90px_rgba(0,0,0,0.12)] dark:border-white/12 dark:bg-[#111116] dark:shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
-    <div class="rounded-xl bg-zinc-100 text-left dark:bg-[#0c0c0f]"><div class="grid gap-px bg-black/10 dark:bg-white/10 md:grid-cols-3">
+    <div class="rounded-xl bg-zinc-100 text-left dark:bg-[#0c0c0f]"><div class="grid gap-px bg-black/10 dark:bg-white/10 md:grid-cols-2 lg:grid-cols-4">
       {surfaces.map(({ name, packageName, href, Icon, command, description }) => (
         <a class="group block bg-white p-5 text-zinc-900 no-underline hover:bg-zinc-50 focus-visible:outline-3 focus-visible:outline-offset-[-3px] focus-visible:outline-indigo-500 dark:bg-[#111116] dark:text-white dark:hover:bg-[#15151b] dark:focus-visible:outline-[#b8baff]" href={href}>
           <div class="flex items-center justify-between gap-3"><div class="flex items-center gap-3">

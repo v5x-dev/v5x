@@ -1,0 +1,53 @@
+{
+  "name": "@v5x/events",
+  "version": "0.1.0",
+  "description": "Strictly typed TypeScript client for the VEX Events API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun run clean && bun run build:dts && bun run build:esm",
+    "build:esm": "bun build ./src/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js",
+    "build:dts": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src --type-aware",
+    "test": "bun test",
+    "prepack": "bun run build",
+    "clean": "rm -rf dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/v5x-dev/v5x.git",
+    "directory": "packages/events"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "vex",
+    "vex-robotics",
+    "robotics",
+    "events",
+    "api",
+    "typescript"
+  ],
+  "author": "qainguin <slimaster14@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/v5x-dev/v5x/issues"
+  },
+  "homepage": "https://docs.v5x.dev/events/overview",
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
