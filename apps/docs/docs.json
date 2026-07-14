@@ -159,7 +159,7 @@
       },
       {
         "label": "",
-        "href": "https://better-hub.com/v5x-dev/v5x",
+        "href": "https://github.com/v5x-dev/v5x",
         "icon": "/assets/github.svg"
       }
     ]
@@ -169,7 +169,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://better-hub.com/v5x-dev/v5x"
+      "github": "https://github.com/v5x-dev/v5x"
     }
   }
 }
