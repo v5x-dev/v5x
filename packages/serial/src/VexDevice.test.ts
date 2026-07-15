@@ -1020,6 +1020,55 @@ describe("downloadFileFromInternet streaming limits", () => {
     expect(new Uint8Array(result._unsafeUnwrap())).toEqual(body);
   });
 
+  test("accepts known-length responses delivered in multiple chunks", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2]));
+        controller.enqueue(new Uint8Array([3, 4]));
+        controller.close();
+      },
+    });
+    globalThis.fetch = Object.assign(
+      async () =>
+        new Response(body, {
+          status: 200,
+          headers: { "content-length": "4" },
+        }),
+      { preconnect: originalFetch.preconnect },
+    ) as typeof fetch;
+
+    const result = await downloadFileFromInternet(
+      "https://example.test/known",
+      { maxBytes: 10 },
+    );
+    expect(new Uint8Array(result._unsafeUnwrap())).toEqual(
+      new Uint8Array([1, 2, 3, 4]),
+    );
+  });
+
+  test("grows a bounded buffer for chunked responses", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        controller.enqueue(new Uint8Array([2, 3]));
+        controller.enqueue(new Uint8Array([4, 5, 6]));
+        controller.close();
+      },
+    });
+    globalThis.fetch = Object.assign(
+      async () => new Response(body, { status: 200 }),
+      { preconnect: originalFetch.preconnect },
+    ) as typeof fetch;
+
+    const result = await downloadFileFromInternet(
+      "https://example.test/chunked",
+      { maxBytes: 10 },
+    );
+    expect(new Uint8Array(result._unsafeUnwrap())).toEqual(
+      new Uint8Array([1, 2, 3, 4, 5, 6]),
+    );
+  });
+
   test("rejects declared content length that exceeds the limit", async () => {
     globalThis.fetch = Object.assign(
       async () =>

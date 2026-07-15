@@ -108,6 +108,19 @@ images whose sizes must match the archive metadata. Firmware writes can render a
 device unusable if power or communication is interrupted; keep them out of
 normal application flows and validate the target VEXos version first.
 
+Files downloaded from a connected device are limited to 64 MiB by default so
+malformed device metadata cannot trigger an unbounded allocation. Applications
+that need a smaller bound can configure it on either API layer:
+
+```ts
+const connection = new V5SerialConnection(navigator.serial, {
+  maxFileDownloadBytes: 8 * 1024 * 1024,
+});
+const device = new V5SerialDevice(navigator.serial, {
+  maxFileDownloadBytes: 8 * 1024 * 1024,
+});
+```
+
 ## Build
 
 ```sh

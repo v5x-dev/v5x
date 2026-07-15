@@ -18,6 +18,7 @@ import {
 } from "./Vex.js";
 import {
   VexIoError,
+  VexInvalidArgumentError,
   VexNotConnectedError,
   VexProtocolError,
   VexSerialError,
@@ -46,7 +47,6 @@ import {
   LinkFileReplyD2HPacket,
   ReadFileH2DPacket,
   ReadFileReplyD2HPacket,
-  PacketEncoder,
   SystemVersionH2DPacket,
   SystemVersionReplyD2HPacket,
   Query1H2DPacket,
@@ -75,25 +75,15 @@ import {
   convertScreenCapture,
   SCREEN_CAPTURE_FRAMEBUFFER_SIZE,
 } from "./VexScreenCapture.js";
+import { FileTransferQueue } from "./FileTransferQueue.js";
+import { PendingRequestDispatcher } from "./PendingRequestDispatcher.js";
+import { ReceiveBuffer } from "./ReceiveBuffer.js";
+import { runPacketReader } from "./PacketReader.js";
 
 type HostBoundPacketType<T extends HostBoundPacket> = {
   new (data: ArrayBuffer | Uint8Array): T;
   name: string;
 };
-
-interface PendingPacketCallback extends IPacketCallback {
-  active: boolean;
-  next: PendingPacketCallback | undefined;
-  previous: PendingPacketCallback | undefined;
-  queue: PendingPacketQueue;
-}
-
-interface PendingPacketQueue {
-  head: PendingPacketCallback | undefined;
-  tail: PendingPacketCallback | undefined;
-}
-
-const thePacketEncoder = PacketEncoder.getInstance();
 
 /** Outcome of {@link VexSerialConnection.open}. */
 export type OpenResult = "opened" | "busy" | "no-port";
@@ -113,6 +103,14 @@ export interface VexSerialConnectionEvents {
   warning: ConnectionWarning;
 }
 
+/** Default upper bound for a file downloaded from a connected device. */
+export const DEFAULT_MAX_FILE_DOWNLOAD_BYTES = 64 * 1024 * 1024;
+
+export interface VexSerialConnectionOptions {
+  /** Maximum file size accepted from a caller or device before allocation. */
+  maxFileDownloadBytes?: number;
+}
+
 /**
  * A connection to a V5 device.
  * Emit events: connected, disconnected, warning
@@ -124,38 +122,20 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   reader: ReadableStreamDefaultReader<unknown> | undefined;
   port: SerialPort | undefined;
   serial: Serial;
+  readonly maxFileDownloadBytes: number;
 
-  private pendingCallbacks = new Map<string, PendingPacketQueue>();
-  private rawCallbacks: PendingPacketQueue = {
-    head: undefined,
-    tail: undefined,
-  };
-  private pendingCommandTails = new Map<string, Promise<void>>();
+  private readonly pendingRequests = new PendingRequestDispatcher();
   private _onPortDisconnect: (() => void) | null = null;
   private _closePromise: Promise<void> | null = null;
   private _openPromise: Promise<Result<OpenResult, VexSerialError>> | null =
     null;
   private _isClosing = false;
   private _wasConnected = false;
-  protected fileTransferTail: Promise<unknown> = Promise.resolve();
-  protected fileTransferDepth = 0;
+  protected readonly fileTransfers = new FileTransferQueue();
 
   /** Pending callbacks, exposed as a snapshot for backwards compatibility. */
   get callbacksQueue(): IPacketCallback[] {
-    const callbacks: IPacketCallback[] = [];
-    for (const queue of this.pendingCallbacks.values()) {
-      for (let callback = queue.head; callback; callback = callback.next) {
-        callbacks.push(callback);
-      }
-    }
-    for (
-      let callback = this.rawCallbacks.head;
-      callback;
-      callback = callback.next
-    ) {
-      callbacks.push(callback);
-    }
-    return callbacks;
+    return this.pendingRequests.callbacks;
   }
 
   get isConnected(): boolean {
@@ -167,12 +147,23 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   }
 
   get isFileTransferring(): boolean {
-    return this.fileTransferDepth > 0;
+    return this.fileTransfers.isActive;
   }
 
-  constructor(serial: Serial) {
+  constructor(serial: Serial, options: VexSerialConnectionOptions = {}) {
     super();
     this.serial = serial;
+    const maxFileDownloadBytes =
+      options.maxFileDownloadBytes ?? DEFAULT_MAX_FILE_DOWNLOAD_BYTES;
+    if (
+      !Number.isSafeInteger(maxFileDownloadBytes) ||
+      maxFileDownloadBytes <= 0
+    ) {
+      throw new VexInvalidArgumentError(
+        "maxFileDownloadBytes must be a positive safe integer",
+      );
+    }
+    this.maxFileDownloadBytes = maxFileDownloadBytes;
   }
 
   protected reportWarning(message: string, details?: unknown): void {
@@ -228,14 +219,13 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
       this.reader !== undefined ||
       this.writer !== undefined ||
       this._onPortDisconnect !== null ||
-      this.hasPendingCallbacks()
+      this.pendingRequests.hasPending
     );
   }
 
   private async _doClose(): Promise<void> {
     // 1. Reject every pending callback so callers don't hang.
-    for (const callback of this.drainPendingCallbacks()) {
-      clearTimeout(callback.timeout);
+    for (const callback of this.pendingRequests.drain()) {
       callback.callback(AckType.NOT_CONNECTED);
     }
 
@@ -414,7 +404,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     timeout: number = 1000,
   ): Promise<HostBoundPacket | ArrayBuffer | AckType> {
     if (rawData instanceof DeviceBoundPacket) {
-      return this.serializeCommand(
+      return this.pendingRequests.serialize(
         rawData.commandId,
         rawData.commandExtendedId,
         () => this.writeDataAsyncUnserialized(rawData, timeout),
@@ -422,36 +412,6 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     }
 
     return this.writeDataAsyncUnserialized(rawData, timeout);
-  }
-
-  /**
-   * A command ID identifies a reply packet type, not an individual request.
-   * Keep requests with the same reply identifiers off the wire until the
-   * preceding request has resolved, while allowing unrelated commands to run
-   * concurrently.
-   */
-  private async serializeCommand<T>(
-    commandId: number,
-    commandExtendedId: number | undefined,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const key = `${commandId}:${commandExtendedId ?? ""}`;
-    const previous = this.pendingCommandTails.get(key) ?? Promise.resolve();
-    let release = (): void => {};
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.pendingCommandTails.set(key, current);
-
-    await previous;
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.pendingCommandTails.get(key) === current) {
-        this.pendingCommandTails.delete(key);
-      }
-    }
   }
 
   private async writeDataAsyncUnserialized(
@@ -466,24 +426,13 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
 
       const data: Uint8Array =
         rawData instanceof DeviceBoundPacket ? rawData.data : rawData;
-      const queue =
-        rawData instanceof DeviceBoundPacket
-          ? this.getPendingQueue(
-              rawData.commandId,
-              rawData.commandExtendedId,
-              true,
-            )
-          : this.rawCallbacks;
-      const cb: PendingPacketCallback = {
-        active: true,
+      let removePending = (): boolean => false;
+      const cb: IPacketCallback = {
         callback: resolve,
         timeout: setTimeout(() => {
-          if (!this.removePendingCallback(cb)) return;
+          if (!removePending()) return;
           cb.callback(AckType.TIMEOUT);
         }, timeout),
-        next: undefined,
-        previous: undefined,
-        queue,
         wantedCommandId:
           rawData instanceof DeviceBoundPacket ? rawData.commandId : undefined,
         wantedCommandExId:
@@ -491,10 +440,10 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
             ? rawData.commandExtendedId
             : undefined,
       };
-      this.enqueuePendingCallback(cb);
+      removePending = this.pendingRequests.add(cb);
 
       this.writer.write(data).catch(() => {
-        if (!this.removePendingCallback(cb)) return;
+        if (!removePending()) return;
         clearTimeout(cb.timeout);
         resolve(AckType.WRITE_ERROR);
       });
@@ -540,213 +489,13 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   }
 
   protected async startReader(): Promise<void> {
-    const cache = new ReceiveBuffer();
-    let sliceIdx = 0;
-    for (;;)
-      try {
-        await this.readData(cache, 5);
-        sliceIdx = 0;
-
-        while (!thePacketEncoder.validateHeader(cache.bytes)) {
-          const bytes = cache.bytes;
-          const nextHeader = bytes.findIndex(
-            (byte, index) =>
-              index > 0 &&
-              byte === PacketEncoder.HEADER_TO_HOST[0] &&
-              bytes[index + 1] === PacketEncoder.HEADER_TO_HOST[1],
-          );
-          if (nextHeader >= 0) {
-            cache.discard(nextHeader);
-          } else {
-            cache.discard(
-              bytes.at(-1) === PacketEncoder.HEADER_TO_HOST[0]
-                ? -1
-                : bytes.length,
-            );
-          }
-          await this.readData(cache, 5);
-        }
-
-        const payloadExpectedSize = thePacketEncoder.getPayloadSize(
-          cache.bytes,
-        );
-        const n = thePacketEncoder.getHostHeaderLength(cache.bytes);
-        const totalSize = n + payloadExpectedSize;
-
-        await this.readData(cache, totalSize);
-        sliceIdx = totalSize;
-        const packet = cache.copy(totalSize);
-
-        const cmdId = packet[2];
-        const hasExtId = cmdId === 88 || cmdId === 86;
-        const cmdExId = hasExtId ? packet[n] : undefined;
-
-        const ack = packet[n + 1];
-
-        if (hasExtId) {
-          if (!thePacketEncoder.validateMessageCdc(packet)) {
-            this.reportWarning("discarding a reply with an invalid CDC CRC", {
-              commandId: cmdId,
-              commandExtendedId: cmdExId,
-              ack,
-            });
-            continue;
-          }
-        }
-
-        // Typed requests are routed directly by command pair. Raw callbacks
-        // are a separate FIFO fallback and therefore cannot steal typed
-        // replies.
-        const callbackInfo =
-          this.shiftPendingCallback(cmdId!, cmdExId) ?? this.shiftRawCallback();
-
-        if (callbackInfo === undefined) {
-          this.reportWarning("received a reply with no matching request", {
-            commandId: cmdId,
-            commandExtendedId: cmdExId,
-            ack,
-          });
-          continue;
-        }
-
-        const wantedCmdId = callbackInfo.wantedCommandId;
-        const wantedCmdExId = callbackInfo.wantedCommandExId;
-
-        const PackageType = thePacketEncoder.getPacketType(
-          wantedCmdId,
-          wantedCmdExId,
-        );
-        if (wantedCmdId === undefined || PackageType === undefined) {
-          if (wantedCmdId !== undefined) {
-            this.reportWarning(
-              "no packet class is registered for the wanted command",
-              { commandId: wantedCmdId, commandExtendedId: wantedCmdExId },
-            );
-          }
-          callbackInfo.callback(packet.buffer);
-        } else {
-          if (PackageType.isValidPacket(packet, n)) {
-            callbackInfo.callback(new PackageType(packet));
-          } else {
-            this.reportWarning(
-              "reply failed packet validation; delivering its ack instead",
-              { commandId: cmdId, commandExtendedId: cmdExId, ack },
-            );
-
-            callbackInfo.callback(ack!);
-          }
-        }
-
-        clearTimeout(callbackInfo.timeout);
-      } catch (e) {
-        if (!(e instanceof Error && e.message === "No data")) {
-          this.reportWarning("reader loop stopped by a read error", {
-            error: e,
-            pendingBytes: cache.bytes,
-          });
-        }
-
-        await this.close();
-        break;
-      } finally {
-        cache.discard(sliceIdx);
-      }
-  }
-
-  private pendingKey(commandId: number, commandExtendedId: number | undefined) {
-    return `${commandId}:${commandExtendedId ?? ""}`;
-  }
-
-  private getPendingQueue(
-    commandId: number,
-    commandExtendedId: number | undefined,
-    create: boolean,
-  ): PendingPacketQueue {
-    const key = this.pendingKey(commandId, commandExtendedId);
-    let queue = this.pendingCallbacks.get(key);
-    if (queue === undefined && create) {
-      const created = { head: undefined, tail: undefined };
-      this.pendingCallbacks.set(key, created);
-      queue = created;
-    }
-    return queue ?? { head: undefined, tail: undefined };
-  }
-
-  private enqueuePendingCallback(callback: PendingPacketCallback): void {
-    const tail = callback.queue.tail;
-    callback.previous = tail;
-    if (tail === undefined) callback.queue.head = callback;
-    else tail.next = callback;
-    callback.queue.tail = callback;
-  }
-
-  private removePendingCallback(callback: PendingPacketCallback): boolean {
-    if (!callback.active) return false;
-    callback.active = false;
-    const { queue, previous, next } = callback;
-    if (previous === undefined) queue.head = next;
-    else previous.next = next;
-    if (next === undefined) queue.tail = previous;
-    else next.previous = previous;
-    callback.previous = undefined;
-    callback.next = undefined;
-    if (
-      queue !== this.rawCallbacks &&
-      queue.head === undefined &&
-      callback.wantedCommandId !== undefined
-    ) {
-      this.pendingCallbacks.delete(
-        this.pendingKey(callback.wantedCommandId, callback.wantedCommandExId),
-      );
-    }
-    return true;
-  }
-
-  private shiftPendingCallback(
-    commandId: number,
-    commandExtendedId: number | undefined,
-  ): PendingPacketCallback | undefined {
-    const queue = this.getPendingQueue(commandId, commandExtendedId, false);
-    const callback = queue.head;
-    if (callback !== undefined) this.removePendingCallback(callback);
-    return callback;
-  }
-
-  private shiftRawCallback(): PendingPacketCallback | undefined {
-    const callback = this.rawCallbacks.head;
-    if (callback !== undefined) this.removePendingCallback(callback);
-    return callback;
-  }
-
-  private hasPendingCallbacks(): boolean {
-    return (
-      this.pendingCallbacks.size > 0 || this.rawCallbacks.head !== undefined
-    );
-  }
-
-  private drainPendingCallbacks(): PendingPacketCallback[] {
-    const callbacks: PendingPacketCallback[] = [];
-    for (const queue of this.pendingCallbacks.values()) {
-      for (let callback = queue.head; callback; ) {
-        const next = callback.next;
-        callback.active = false;
-        callback.previous = undefined;
-        callback.next = undefined;
-        callbacks.push(callback);
-        callback = next;
-      }
-    }
-    for (let callback = this.rawCallbacks.head; callback; ) {
-      const next = callback.next;
-      callback.active = false;
-      callback.previous = undefined;
-      callback.next = undefined;
-      callbacks.push(callback);
-      callback = next;
-    }
-    this.pendingCallbacks.clear();
-    this.rawCallbacks = { head: undefined, tail: undefined };
-    return callbacks;
+    return runPacketReader({
+      readData: (cache, expectedSize) => this.readData(cache, expectedSize),
+      shiftCallback: (commandId, commandExtendedId) =>
+        this.pendingRequests.shift(commandId, commandExtendedId),
+      reportWarning: (message, details) => this.reportWarning(message, details),
+      close: () => this.close(),
+    });
   }
 
   query1(): ResultAsync<Query1ReplyD2HPacket, VexSerialError> {
@@ -775,20 +524,7 @@ export class V5SerialConnection extends VexSerialConnection {
    * order without packet interleaving.
    */
   async withFileTransfer<T>(operation: () => Promise<T>): Promise<T> {
-    const previous = this.fileTransferTail;
-    let release = (): void => {};
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.fileTransferTail = previous.then(() => current);
-    this.fileTransferDepth++;
-    try {
-      await previous;
-      return await operation();
-    } finally {
-      this.fileTransferDepth--;
-      release();
-    }
+    return this.fileTransfers.run(operation);
   }
 
   getDeviceStatus(): ResultAsync<
@@ -983,6 +719,16 @@ export class V5SerialConnection extends VexSerialConnection {
     try {
       const p1 = p1Result.value;
       const fileSize = size ?? p1.fileSize;
+      if (!Number.isSafeInteger(fileSize) || fileSize < 0) {
+        throw new VexTransferError(
+          `file download size ${fileSize} is not a non-negative safe integer`,
+        );
+      }
+      if (fileSize > this.maxFileDownloadBytes) {
+        throw new VexTransferError(
+          `file download size ${fileSize} exceeds download limit ${this.maxFileDownloadBytes}`,
+        );
+      }
       const bufferChunkSize = getTransferChunkSize(p1.windowSize);
       let bufferOffset = 0;
       const fileBuf = new Uint8Array(fileSize);
@@ -1364,68 +1110,6 @@ export class V5SerialConnection extends VexSerialConnection {
       new SelectDashH2DPacket(screen, port),
       SelectDashReplyD2HPacket,
     );
-  }
-}
-
-/**
- * A growable receive queue. Parsed packets are copied out before their bytes
- * are discarded, so views into this reusable storage never escape the reader.
- */
-class ReceiveBuffer {
-  private storage: Uint8Array<ArrayBuffer> = new Uint8Array(0);
-  private start = 0;
-  private end = 0;
-
-  get byteLength(): number {
-    return this.end - this.start;
-  }
-
-  get bytes(): Uint8Array<ArrayBuffer> {
-    return this.storage.subarray(this.start, this.end);
-  }
-
-  append(chunk: Uint8Array): void {
-    this.reserve(chunk.byteLength);
-    this.storage.set(chunk, this.end);
-    this.end += chunk.byteLength;
-  }
-
-  copy(length: number): Uint8Array<ArrayBuffer> {
-    return this.bytes.slice(0, length);
-  }
-
-  discard(length: number): void {
-    this.start += length < 0 ? this.byteLength + length : length;
-    if (this.start < 0) this.start = 0;
-    if (this.start > this.end) this.start = this.end;
-    if (this.start === this.end) {
-      this.start = 0;
-      this.end = 0;
-    } else if (this.start >= 4096 && this.start * 2 >= this.storage.length) {
-      this.storage.copyWithin(0, this.start, this.end);
-      this.end -= this.start;
-      this.start = 0;
-    }
-  }
-
-  private reserve(additional: number): void {
-    const required = this.byteLength + additional;
-    if (this.storage.length - this.end >= additional) return;
-
-    if (this.storage.length >= required) {
-      this.storage.copyWithin(0, this.start, this.end);
-      this.end = this.byteLength;
-      this.start = 0;
-      return;
-    }
-
-    const storage: Uint8Array<ArrayBuffer> = new Uint8Array(
-      Math.max(required, Math.max(64, this.storage.length * 2)),
-    );
-    storage.set(this.bytes);
-    this.end = this.byteLength;
-    this.start = 0;
-    this.storage = storage;
   }
 }
 

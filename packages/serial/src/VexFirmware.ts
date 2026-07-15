@@ -21,6 +21,7 @@ import {
   FactoryStatusH2DPacket,
   FactoryStatusReplyD2HPacket,
 } from "./VexPacketModels.js";
+import { DownloadBuffer } from "./DownloadBuffer.js";
 
 /** Maximum number of bytes accepted when downloading the version catalog. */
 const MAX_CATALOG_BYTES = 4 * 1024;
@@ -87,9 +88,12 @@ async function runDownload(
     }
 
     const declaredLength = response.headers.get("content-length");
-    if (declaredLength !== null) {
-      const declared = Number.parseInt(declaredLength, 10);
-      if (!Number.isNaN(declared) && declared > 0 && declared > maxBytes) {
+    const declared =
+      declaredLength !== null && /^\d+$/.test(declaredLength.trim())
+        ? Number(declaredLength)
+        : undefined;
+    if (declared !== undefined && Number.isSafeInteger(declared)) {
+      if (declared > maxBytes) {
         return err(
           new VexDownloadError(
             `declared content length ${declared} exceeds limit ${maxBytes} for ${link}`,
@@ -103,15 +107,19 @@ async function runDownload(
     }
 
     const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
+    const initialCapacity =
+      declared !== undefined &&
+      Number.isSafeInteger(declared) &&
+      Number.isFinite(maxBytes)
+        ? declared
+        : 0;
+    const buffer = new DownloadBuffer(initialCapacity, maxBytes);
     try {
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
         if (value === undefined) continue;
-        total += value.byteLength;
-        if (total > maxBytes) {
+        if (!buffer.append(value)) {
           try {
             await reader.cancel();
           } catch {
@@ -123,7 +131,6 @@ async function runDownload(
             ),
           );
         }
-        chunks.push(value);
       }
     } finally {
       try {
@@ -133,13 +140,7 @@ async function runDownload(
       }
     }
 
-    const result = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-      result.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return ok(result.buffer);
+    return ok(buffer.finish());
   } finally {
     clearTimeout(timer);
   }

@@ -36,4 +36,14 @@ not cancel work already executing on the device.
 unusable selected port, or `Ok("no-port")` when no port is available or
 selected. It returns `Err(VexSerialError)` for serial open failures.
 
-[View source](https://github.com/v5x-dev/v5x/blob/main/packages/serial/src/VexConnection.ts)
+Device file downloads reject invalid or oversized device-reported lengths
+before allocating their destination buffer. The default limit is 64 MiB and
+can be lowered for an application:
+
+```ts
+const connection = new V5SerialConnection(navigator.serial, {
+  maxFileDownloadBytes: 8 * 1024 * 1024,
+});
+```
+
+[View source](https://better-hub.com/v5x-dev/v5x/blob/main/packages/serial/src/VexConnection.ts)
