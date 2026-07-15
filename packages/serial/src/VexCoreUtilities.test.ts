@@ -60,6 +60,36 @@ describe("VexEventEmitter", () => {
     expect(values).toEqual([1]);
   });
 
+  test("does not retain empty string or symbol listener buckets", () => {
+    const emitter = new VexEventEmitter();
+    const listener = () => {};
+    const symbolEvent = Symbol("update");
+
+    emitter.remove("unknown", listener);
+    expect(emitter.handlerMap.has("unknown")).toBe(false);
+
+    emitter.on(symbolEvent, listener);
+    emitter.remove(symbolEvent, listener);
+    expect(emitter.handlerMap.has(symbolEvent)).toBe(false);
+  });
+
+  test("removing one listener preserves the others in order", () => {
+    const emitter = new VexEventEmitter<{ update: number }>();
+    const values: string[] = [];
+    const first = (value: number) => values.push(`first:${value}`);
+    const removed = (value: number) => values.push(`removed:${value}`);
+    const last = (value: number) => values.push(`last:${value}`);
+    emitter.on("update", first);
+    emitter.on("update", removed);
+    emitter.on("update", last);
+
+    emitter.remove("update", removed);
+    emitter.emit("update", 1);
+
+    expect(values).toEqual(["first:1", "last:1"]);
+    expect(emitter.handlerMap.get("update")).toHaveLength(2);
+  });
+
   test("continues emitting after a listener throws", () => {
     const emitter = new VexEventEmitter<{ update: number }>();
     const values: number[] = [];

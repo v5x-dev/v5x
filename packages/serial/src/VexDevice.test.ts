@@ -5,6 +5,7 @@ import {
   V5Radio,
   V5SerialDevice,
   downloadFileFromInternet,
+  sleep,
   sleepUntil,
   sleepUntilAsync,
 } from "./VexDevice";
@@ -964,6 +965,40 @@ describe("sleepUntil and sleepUntilAsync argument validation", () => {
     );
   });
 
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects non-finite timeout %p",
+    async (timeout) => {
+      const asyncResult = await sleepUntilAsync(async () => true, timeout);
+      const syncResult = await sleepUntil(() => true, timeout);
+      expect(asyncResult.isErr()).toBe(true);
+      expect(syncResult.isErr()).toBe(true);
+    },
+  );
+
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects non-finite polling interval %p",
+    async (interval) => {
+      const asyncResult = await sleepUntilAsync(async () => true, 10, interval);
+      const syncResult = await sleepUntil(() => true, 10, interval);
+      expect(asyncResult.isErr()).toBe(true);
+      expect(syncResult.isErr()).toBe(true);
+    },
+  );
+
+  test("defines zero-timeout polling as one immediate predicate attempt", async () => {
+    expect((await sleepUntil(() => true, 0))._unsafeUnwrap()).toBe(true);
+    expect((await sleepUntilAsync(async () => false, 0))._unsafeUnwrap()).toBe(
+      false,
+    );
+  });
+
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects non-finite sleep duration %p",
+    async (duration) => {
+      expect((await sleep(duration)).isErr()).toBe(true);
+    },
+  );
+
   test("predicate exceptions reject without leaving timers behind", async () => {
     const r = await sleepUntilAsync(
       async () => {
@@ -981,6 +1016,53 @@ describe("downloadFileFromInternet streaming limits", () => {
   const originalFetch = globalThis.fetch;
   afterEach(() => {
     globalThis.fetch = originalFetch;
+  });
+
+  test.each([Number.NaN, Number.NEGATIVE_INFINITY])(
+    "rejects invalid maxBytes %p before fetching",
+    async (maxBytes) => {
+      const r = await downloadFileFromInternet("https://example.test/file", {
+        maxBytes,
+      });
+      expect(r.isErr()).toBe(true);
+    },
+  );
+
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects invalid timeout %p before fetching",
+    async (timeout) => {
+      const r = await downloadFileFromInternet("https://example.test/file", {
+        timeout,
+      });
+      expect(r.isErr()).toBe(true);
+    },
+  );
+
+  test("supports positive infinity as an explicit unlimited size sentinel", async () => {
+    const body = new Uint8Array([1, 2, 3]);
+    globalThis.fetch = Object.assign(
+      async () => new Response(body, { status: 200 }),
+      { preconnect: originalFetch.preconnect },
+    ) as typeof fetch;
+
+    const result = await downloadFileFromInternet(
+      "https://example.test/unlimited",
+      { maxBytes: Number.POSITIVE_INFINITY },
+    );
+    expect(new Uint8Array(result._unsafeUnwrap())).toEqual(body);
+  });
+
+  test("accepts zero timeout as an immediate request deadline", async () => {
+    globalThis.fetch = Object.assign(
+      async () => new Response(new Uint8Array([1]), { status: 200 }),
+      { preconnect: originalFetch.preconnect },
+    ) as typeof fetch;
+
+    const result = await downloadFileFromInternet(
+      "https://example.test/immediate",
+      { timeout: 0 },
+    );
+    expect(result.isOk()).toBe(true);
   });
 
   test("rejects bodies that exceed the configured byte limit", async () => {

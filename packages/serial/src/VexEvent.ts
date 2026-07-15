@@ -27,15 +27,14 @@ export class VexEventEmitter<
     eventName: K,
     listener: EventListener<TEvents[K]>,
   ): void {
-    let listeners = this.handlerMap.get(eventName);
-    listeners ??= [];
+    const listeners = this.handlerMap.get(eventName);
+    if (listeners === undefined) return;
 
     const index = listeners.indexOf(listener as EventListener<unknown>);
-    if (index > -1) {
-      listeners.splice(index, 1);
-    }
+    if (index === -1) return;
 
-    this.handlerMap.set(eventName, listeners);
+    listeners.splice(index, 1);
+    if (listeners.length === 0) this.handlerMap.delete(eventName);
   }
 
   emit<K extends EventMapKey<TEvents>>(eventName: K, data: TEvents[K]): void {
