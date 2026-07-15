@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "@v5x/cli@*"
+      - "@v5x/events@*"
       - "@v5x/serial@*"
       - "@v5x/web@*"
 
@@ -36,6 +37,10 @@ jobs:
             @v5x/cli)
               package_dir="packages/cli"
               tarball_glob="v5x-cli-*.tgz"
+              ;;
+            @v5x/events)
+              package_dir="packages/events"
+              tarball_glob="v5x-events-*.tgz"
               ;;
             @v5x/serial)
               package_dir="packages/serial"
@@ -110,7 +115,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun audit
       - name: Check serial release dependency
-        if: ${{ steps.release.outputs.package_name != '@v5x/serial' }}
+        if: ${{ steps.release.outputs.package_name == '@v5x/cli' || steps.release.outputs.package_name == '@v5x/web' }}
         run: |
           set -euo pipefail
           serial_version="${{ steps.release.outputs.serial_version }}"
