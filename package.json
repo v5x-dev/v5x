@@ -30,7 +30,6 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint packages apps --type-aware",
-    "test:coverage": "turbo run build --filter=@v5x/serial && rm -rf coverage && bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage packages && bun scripts/check-coverage.ts",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
