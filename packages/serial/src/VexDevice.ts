@@ -3,7 +3,10 @@ import {
   type MatchMode,
   SerialDeviceType,
 } from "./Vex.js";
-import { V5SerialConnection } from "./VexConnection.js";
+import {
+  DEFAULT_MAX_FILE_DOWNLOAD_BYTES,
+  V5SerialConnection,
+} from "./VexConnection.js";
 import {
   V5Brain,
   V5Controller,
@@ -54,6 +57,8 @@ type RefreshTimer = ReturnType<typeof setInterval>;
 export interface V5SerialDeviceOptions {
   autoRefresh?: boolean;
   refreshIntervalMs?: number;
+  /** Maximum file size accepted from a connected device before allocation. */
+  maxFileDownloadBytes?: number;
 }
 
 function unrefTimerIfPossible(timer: RefreshTimer): void {
@@ -93,6 +98,7 @@ export class V5SerialDevice extends VexSerialDevice {
   private _refreshGeneration = 0;
   private _autoRefresh = false;
   private _refreshIntervalMs = 200;
+  private readonly _maxFileDownloadBytes: number;
   private _isLastRefreshComplete = true;
   private readonly _brain = new V5Brain(this.state);
   private readonly _controllers: [V5Controller, V5Controller] = [
@@ -128,6 +134,19 @@ export class V5SerialDevice extends VexSerialDevice {
       typeof options === "boolean" ? options : (options.autoRefresh ?? false);
     this.refreshIntervalMs =
       typeof options === "boolean" ? 200 : (options.refreshIntervalMs ?? 200);
+    const maxFileDownloadBytes =
+      typeof options === "boolean"
+        ? DEFAULT_MAX_FILE_DOWNLOAD_BYTES
+        : (options.maxFileDownloadBytes ?? DEFAULT_MAX_FILE_DOWNLOAD_BYTES);
+    if (
+      !Number.isSafeInteger(maxFileDownloadBytes) ||
+      maxFileDownloadBytes <= 0
+    ) {
+      throw new VexInvalidArgumentError(
+        "maxFileDownloadBytes must be a positive safe integer",
+      );
+    }
+    this._maxFileDownloadBytes = maxFileDownloadBytes;
     this.autoRefresh = autoRefresh;
   }
 
@@ -588,7 +607,9 @@ export class V5SerialDevice extends VexSerialDevice {
   }
 
   protected createConnection(): V5SerialConnection {
-    return new V5SerialConnection(this.defaultSerial);
+    return new V5SerialConnection(this.defaultSerial, {
+      maxFileDownloadBytes: this._maxFileDownloadBytes,
+    });
   }
 
   private _isLifecycleCurrent(generation: number): boolean {

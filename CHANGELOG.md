@@ -13,6 +13,12 @@ section to a dated package-version heading.
 
 ### @v5x/serial
 
+- Bound device-reported file sizes before allocation and make the download
+  limit configurable on serial connections and devices.
+- Stream firmware downloads into a single bounded buffer instead of retaining
+  every response chunk before concatenation.
+- Split packet reading, pending-request dispatch, receive buffering, and file
+  transfer queuing out of the serial connection module.
 - Serialize typed requests that share reply command IDs so out-of-order device
   replies cannot be delivered to the wrong caller.
 - Distinguish closed serial connections from device NACK responses.

@@ -43,6 +43,15 @@ function connectionWithWriter() {
   return connection;
 }
 
+test.each([0, -1, 1.5, Number.NaN])(
+  "rejects invalid maximum file download size %p",
+  (maxFileDownloadBytes) => {
+    expect(
+      () => new V5SerialConnection({} as Serial, { maxFileDownloadBytes }),
+    ).toThrow("positive safe integer");
+  },
+);
+
 function query1Reply(ack: AckType): Uint8Array {
   return Uint8Array.of(0xaa, 0x55, 33, 8, 0, ack, 1, 2, 0, 0, 3, 4);
 }
@@ -572,6 +581,61 @@ test("downloads trim word padding from the final chunk", async () => {
   });
 
   expect(result._unsafeUnwrap()).toEqual(new Uint8Array([1, 2, 3]));
+});
+
+test.each([-1, 1.5, Number.NaN])(
+  "downloads reject malformed device file size %p and still exit",
+  async (fileSize) => {
+    const connection = new V5SerialConnection({} as Serial);
+    const writes: object[] = [];
+    const replies = [
+      initReply(4, fileSize),
+      Object.create(
+        ExitFileTransferReplyD2HPacket.prototype,
+      ) as ExitFileTransferReplyD2HPacket,
+    ];
+    connection.writeDataAsync = async (packet) => {
+      writes.push(packet);
+      return replies.shift() ?? AckType.CDC2_NACK;
+    };
+
+    const result = await connection.downloadFileToHost({
+      filename: "bad.bin",
+      vendor: FileVendor.USER,
+    });
+
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain("download size");
+    expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
+  },
+);
+
+test("downloads reject oversized device files before allocation and still exit", async () => {
+  const connection = new V5SerialConnection({} as Serial, {
+    maxFileDownloadBytes: 4,
+  });
+  const writes: object[] = [];
+  const replies = [
+    initReply(4, 5),
+    Object.create(
+      ExitFileTransferReplyD2HPacket.prototype,
+    ) as ExitFileTransferReplyD2HPacket,
+  ];
+  connection.writeDataAsync = async (packet) => {
+    writes.push(packet);
+    return replies.shift() ?? AckType.CDC2_NACK;
+  };
+
+  const result = await connection.downloadFileToHost({
+    filename: "large.bin",
+    vendor: FileVendor.USER,
+  });
+
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr().message).toContain(
+    "exceeds download limit 4",
+  );
+  expect(writes.at(-1)).toBeInstanceOf(ExitFileTransferH2DPacket);
 });
 
 test("upload progress advances with each acknowledged chunk", async () => {
