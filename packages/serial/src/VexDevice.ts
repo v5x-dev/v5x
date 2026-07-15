@@ -1,8 +1,4 @@
-import {
-  type ISmartDeviceInfo,
-  type MatchMode,
-  SerialDeviceType,
-} from "./Vex.js";
+import { type MatchMode, SerialDeviceType } from "./Vex.js";
 import {
   DEFAULT_MAX_FILE_DOWNLOAD_BYTES,
   V5SerialConnection,
@@ -25,12 +21,7 @@ import {
   toVexSerialError,
 } from "./VexError.js";
 import { err, ok, Result, ResultAsync } from "neverthrow";
-import {
-  GetDeviceStatusReplyD2HPacket,
-  GetRadioStatusReplyD2HPacket,
-  GetSystemFlagsReplyD2HPacket,
-  GetSystemStatusReplyD2HPacket,
-} from "./VexPacket.js";
+import { DeviceSnapshotRefresher } from "./DeviceSnapshotRefresher.js";
 
 // Re-exports for backward compatibility with the previous VexDevice module.
 export {
@@ -95,7 +86,11 @@ export class V5SerialDevice extends VexSerialDevice {
         listener: () => void;
       }
     | undefined;
-  private _refreshGeneration = 0;
+  private readonly snapshots = new DeviceSnapshotRefresher(
+    this.state,
+    () => this._disposed,
+    () => this.isV5Controller,
+  );
   private _autoRefresh = false;
   private _refreshIntervalMs = 200;
   private readonly _maxFileDownloadBytes: number;
@@ -439,7 +434,7 @@ export class V5SerialDevice extends VexSerialDevice {
 
   async disconnect(): Promise<void> {
     this._lifecycleGeneration++;
-    this._refreshGeneration++;
+    this.snapshots.invalidate();
     this._isDisconnecting = true;
     const connection = this.connection;
     this.connection = undefined;
@@ -661,7 +656,7 @@ export class V5SerialDevice extends VexSerialDevice {
       // already waiting for replies must not turn this into a successful
       // connect after the transport has gone away.
       this._lifecycleGeneration++;
-      this._refreshGeneration++;
+      this.snapshots.invalidate();
       this.connection = undefined;
       this._detachDisconnectListener();
       this._emitSafely("disconnected", undefined);
@@ -709,7 +704,7 @@ export class V5SerialDevice extends VexSerialDevice {
       return;
     }
     this._lifecycleGeneration++;
-    this._refreshGeneration++;
+    this.snapshots.invalidate();
     this.connection = undefined;
     this._detachDisconnectListener();
     await connection.close();
@@ -724,209 +719,6 @@ export class V5SerialDevice extends VexSerialDevice {
    * not surface as a hard error result.
    */
   refresh(): ResultAsync<boolean, VexSerialError> {
-    return new ResultAsync(this._refresh());
+    return new ResultAsync(this.snapshots.refresh(this.connection));
   }
-
-  private async _refresh(): Promise<Result<boolean, VexSerialError>> {
-    if (this._disposed) return ok(false);
-
-    const generation = ++this._refreshGeneration;
-    const conn = this.connection;
-    if (conn == null || !conn.isConnected) {
-      this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return ok(false);
-    }
-
-    const [ssPacket, sfPacket, rdPacket, dsPacket] = await Promise.all([
-      conn.getSystemStatus(),
-      conn.getSystemFlags(),
-      conn.getRadioStatus(),
-      conn.getDeviceStatus(),
-    ]);
-    if (generation !== this._refreshGeneration || this._disposed)
-      return ok(false);
-    if (
-      ssPacket.isErr() ||
-      sfPacket.isErr() ||
-      rdPacket.isErr() ||
-      dsPacket.isErr()
-    ) {
-      this._applySnapshotIfCurrent(generation, { isAvailable: false });
-      return ok(false);
-    }
-
-    const snapshot = this._buildSnapshot(
-      ssPacket.value,
-      sfPacket.value,
-      rdPacket.value,
-      dsPacket.value,
-    );
-    return ok(this._applySnapshotIfCurrent(generation, snapshot));
-  }
-
-  private _buildSnapshot(
-    ssPacket: GetSystemStatusReplyD2HPacket,
-    sfPacket: GetSystemFlagsReplyD2HPacket,
-    rdPacket: GetRadioStatusReplyD2HPacket,
-    dsPacket: GetDeviceStatusReplyD2HPacket,
-  ): V5SerialDeviceSnapshot {
-    const flags2 = ssPacket.sysflags[2]!;
-    const matchMode: MatchMode =
-      (flags2 & 0b00100000) !== 0
-        ? "disabled"
-        : (flags2 & 0b01000000) !== 0
-          ? "autonomous"
-          : "driver";
-    const isFieldControllerConnected = (flags2 & 0b00010000) !== 0;
-
-    const flags4 = ssPacket.sysflags[4]!;
-    const usingLanguage = (flags4 & 0b11110000) >> 4;
-    const isWhiteTheme = (flags4 & 0b00000100) !== 0;
-    const isScreenReversed = (flags4 & 0b00000001) === 0;
-
-    const flags5 = sfPacket.flags;
-    const hasFlag = (bit: number): boolean =>
-      (flags5 & (2 ** (32 - bit))) !== 0;
-    const isRadioData = hasFlag(12);
-    const isDoublePressed = hasFlag(14);
-    const isCharging = hasFlag(15);
-    const isPressed = hasFlag(17);
-    const isVexNet = hasFlag(18);
-    const controller1Available = hasFlag(19);
-    const radioConnected = hasFlag(22);
-    const radioAvailable = hasFlag(23);
-    const batteryPercent = sfPacket.battery ?? 0;
-    const controller0Available =
-      radioConnected || sfPacket.controllerBatteryPercent !== undefined;
-    const controller0Battery = sfPacket.controllerBatteryPercent ?? 0;
-    const controller1Battery = sfPacket.partnerControllerBatteryPercent ?? 0;
-    const activeProgram = sfPacket.currentProgram;
-    const isAvailable = !this.isV5Controller || radioConnected;
-
-    const devices = dsPacket.devices.map((d) => ({ ...d }));
-
-    return {
-      isAvailable: true,
-      matchMode,
-      isFieldControllerConnected,
-      brain: {
-        ...this.state.brain,
-        activeProgram,
-        battery: { batteryPercent, isCharging },
-        button: { isPressed, isDoublePressed },
-        cpu0Version: ssPacket.cpu0Version,
-        cpu1Version: ssPacket.cpu1Version,
-        isAvailable,
-        settings: { isScreenReversed, isWhiteTheme, usingLanguage },
-        systemVersion: ssPacket.systemVersion,
-        uniqueId: ssPacket.uniqueId,
-      },
-      controllers: [
-        {
-          battery: controller0Battery,
-          isAvailable: controller0Available,
-          isCharging: (flags2 & 0b10000000) !== 0,
-        },
-        {
-          battery: controller1Battery,
-          isAvailable: controller1Available,
-          // The system-status flags expose only the primary controller's
-          // charging bit. Do not present it as partner-controller state.
-          isCharging: undefined,
-        },
-      ],
-      radio: {
-        channel: rdPacket.channel,
-        latency: rdPacket.timeslot,
-        signalQuality: rdPacket.quality,
-        signalStrength: rdPacket.strength,
-        isRadioData,
-        isVexNet,
-        isConnected: radioConnected,
-        isAvailable: radioAvailable,
-      },
-      devices,
-    };
-  }
-
-  private _applySnapshotIfCurrent(
-    generation: number,
-    snapshot: V5SerialDeviceSnapshot | { isAvailable: false },
-  ): boolean {
-    if (this._disposed) return false;
-    if (generation !== this._refreshGeneration) return false;
-
-    if (snapshot.isAvailable === false) {
-      this.state.brain.isAvailable = false;
-      return false;
-    }
-
-    this.state.matchMode = snapshot.matchMode;
-    this.state.isFieldControllerConnected = snapshot.isFieldControllerConnected;
-    const brain = this.state.brain;
-    brain.activeProgram = snapshot.brain.activeProgram;
-    brain.battery.batteryPercent = snapshot.brain.battery.batteryPercent;
-    brain.battery.isCharging = snapshot.brain.battery.isCharging;
-    brain.button.isPressed = snapshot.brain.button.isPressed;
-    brain.button.isDoublePressed = snapshot.brain.button.isDoublePressed;
-    if (brain.cpu0Version.compare(snapshot.brain.cpu0Version) !== 0) {
-      brain.cpu0Version = snapshot.brain.cpu0Version;
-    }
-    if (brain.cpu1Version.compare(snapshot.brain.cpu1Version) !== 0) {
-      brain.cpu1Version = snapshot.brain.cpu1Version;
-    }
-    brain.isAvailable = snapshot.brain.isAvailable;
-    brain.settings.isScreenReversed = snapshot.brain.settings.isScreenReversed;
-    brain.settings.isWhiteTheme = snapshot.brain.settings.isWhiteTheme;
-    brain.settings.usingLanguage = snapshot.brain.settings.usingLanguage;
-    if (brain.systemVersion.compare(snapshot.brain.systemVersion) !== 0) {
-      brain.systemVersion = snapshot.brain.systemVersion;
-    }
-    brain.uniqueId = snapshot.brain.uniqueId;
-    Object.assign(this.state.controllers[0]!, snapshot.controllers[0]);
-    Object.assign(this.state.controllers[1]!, snapshot.controllers[1]);
-    Object.assign(this.state.radio, snapshot.radio);
-
-    const next: Array<ISmartDeviceInfo | undefined> = [];
-    for (const device of snapshot.devices) {
-      if (device != null) next[device.port] = device;
-    }
-    if (!sameSmartDeviceSlots(this.state.devices, next)) {
-      this.state.devices = next;
-    }
-    return true;
-  }
-}
-
-function sameSmartDeviceSlots(
-  left: Array<ISmartDeviceInfo | undefined>,
-  right: Array<ISmartDeviceInfo | undefined>,
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((device, index) => {
-      const next = right[index];
-      return (
-        device === next ||
-        (device !== undefined &&
-          next !== undefined &&
-          device.port === next.port &&
-          device.type === next.type &&
-          device.status === next.status &&
-          device.betaversion === next.betaversion &&
-          device.version === next.version &&
-          device.bootversion === next.bootversion)
-      );
-    })
-  );
-}
-
-interface V5SerialDeviceSnapshot {
-  isAvailable: true;
-  matchMode: MatchMode;
-  isFieldControllerConnected: boolean;
-  brain: V5SerialDeviceState["brain"];
-  controllers: V5SerialDeviceState["controllers"];
-  radio: V5SerialDeviceState["radio"];
-  devices: ISmartDeviceInfo[];
 }

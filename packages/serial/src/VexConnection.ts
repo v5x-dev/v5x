@@ -17,7 +17,6 @@ import {
   type SelectDashScreen,
 } from "./Vex.js";
 import {
-  VexIoError,
   VexInvalidArgumentError,
   VexNotConnectedError,
   VexProtocolError,
@@ -79,6 +78,10 @@ import { FileTransferQueue } from "./FileTransferQueue.js";
 import { PendingRequestDispatcher } from "./PendingRequestDispatcher.js";
 import { ReceiveBuffer } from "./ReceiveBuffer.js";
 import { runPacketReader } from "./PacketReader.js";
+import {
+  SerialTransport,
+  type SerialTransportOpenResult,
+} from "./SerialTransport.js";
 
 type HostBoundPacketType<T extends HostBoundPacket> = {
   new (data: ArrayBuffer | Uint8Array): T;
@@ -86,7 +89,7 @@ type HostBoundPacketType<T extends HostBoundPacket> = {
 };
 
 /** Outcome of {@link VexSerialConnection.open}. */
-export type OpenResult = "opened" | "busy" | "no-port";
+export type OpenResult = SerialTransportOpenResult;
 
 /**
  * Payload of the `warning` event: a non-fatal condition the library
@@ -118,19 +121,11 @@ export interface VexSerialConnectionOptions {
 export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvents> {
   filters: SerialPortFilter[] = [{ usbVendorId: 10376 }];
 
-  writer: WritableStreamDefaultWriter<unknown> | undefined;
-  reader: ReadableStreamDefaultReader<unknown> | undefined;
-  port: SerialPort | undefined;
   serial: Serial;
   readonly maxFileDownloadBytes: number;
 
   private readonly pendingRequests = new PendingRequestDispatcher();
-  private _onPortDisconnect: (() => void) | null = null;
-  private _closePromise: Promise<void> | null = null;
-  private _openPromise: Promise<Result<OpenResult, VexSerialError>> | null =
-    null;
-  private _isClosing = false;
-  private _wasConnected = false;
+  private readonly transport: SerialTransport;
   protected readonly fileTransfers = new FileTransferQueue();
 
   /** Pending callbacks, exposed as a snapshot for backwards compatibility. */
@@ -139,11 +134,31 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   }
 
   get isConnected(): boolean {
-    return (
-      this.port !== undefined &&
-      this.reader !== undefined &&
-      this.writer !== undefined
-    );
+    return this.transport.isConnected;
+  }
+
+  get writer(): WritableStreamDefaultWriter<unknown> | undefined {
+    return this.transport.writer;
+  }
+
+  set writer(value: WritableStreamDefaultWriter<unknown> | undefined) {
+    this.transport.writer = value;
+  }
+
+  get reader(): ReadableStreamDefaultReader<unknown> | undefined {
+    return this.transport.reader;
+  }
+
+  set reader(value: ReadableStreamDefaultReader<unknown> | undefined) {
+    this.transport.reader = value;
+  }
+
+  get port(): SerialPort | undefined {
+    return this.transport.port;
+  }
+
+  set port(value: SerialPort | undefined) {
+    this.transport.port = value;
   }
 
   get isFileTransferring(): boolean {
@@ -153,6 +168,22 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   constructor(serial: Serial, options: VexSerialConnectionOptions = {}) {
     super();
     this.serial = serial;
+    this.transport = new SerialTransport(
+      () => this.serial,
+      () => this.filters,
+      {
+        hasPendingRequests: () => this.pendingRequests.hasPending,
+        beforeClose: () => {
+          for (const callback of this.pendingRequests.drain()) {
+            callback.callback(AckType.NOT_CONNECTED);
+          }
+        },
+        startReader: () => void this.startReader(),
+        connected: () => this.emitSafely("connected", undefined),
+        disconnected: () => this.emitSafely("disconnected", undefined),
+        warning: (message, details) => this.reportWarning(message, details),
+      },
+    );
     const maxFileDownloadBytes =
       options.maxFileDownloadBytes ?? DEFAULT_MAX_FILE_DOWNLOAD_BYTES;
     if (
@@ -190,122 +221,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   }
 
   async close(): Promise<void> {
-    if (this._closePromise) return this._closePromise;
-
-    this._isClosing = true;
-    const closing = this._closeAfterOpen();
-    this._closePromise = closing;
-    try {
-      await closing;
-    } finally {
-      if (this._closePromise === closing) this._closePromise = null;
-      this._isClosing = false;
-    }
-  }
-
-  private async _closeAfterOpen(): Promise<void> {
-    // An open attempt owns partially acquired transport resources until it
-    // settles. Waiting here prevents close from seeing an empty connection and
-    // returning while that attempt later installs a port or stream lock.
-    const opening = this._openPromise;
-    if (opening !== null) await opening;
-    if (!this._hasOpenResources()) return;
-    await this._doClose();
-  }
-
-  private _hasOpenResources(): boolean {
-    return (
-      this.port !== undefined ||
-      this.reader !== undefined ||
-      this.writer !== undefined ||
-      this._onPortDisconnect !== null ||
-      this.pendingRequests.hasPending
-    );
-  }
-
-  private async _doClose(): Promise<void> {
-    // 1. Reject every pending callback so callers don't hang.
-    for (const callback of this.pendingRequests.drain()) {
-      callback.callback(AckType.NOT_CONNECTED);
-    }
-
-    // 2. Remove the port's disconnect listener so a late event doesn't
-    //    re-enter close and so repeated open/close cycles don't grow
-    //    listener counts.
-    const onDisconnect = this._onPortDisconnect;
-    this._onPortDisconnect = null;
-    if (onDisconnect !== null) {
-      try {
-        this.port?.removeEventListener("disconnect", onDisconnect);
-      } catch {
-        // The port may already be gone or the implementation may not
-        // support listener removal.
-      }
-    }
-
-    // 3. Close the writer and release the lock. Errors are swallowed so
-    //    cleanup can continue; the original error (if any) is preserved
-    //    by awaiting inside try/finally rather than the catch arm.
-    const writer = this.writer;
-    this.writer = undefined;
-    if (writer !== undefined) {
-      try {
-        await writer.close();
-      } catch {
-        // The stream may already be closed or errored.
-      } finally {
-        try {
-          writer.releaseLock();
-        } catch {
-          // Some stream implementations do not support explicit release.
-        }
-      }
-    }
-
-    // 4. Cancel the reader, drain any remaining bytes, then release.
-    const reader = this.reader;
-    this.reader = undefined;
-    if (reader !== undefined) {
-      try {
-        await reader.cancel();
-      } catch {
-        // The stream may already be closed or errored.
-      }
-      try {
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
-      } catch {
-        // Cancellation may have left the reader in an errored state.
-      } finally {
-        try {
-          reader.releaseLock();
-        } catch {
-          // Some stream implementations do not support explicit release.
-        }
-      }
-    }
-
-    // 5. Close the underlying port. Releasing both locks above means the
-    //    streams are no longer holding handles, so the port can be
-    //    closed without the legacy one-millisecond lock-release delay.
-    const port = this.port;
-    this.port = undefined;
-    if (port !== undefined) {
-      try {
-        await port.close();
-      } catch (e) {
-        this.reportWarning("failed to close the serial port", e);
-      }
-    }
-
-    // 6. Emit exactly one disconnected event per connected lifecycle so
-    //    that observers don't have to deduplicate.
-    if (this._wasConnected) {
-      this._wasConnected = false;
-      this.emitSafely("disconnected", undefined);
-    }
+    await this.transport.close();
   }
 
   /**
@@ -320,83 +236,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     use: number = 0,
     askUser: boolean = true,
   ): ResultAsync<OpenResult, VexSerialError> {
-    if (this._openPromise !== null) return new ResultAsync(this._openPromise);
-
-    const opening = this._open(use, askUser);
-    this._openPromise = opening;
-    void opening.then(
-      () => {
-        if (this._openPromise === opening) this._openPromise = null;
-      },
-      () => {
-        if (this._openPromise === opening) this._openPromise = null;
-      },
-    );
-    return new ResultAsync(opening);
-  }
-
-  private async _open(
-    use: number,
-    askUser: boolean,
-  ): Promise<Result<OpenResult, VexSerialError>> {
-    // Serialize behind an in-flight close so its teardown tail cannot
-    // partially dismantle the connection opened here.
-    if (this._closePromise !== null) await this._closePromise;
-
-    if (this.port !== undefined) {
-      return err(new VexIoError("Already connected."));
-    }
-
-    const ports = (await this.serial.getPorts())
-      .filter((p) => {
-        const info = p.getInfo();
-        return this.filters.find(
-          (f) =>
-            (f.usbVendorId === undefined ||
-              f.usbVendorId === info.usbVendorId) &&
-            (f.usbProductId === undefined ||
-              f.usbProductId === info.usbProductId),
-        );
-      })
-      .filter((candidate) => candidate.readable === null);
-
-    let port: SerialPort | undefined = ports[use];
-
-    if (port == null && askUser) {
-      try {
-        port = await this.serial.requestPort({ filters: this.filters });
-      } catch {
-        // User canceled port selection or no matching port was available.
-      }
-    }
-
-    if (port == null) return ok("no-port");
-
-    if (port.readable != null) return ok("busy");
-
-    try {
-      this.port = port;
-      await port.open({ baudRate: 115200 });
-
-      this._onPortDisconnect = () => {
-        void this.close();
-      };
-      this.port.addEventListener("disconnect", this._onPortDisconnect);
-
-      this.writer = this.port.writable.getWriter();
-      this.reader = this.port.readable.getReader();
-      void this.startReader();
-      this._wasConnected = true;
-      this.emitSafely("connected", undefined);
-
-      return ok("opened");
-    } catch (e) {
-      // Calling close() here would wait for this in-flight open attempt and
-      // deadlock. A concurrent close is already waiting for this attempt, so
-      // it is safe for the attempt to release the resources it acquired.
-      await this._doClose();
-      return err(toVexSerialError(e, "io"));
-    }
+    return new ResultAsync(this.transport.open(use, askUser));
   }
 
   async writeDataAsync(
@@ -419,7 +259,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     timeout: number,
   ): Promise<HostBoundPacket | ArrayBuffer | AckType> {
     return new Promise<HostBoundPacket | ArrayBuffer | AckType>((resolve) => {
-      if (this.writer === undefined || this._isClosing) {
+      if (this.writer === undefined || this.transport.isClosing) {
         resolve(AckType.NOT_CONNECTED);
         return;
       }
@@ -477,15 +317,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     cache: ReceiveBuffer,
     expectedSize: number,
   ): Promise<void> {
-    if (this.reader == null) throw new Error("No reader");
-
-    while (cache.byteLength < expectedSize) {
-      const { value: readData, done: isDone } = await this.reader.read();
-
-      if (isDone) throw new Error("No data");
-
-      cache.append(readData as Uint8Array);
-    }
+    await this.transport.readData(cache, expectedSize);
   }
 
   protected async startReader(): Promise<void> {
