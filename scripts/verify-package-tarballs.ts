@@ -2,7 +2,7 @@ import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
-type PackageName = "@v5x/serial" | "@v5x/cli" | "@v5x/web";
+type PackageName = "@v5x/serial" | "@v5x/cli" | "@v5x/web" | "@v5x/events";
 
 interface SourceMap {
   sources: string[];
@@ -33,7 +33,10 @@ function isSourceMap(value: unknown): value is SourceMap {
 
 function isPackageName(value: unknown): value is PackageName {
   return (
-    value === "@v5x/serial" || value === "@v5x/cli" || value === "@v5x/web"
+    value === "@v5x/serial" ||
+    value === "@v5x/cli" ||
+    value === "@v5x/web" ||
+    value === "@v5x/events"
   );
 }
 
@@ -159,7 +162,7 @@ export function verifyManifest(
         "CLI platform, runtime, or executable metadata are invalid",
       );
     }
-  } else {
+  } else if (packageName === "@v5x/web") {
     if (
       parsed.name !== "@v5x/web" ||
       parsed.type !== "module" ||
@@ -206,9 +209,28 @@ export function verifyManifest(
       "./dist/solid/index.d.ts",
       "./dist/solid/index.js",
     );
+  } else {
+    if (
+      parsed.name !== "@v5x/events" ||
+      parsed.type !== "module" ||
+      parsed.main !== "./dist/index.js" ||
+      parsed.module !== "./dist/index.js" ||
+      parsed.types !== "./dist/index.d.ts" ||
+      parsed.sideEffects !== false
+    ) {
+      throw new Error("events package metadata is invalid");
+    }
+
+    verifyExport(
+      parsed,
+      packageName,
+      ".",
+      "./dist/index.d.ts",
+      "./dist/index.js",
+    );
   }
 
-  if (packageName !== "@v5x/serial") {
+  if (packageName === "@v5x/cli" || packageName === "@v5x/web") {
     const dependencies = parsed.dependencies;
     const serialVersion = isRecord(dependencies)
       ? dependencies["@v5x/serial"]
@@ -298,6 +320,16 @@ function getRequiredFiles(packageName: PackageName): string[] {
     return ["dist/index.js"];
   }
 
+  if (packageName === "@v5x/events") {
+    return [
+      "dist/client.d.ts",
+      "dist/errors.d.ts",
+      "dist/index.js",
+      "dist/index.d.ts",
+      "dist/types.d.ts",
+    ];
+  }
+
   return [
     "dist/client.d.ts",
     "dist/errors.d.ts",
@@ -333,6 +365,10 @@ function getRequiredMaps(packageName: PackageName): string[] {
     return ["dist/index.js.map"];
   }
 
+  if (packageName === "@v5x/events") {
+    return ["dist/index.js.map"];
+  }
+
   return [
     "dist/index.js.map",
     "dist/testing.js.map",
@@ -346,7 +382,7 @@ function getPackedSizeBudget(packageName: PackageName): {
   bytes: number;
   label: string;
 } {
-  if (packageName === "@v5x/web") {
+  if (packageName === "@v5x/web" || packageName === "@v5x/events") {
     return { bytes: 1_000_000, label: "1 MB" };
   }
 
@@ -372,7 +408,7 @@ if (import.meta.main) {
   );
   if (archives.length === 0) {
     throw new Error(
-      "Pass one or more @v5x/serial, @v5x/cli, or @v5x/web tarballs to this script",
+      "Pass one or more @v5x/serial, @v5x/cli, @v5x/web, or @v5x/events tarballs to this script",
     );
   }
   const verifiedPackages = new Set<PackageName>();
