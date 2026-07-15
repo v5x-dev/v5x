@@ -168,6 +168,48 @@ describe("createV5Client", () => {
     expect(statuses).toEqual(["connecting", "connected"]);
   });
 
+  test("advances deviceVersion only when device snapshot data changes", async () => {
+    const publications: Array<[V5ConnectionStatus, number]> = [];
+    const client = createClient({
+      autoRefresh: true,
+      state: createFakeDeviceState(),
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    });
+    client.subscribe(() => {
+      const snapshot = client.getSnapshot();
+      publications.push([snapshot.status, snapshot.deviceVersion]);
+    });
+
+    expect(client.getSnapshot().deviceVersion).toBe(0);
+    await client.connect();
+    await client.disconnect();
+
+    expect(publications).toEqual([
+      ["connecting", 0],
+      ["connected", 1],
+      ["disconnecting", 2],
+      ["idle", 2],
+    ]);
+  });
+
+  test("preserves deviceVersion across a failed connection lifecycle", async () => {
+    const versions: number[] = [];
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => errAsync(new VexSerialError("io", "connect failed")),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    });
+    client.subscribe(() => versions.push(client.getSnapshot().deviceVersion));
+
+    await client.connect();
+    await client.disconnect();
+
+    expect(versions).toEqual([0, 0, 0]);
+  });
+
   test("unsubscribe prevents further notifications", async () => {
     let calls = 0;
     const client = createClient({

@@ -8,6 +8,7 @@ import {
   findProgramArtifact,
   findProgramArtifacts,
   inspectProject,
+  loadValidatedProgramArtifacts,
   newestNamedBinary,
   ARTIFACT_DISCOVERY_CONCURRENCY,
   PROGRAM_ARTIFACT_SIZE_LIMIT,
@@ -237,5 +238,33 @@ test("rejects empty and oversized PROS cold artifacts", async () => {
   await truncate(cold, PROGRAM_ARTIFACT_SIZE_LIMIT + 1);
   await expect(validateProgramArtifacts({ hot, cold })).rejects.toThrow(
     `program cold artifact ${cold} is ${PROGRAM_ARTIFACT_SIZE_LIMIT + 1} bytes; supported limit is ${PROGRAM_ARTIFACT_SIZE_LIMIT} bytes`,
+  );
+});
+
+test("rejects a hot artifact that grows after validation", async () => {
+  const path = await temporaryDirectory();
+  const hot = join(path, "program.bin");
+  await writeFile(hot, "valid");
+  const validated = await validateProgramArtifacts({ hot });
+
+  await truncate(hot, PROGRAM_ARTIFACT_SIZE_LIMIT + 1);
+
+  await expect(loadValidatedProgramArtifacts(validated)).rejects.toThrow(
+    `program hot artifact ${hot} is ${PROGRAM_ARTIFACT_SIZE_LIMIT + 1} bytes; supported limit is ${PROGRAM_ARTIFACT_SIZE_LIMIT} bytes`,
+  );
+});
+
+test("rejects a cold artifact emptied after validation", async () => {
+  const path = await temporaryDirectory();
+  const hot = join(path, "hot.package.bin");
+  const cold = join(path, "cold.package.bin");
+  await writeFile(hot, "hot");
+  await writeFile(cold, "cold");
+  const validated = await validateProgramArtifacts({ hot, cold });
+
+  await truncate(cold, 0);
+
+  await expect(loadValidatedProgramArtifacts(validated)).rejects.toThrow(
+    `program cold artifact is empty: ${cold}`,
   );
 });

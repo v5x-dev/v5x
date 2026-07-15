@@ -33,9 +33,9 @@ const MAX_FIRMWARE_IMAGE_BYTES = 32 * 1024 * 1024;
 const MAX_AGGREGATE_IMAGE_BYTES = 48 * 1024 * 1024;
 
 export interface DownloadFileFromInternetOptions {
-  /** Maximum total bytes to read from the response body. */
+  /** Maximum total bytes to read, or positive infinity for no size limit. */
   maxBytes?: number;
-  /** Request timeout in milliseconds. */
+  /** Finite request timeout in milliseconds. Zero requests an immediate deadline. */
   timeout?: number;
 }
 
@@ -52,10 +52,14 @@ export function downloadFileFromInternet(
   options: DownloadFileFromInternetOptions = {},
 ): ResultAsync<ArrayBuffer, VexSerialError> {
   const { maxBytes = Number.POSITIVE_INFINITY, timeout = 30000 } = options;
-  if (maxBytes <= 0) {
+  if (
+    Number.isNaN(maxBytes) ||
+    maxBytes <= 0 ||
+    maxBytes === Number.NEGATIVE_INFINITY
+  ) {
     return errAsync(new VexInvalidArgumentError("maxBytes must be positive"));
   }
-  if (timeout < 0) {
+  if (!Number.isFinite(timeout) || timeout < 0) {
     return errAsync(
       new VexInvalidArgumentError("timeout must be non-negative"),
     );
@@ -157,12 +161,12 @@ export function sleepUntilAsync(
   timeout: number,
   interval = 20,
 ): ResultAsync<boolean, VexSerialError> {
-  if (timeout < 0) {
+  if (!Number.isFinite(timeout) || timeout < 0) {
     return errAsync(
       new VexInvalidArgumentError("timeout must be non-negative"),
     );
   }
-  if (interval <= 0) {
+  if (!Number.isFinite(interval) || interval <= 0) {
     return errAsync(new VexInvalidArgumentError("interval must be positive"));
   }
   return new ResultAsync(runSleepUntilAsync(f, timeout, interval));
@@ -199,12 +203,12 @@ export function sleepUntil(
   timeout: number,
   interval = 20,
 ): ResultAsync<boolean, VexSerialError> {
-  if (timeout < 0) {
+  if (!Number.isFinite(timeout) || timeout < 0) {
     return errAsync(
       new VexInvalidArgumentError("timeout must be non-negative"),
     );
   }
-  if (interval <= 0) {
+  if (!Number.isFinite(interval) || interval <= 0) {
     return errAsync(new VexInvalidArgumentError("interval must be positive"));
   }
   return new ResultAsync(runSleepUntil(f, timeout, interval));
@@ -231,10 +235,10 @@ async function runSleepUntil(
 
 /**
  * Resolve after `ms` milliseconds. Returns a {@link VexInvalidArgumentError}
- * when `ms` is negative.
+ * when `ms` is negative or non-finite.
  */
 export function sleep(ms: number): ResultAsync<void, VexSerialError> {
-  if (ms < 0) {
+  if (!Number.isFinite(ms) || ms < 0) {
     return errAsync(new VexInvalidArgumentError("ms must be non-negative"));
   }
   return ResultAsync.fromSafePromise<void>(sleepInner(ms));

@@ -283,6 +283,11 @@ export interface ValidatedProgramArtifacts {
   cold?: ValidatedProgramArtifact;
 }
 
+export interface LoadedProgramArtifacts {
+  hot: Uint8Array;
+  cold?: Uint8Array;
+}
+
 async function validateProgramArtifact(
   path: string,
   role: "hot" | "cold",
@@ -317,6 +322,41 @@ export async function validateProgramArtifacts(
     hot: hot.value,
     cold: cold.value,
   };
+}
+
+async function loadProgramArtifact(
+  artifact: ValidatedProgramArtifact,
+  role: "hot" | "cold",
+): Promise<Uint8Array> {
+  const bytes = await Bun.file(artifact.path).bytes();
+  if (bytes.byteLength === 0) {
+    throw new Error(`program ${role} artifact is empty: ${artifact.path}`);
+  }
+  if (bytes.byteLength > PROGRAM_ARTIFACT_SIZE_LIMIT) {
+    throw new Error(
+      `program ${role} artifact ${artifact.path} is ${bytes.byteLength} bytes; supported limit is ${PROGRAM_ARTIFACT_SIZE_LIMIT} bytes`,
+    );
+  }
+  return bytes;
+}
+
+/**
+ * Reads previously discovered artifacts and validates the bytes that will
+ * actually be uploaded. This closes the gap where a path can be replaced or
+ * resized between its metadata check and the later read.
+ */
+export async function loadValidatedProgramArtifacts(
+  artifacts: ValidatedProgramArtifacts,
+): Promise<LoadedProgramArtifacts> {
+  const [hot, cold] = await Promise.allSettled([
+    loadProgramArtifact(artifacts.hot, "hot"),
+    artifacts.cold === undefined
+      ? Promise.resolve(undefined)
+      : loadProgramArtifact(artifacts.cold, "cold"),
+  ]);
+  if (hot.status === "rejected") throw hot.reason;
+  if (cold.status === "rejected") throw cold.reason;
+  return { hot: hot.value, cold: cold.value };
 }
 
 export async function findProgramArtifacts(

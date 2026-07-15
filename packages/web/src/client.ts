@@ -462,6 +462,7 @@ class V5WebClient implements V5Client {
   }
 
   private setDeviceSnapshot(snapshot: V5DeviceSnapshot | null): void {
+    if (snapshot === this.deviceSnapshot) return;
     this.deviceSnapshot = snapshot;
     this.deviceVersion++;
   }
