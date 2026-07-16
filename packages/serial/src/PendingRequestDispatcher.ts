@@ -94,7 +94,7 @@ export class PendingRequestDispatcher {
     commandId: number,
     commandExtendedId: number | undefined,
   ): IPacketCallback | undefined {
-    const typed = this.getQueue(commandId, commandExtendedId, false).head;
+    const typed = this.getQueue(commandId, commandExtendedId, false)?.head;
     const callback = typed ?? this.rawCallbacks.head;
     if (callback !== undefined) this.remove(callback);
     return callback;
@@ -118,15 +118,25 @@ export class PendingRequestDispatcher {
   private getQueue(
     commandId: number,
     commandExtendedId: number | undefined,
+    create: true,
+  ): PendingPacketQueue;
+  private getQueue(
+    commandId: number,
+    commandExtendedId: number | undefined,
+    create: false,
+  ): PendingPacketQueue | undefined;
+  private getQueue(
+    commandId: number,
+    commandExtendedId: number | undefined,
     create: boolean,
-  ): PendingPacketQueue {
+  ): PendingPacketQueue | undefined {
     const key = this.key(commandId, commandExtendedId);
     let queue = this.pendingCallbacks.get(key);
     if (queue === undefined && create) {
       queue = { head: undefined, tail: undefined };
       this.pendingCallbacks.set(key, queue);
     }
-    return queue ?? { head: undefined, tail: undefined };
+    return queue;
   }
 
   private remove(callback: PendingPacketCallback): boolean {

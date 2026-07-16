@@ -102,6 +102,8 @@ export class V5SerialDevice extends VexSerialDevice {
   ];
   private readonly _radio = new V5Radio(this.state);
   private readonly _deviceFacades: Array<V5SmartDevice | undefined> = [];
+  private _devicesSource: V5SerialDeviceState["devices"] | undefined;
+  private _devices: V5SmartDevice[] = [];
 
   /**
    * Device lifecycle events are notifications only: consumer callbacks must
@@ -225,16 +227,20 @@ export class V5SerialDevice extends VexSerialDevice {
   }
 
   get devices(): V5SmartDevice[] {
-    const rtn: V5SmartDevice[] = [];
+    if (this._devicesSource === this.state.devices) return this._devices;
+
+    const devices: V5SmartDevice[] = [];
     for (let i = 1; i < this.state.devices.length; i++) {
       if (this.state.devices[i] != null) {
         const facade =
           this._deviceFacades[i] ?? new V5SmartDevice(this.state, i);
         this._deviceFacades[i] = facade;
-        rtn.push(facade);
+        devices.push(facade);
       }
     }
-    return rtn;
+    this._devicesSource = this.state.devices;
+    this._devices = devices;
+    return devices;
   }
 
   get isFieldControllerConnected(): boolean {
@@ -317,8 +323,7 @@ export class V5SerialDevice extends VexSerialDevice {
     if (conn != null) {
       if (!conn.isConnected) {
         const opened = await conn.open();
-        if (!this._isLifecycleCurrent(generation)) {
-          await conn.close();
+        if (!(await this._guardLifecycle(generation, conn))) {
           return this._staleLifecycleResult();
         }
         if (opened.isErr() || opened.value !== "opened") {
@@ -326,8 +331,7 @@ export class V5SerialDevice extends VexSerialDevice {
         }
       }
       const q = await conn.query1();
-      if (!this._isLifecycleCurrent(generation)) {
-        await conn.close();
+      if (!(await this._guardLifecycle(generation, conn))) {
         return this._staleLifecycleResult();
       }
       if (q.isErr()) {
@@ -350,15 +354,13 @@ export class V5SerialDevice extends VexSerialDevice {
         const c = this.createConnection();
 
         let result = await c.open(tryIdx++, false);
-        if (!this._isLifecycleCurrent(generation)) {
-          await c.close();
+        if (!(await this._guardLifecycle(generation, c))) {
           return this._staleLifecycleResult();
         }
         if (result.isOk() && result.value === "no-port" && canRequestPort) {
           canRequestPort = false;
           result = await c.open(tryIdx, true);
-          if (!this._isLifecycleCurrent(generation)) {
-            await c.close();
+          if (!(await this._guardLifecycle(generation, c))) {
             return this._staleLifecycleResult();
           }
         }
@@ -402,8 +404,7 @@ export class V5SerialDevice extends VexSerialDevice {
         }
 
         const q = await c.query1();
-        if (!this._isLifecycleCurrent(generation)) {
-          await c.close();
+        if (!(await this._guardLifecycle(generation, c))) {
           return this._staleLifecycleResult();
         }
         if (q.isErr()) {
@@ -500,7 +501,7 @@ export class V5SerialDevice extends VexSerialDevice {
         }
       }
 
-      if (!this._isLifecycleCurrent(generation)) {
+      if (!(await this._guardLifecycle(generation))) {
         return this._staleLifecycleResult();
       }
       if (this.isConnected) return ok(undefined);
@@ -517,8 +518,7 @@ export class V5SerialDevice extends VexSerialDevice {
           const c = this.createConnection();
 
           const result = await c.open(tryIdx++, false);
-          if (!this._isLifecycleCurrent(generation)) {
-            await c.close();
+          if (!(await this._guardLifecycle(generation, c))) {
             return this._staleLifecycleResult();
           }
 
@@ -533,8 +533,7 @@ export class V5SerialDevice extends VexSerialDevice {
           }
 
           const status = await c.getSystemStatus(200);
-          if (!this._isLifecycleCurrent(generation)) {
-            await c.close();
+          if (!(await this._guardLifecycle(generation, c))) {
             return this._staleLifecycleResult();
           }
           if (status.isErr()) {
@@ -565,14 +564,14 @@ export class V5SerialDevice extends VexSerialDevice {
         const getPortCount = async (): Promise<number> =>
           (await this.defaultSerial.getPorts()).length;
         const portsCount = await getPortCount();
-        if (!this._isLifecycleCurrent(generation)) {
+        if (!(await this._guardLifecycle(generation))) {
           return this._staleLifecycleResult();
         }
         await sleepUntilAsync(
           async () => (await getPortCount()) !== portsCount,
           1000,
         );
-        if (!this._isLifecycleCurrent(generation)) {
+        if (!(await this._guardLifecycle(generation))) {
           return this._staleLifecycleResult();
         }
       }
@@ -609,6 +608,15 @@ export class V5SerialDevice extends VexSerialDevice {
 
   private _isLifecycleCurrent(generation: number): boolean {
     return generation === this._lifecycleGeneration && !this._disposed;
+  }
+
+  private async _guardLifecycle(
+    generation: number,
+    candidate?: V5SerialConnection,
+  ): Promise<boolean> {
+    if (this._isLifecycleCurrent(generation)) return true;
+    await candidate?.close();
+    return false;
   }
 
   private _staleLifecycleResult(): Result<void, VexSerialError> {

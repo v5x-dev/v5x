@@ -67,6 +67,11 @@ test("public state views expose one coherent device snapshot", async () => {
   expect(device.devices[0]?.port).toBe(1);
   expect(device.devices[0]?.type).toBe(SmartDeviceType.MOTOR);
   expect(device.devices[0]?.version).toBe(7);
+  const devicesView = device.devices;
+  expect(device.devices).toBe(devicesView);
+  device.state.devices = [...device.state.devices];
+  expect(device.devices).not.toBe(devicesView);
+  expect(device.devices[0]).toBe(devicesView[0]);
   expect(device.radio).toBe(device.radio);
   expect(device.radio.channel).toBe(3);
   expect(device.radio.isAvailable).toBe(true);

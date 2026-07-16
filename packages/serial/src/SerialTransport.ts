@@ -4,6 +4,7 @@ import {
   toVexSerialError,
 } from "./VexError.js";
 import { err, ok, type Result } from "neverthrow";
+import { ReaderClosedError } from "./ReaderClosedError.js";
 
 export type SerialTransportOpenResult = "opened" | "busy" | "no-port";
 
@@ -89,7 +90,7 @@ export class SerialTransport {
 
     while (cache.byteLength < expectedSize) {
       const { value, done } = await this.reader.read();
-      if (done) throw new Error("No data");
+      if (done) throw new ReaderClosedError();
       cache.append(value as Uint8Array);
     }
   }

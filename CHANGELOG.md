@@ -26,6 +26,14 @@ section to a dated package-version heading.
   the primary controller's charging bit.
 - Keep throwing device event listeners from interrupting automatic refresh or
   reconnect lifecycle work.
+- Deprecate the mutable `VexSerialConnection` `writer`, `reader`, and `port`
+  setters and its `callbacksQueue` snapshot ahead of their next-major removal.
+  Connection lifecycle and pending-request state must be managed through the
+  public connection methods instead. The fire-and-forget `device.matchMode`
+  setter remains deprecated; migrate to the awaitable `setMatchMode()` method.
+- Avoid transient reply-queue and smart-device-list allocations, centralize
+  transfer cleanup and stale-lifecycle guards, and use a dedicated reader-close
+  signal instead of matching error text.
 
 ### @v5x/web
 

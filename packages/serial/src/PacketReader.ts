@@ -1,6 +1,7 @@
 import type { IPacketCallback } from "./Vex.js";
 import { PacketEncoder } from "./VexPacket.js";
 import { ReceiveBuffer } from "./ReceiveBuffer.js";
+import { ReaderClosedError } from "./ReaderClosedError.js";
 
 export interface PacketReaderOptions {
   readData: (cache: ReceiveBuffer, expectedSize: number) => Promise<void>;
@@ -110,7 +111,7 @@ export async function runPacketReader({
 
       clearTimeout(callback.timeout);
     } catch (error) {
-      if (!(error instanceof Error && error.message === "No data")) {
+      if (!(error instanceof ReaderClosedError)) {
         reportWarning("reader loop stopped by a read error", {
           error,
           pendingBytes: cache.bytes,
