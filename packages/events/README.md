@@ -57,6 +57,20 @@ try {
 }
 ```
 
+## Rate limiting
+
+Rate-limited (429) and unavailable (503) responses expose the API's
+`Retry-After` hint as `retryAfterMs` on the thrown `VexEventsApiError`. Pass
+the opt-in `retry` option to retry rate-limited requests automatically after
+the advertised delay; abort signals are honored while waiting.
+
+```ts
+const vex = new VexEventsClient({
+  token: process.env.VEX_EVENTS_TOKEN!,
+  retry: { maxAttempts: 3, maxDelayMs: 30_000 },
+});
+```
+
 ## Build
 
 ```sh

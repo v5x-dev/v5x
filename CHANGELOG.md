@@ -1,8 +1,8 @@
 # Changelog
 
-This repository versions `@v5x/cli`, `@v5x/serial`, and `@v5x/web`
-independently. Each release moves entries from the applicable Unreleased
-section to a dated package-version heading.
+This repository versions `@v5x/cli`, `@v5x/events`, `@v5x/serial`, and
+`@v5x/web` independently. Each release moves entries from the applicable
+Unreleased section to a dated package-version heading.
 
 ## Unreleased
 
@@ -10,6 +10,13 @@ section to a dated package-version heading.
 
 - Add verbose stack traces, colored error output, and documented exit codes.
 - Publish the verified tarball and require its serial dependency to be released.
+
+### @v5x/events
+
+- Expose the Retry-After delay as `retryAfterMs` on API errors for
+  rate-limited (429) and unavailable (503) responses.
+- Add an opt-in `retry` client option that retries rate-limited requests after
+  the advertised delay while honoring abort signals.
 
 ### @v5x/serial
 
@@ -40,6 +47,8 @@ section to a dated package-version heading.
 - Prevent delayed device-disconnect and refresh-failure cleanup from publishing
   stale lifecycle state over a newer disconnect or connection attempt.
 - Publish the verified tarball and require its serial dependency to be released.
+- Consolidate the device-teardown sequence shared by disconnect, refresh
+  failure, and device-disconnect handling into a single helper.
 
 ## Releases
 

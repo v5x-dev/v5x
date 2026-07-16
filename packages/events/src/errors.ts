@@ -8,6 +8,8 @@ export class VexEventsApiError extends Error {
     readonly statusText: string,
     readonly body: ApiErrorBody | string | null,
     readonly url: string,
+    /** Delay advertised by a Retry-After header on 429/503 responses. */
+    readonly retryAfterMs?: number,
   ) {
     const apiMessage =
       typeof body === "object" && body !== null ? body.message : undefined;

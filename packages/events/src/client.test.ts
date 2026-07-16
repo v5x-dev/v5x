@@ -280,4 +280,176 @@ describe("VexEventsClient", () => {
       "VEX Events API returned an invalid response for /teams/1",
     );
   });
+
+  test("exposes Retry-After seconds on rate-limited responses", async () => {
+    const { client } = createMockClient(
+      { message: "Too Many Requests" },
+      {
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: { "retry-after": "12" },
+      },
+    );
+
+    const error = await client.teams.get(1).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsApiError);
+    expect(error).toMatchObject({ status: 429, retryAfterMs: 12_000 });
+  });
+
+  test("exposes HTTP-date Retry-After values on 503 responses", async () => {
+    const retryAt = new Date(Date.now() + 30_000).toUTCString();
+    const { client } = createMockClient(
+      { message: "Service Unavailable" },
+      {
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: { "retry-after": retryAt },
+      },
+    );
+
+    const error = await client.teams.get(1).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsApiError);
+    const { retryAfterMs } = error as VexEventsApiError;
+    expect(retryAfterMs).toBeGreaterThan(0);
+    expect(retryAfterMs).toBeLessThanOrEqual(30_000);
+  });
+
+  test("omits retryAfterMs when the header is missing or unparseable", async () => {
+    const { client } = createMockClient(
+      { message: "Too Many Requests" },
+      {
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: { "retry-after": "soon" },
+      },
+    );
+
+    const error = await client.teams.get(1).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsApiError);
+    expect((error as VexEventsApiError).retryAfterMs).toBeUndefined();
+  });
+
+  test("retries rate-limited requests after the advertised delay when opted in", async () => {
+    let attempts = 0;
+    const mockFetch: Fetch = async () => {
+      attempts++;
+      if (attempts < 3) {
+        return Response.json(
+          { message: "Too Many Requests" },
+          { status: 429, headers: { "retry-after": "0" } },
+        );
+      }
+      return Response.json({ id: 1, name: "V5RC" });
+    };
+    const client = new VexEventsClient({
+      token: "token",
+      fetch: mockFetch,
+      retry: { maxAttempts: 3 },
+    });
+
+    await expect(client.programs.get(1)).resolves.toEqual({
+      id: 1,
+      name: "V5RC",
+    });
+    expect(attempts).toBe(3);
+  });
+
+  test("stops retrying once maxAttempts is exhausted", async () => {
+    let attempts = 0;
+    const mockFetch: Fetch = async () => {
+      attempts++;
+      return Response.json(
+        { message: "Too Many Requests" },
+        { status: 429, headers: { "retry-after": "0" } },
+      );
+    };
+    const client = new VexEventsClient({
+      token: "token",
+      fetch: mockFetch,
+      retry: { maxAttempts: 2 },
+    });
+
+    const error = await client.programs
+      .get(1)
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsApiError);
+    expect((error as VexEventsApiError).status).toBe(429);
+    expect(attempts).toBe(2);
+  });
+
+  test("does not retry when the advertised delay exceeds maxDelayMs", async () => {
+    let attempts = 0;
+    const mockFetch: Fetch = async () => {
+      attempts++;
+      return Response.json(
+        { message: "Too Many Requests" },
+        { status: 429, headers: { "retry-after": "60" } },
+      );
+    };
+    const client = new VexEventsClient({
+      token: "token",
+      fetch: mockFetch,
+      retry: { maxAttempts: 3, maxDelayMs: 1_000 },
+    });
+
+    const error = await client.programs
+      .get(1)
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsApiError);
+    expect((error as VexEventsApiError).retryAfterMs).toBe(60_000);
+    expect(attempts).toBe(1);
+  });
+
+  test("does not retry non-rate-limit errors even when opted in", async () => {
+    let attempts = 0;
+    const mockFetch: Fetch = async () => {
+      attempts++;
+      return Response.json({ message: "Server Error" }, { status: 500 });
+    };
+    const client = new VexEventsClient({
+      token: "token",
+      fetch: mockFetch,
+      retry: { maxAttempts: 3 },
+    });
+
+    const error = await client.programs
+      .get(1)
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsApiError);
+    expect((error as VexEventsApiError).status).toBe(500);
+    expect(attempts).toBe(1);
+  });
+
+  test("honors abort signals while waiting to retry", async () => {
+    const controller = new AbortController();
+    let attempts = 0;
+    const mockFetch: Fetch = async () => {
+      attempts++;
+      return Response.json(
+        { message: "Too Many Requests" },
+        { status: 429, headers: { "retry-after": "5" } },
+      );
+    };
+    const client = new VexEventsClient({
+      token: "token",
+      fetch: mockFetch,
+      retry: { maxAttempts: 3 },
+    });
+
+    const pending = client.programs
+      .get(1, { signal: controller.signal })
+      .catch((reason: unknown) => reason);
+    queueMicrotask(() => controller.abort());
+    const error = await pending;
+
+    expect(error).toBeInstanceOf(DOMException);
+    expect((error as DOMException).name).toBe("AbortError");
+    expect(attempts).toBe(1);
+  });
 });

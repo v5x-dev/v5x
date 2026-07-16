@@ -285,13 +285,7 @@ class V5WebClient implements V5Client {
       return;
     }
 
-    this.generation++;
-    const device = this.device;
-    this.device = null;
-    this.refreshPromise = null;
-    this.detachDeviceListeners?.();
-    this.detachDeviceListeners = null;
-    this.stopRefreshTimer();
+    const device = this.teardownDevice();
 
     if (device === null) {
       if (this.status !== "idle") this.setState("idle", null, null);
@@ -392,17 +386,27 @@ class V5WebClient implements V5Client {
       fallback,
     );
 
-    this.generation++;
-    this.device = null;
-    this.refreshPromise = null;
-    this.detachDeviceListeners?.();
-    this.detachDeviceListeners = null;
-    this.stopRefreshTimer();
+    this.teardownDevice();
     this.setState("error", normalizedError, null);
 
     if (device !== null) {
       await this.tryDisposeDevice(device);
     }
+  }
+
+  /**
+   * Detaches the current device and invalidates in-flight lifecycle work,
+   * returning the detached device for optional disposal.
+   */
+  private teardownDevice(): V5DeviceLike | null {
+    this.generation++;
+    const device = this.device;
+    this.device = null;
+    this.refreshPromise = null;
+    this.detachDeviceListeners?.();
+    this.detachDeviceListeners = null;
+    this.stopRefreshTimer();
+    return device;
   }
 
   private attachDeviceListeners(
@@ -439,12 +443,7 @@ class V5WebClient implements V5Client {
   ): Promise<void> {
     if (generation !== this.generation || this.device !== device) return;
 
-    this.generation++;
-    this.device = null;
-    this.refreshPromise = null;
-    this.detachDeviceListeners?.();
-    this.detachDeviceListeners = null;
-    this.stopRefreshTimer();
+    this.teardownDevice();
     this.setState(
       "error",
       new V5WebError("disconnect-error", "V5 device disconnected."),
