@@ -128,7 +128,11 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   private readonly transport: SerialTransport;
   protected readonly fileTransfers = new FileTransferQueue();
 
-  /** Pending callbacks, exposed as a snapshot for backwards compatibility. */
+  /**
+   * Pending callbacks, exposed as a snapshot for backwards compatibility.
+   * @deprecated This exposes request-dispatcher internals and will be removed
+   * in the next major release.
+   */
   get callbacksQueue(): IPacketCallback[] {
     return this.pendingRequests.callbacks;
   }
@@ -141,6 +145,10 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     return this.transport.writer;
   }
 
+  /**
+   * @deprecated Mutating the writer can corrupt transport lifecycle state and
+   * will be removed in the next major release.
+   */
   set writer(value: WritableStreamDefaultWriter<unknown> | undefined) {
     this.transport.writer = value;
   }
@@ -149,6 +157,10 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     return this.transport.reader;
   }
 
+  /**
+   * @deprecated Mutating the reader can corrupt transport lifecycle state and
+   * will be removed in the next major release.
+   */
   set reader(value: ReadableStreamDefaultReader<unknown> | undefined) {
     this.transport.reader = value;
   }
@@ -157,6 +169,10 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     return this.transport.port;
   }
 
+  /**
+   * @deprecated Mutating the port can corrupt transport lifecycle state and
+   * will be removed in the next major release.
+   */
   set port(value: SerialPort | undefined) {
     this.transport.port = value;
   }
@@ -359,6 +375,29 @@ export class V5SerialConnection extends VexSerialConnection {
     return this.fileTransfers.run(operation);
   }
 
+  /**
+   * Always exit file-transfer mode, even when the transfer itself failed.
+   * A failed exit only overrides an `Ok` result, so callers see the root
+   * cause of a failed transfer rather than the cleanup failure.
+   */
+  private async exitFileTransferMode<T>(
+    result: Result<T, VexSerialError>,
+    action: FileExitAction = FileExitAction.EXIT_HALT,
+  ): Promise<Result<T, VexSerialError>> {
+    try {
+      const exitResult = await this.request(
+        new ExitFileTransferH2DPacket(action),
+        ExitFileTransferReplyD2HPacket,
+        30000,
+      );
+      return result.isOk() && exitResult.isErr()
+        ? err(exitResult.error)
+        : result;
+    } catch (error) {
+      return result.isOk() ? err(toVexSerialError(error, "io")) : result;
+    }
+  }
+
   getDeviceStatus(): ResultAsync<
     GetDeviceStatusReplyD2HPacket,
     VexSerialError
@@ -546,7 +585,6 @@ export class V5SerialConnection extends VexSerialConnection {
 
     if (p1Result.isErr()) return err(p1Result.error);
 
-    let transferFailed = true;
     let result: Result<Uint8Array, VexSerialError> = ok(new Uint8Array());
     try {
       const p1 = p1Result.value;
@@ -599,28 +637,13 @@ export class V5SerialConnection extends VexSerialConnection {
         progressCallback?.(bufferOffset, fileSize);
       }
 
-      transferFailed = false;
       result = ok(fileBuf);
     } catch (e) {
       result = err(
         e instanceof VexSerialError ? e : toVexSerialError(e, "transfer"),
       );
     } finally {
-      // Always exit file-transfer mode even if reading or writing the
-      // reply throws. If the original transfer also failed we keep its
-      // error so callers see the underlying cause, not the cleanup
-      // failure.
-      try {
-        const exitResult = await this.request(
-          new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
-          ExitFileTransferReplyD2HPacket,
-          30000,
-        );
-        if (!transferFailed && exitResult.isErr())
-          result = err(exitResult.error);
-      } catch (e) {
-        if (!transferFailed) result = err(toVexSerialError(e, "io"));
-      }
+      result = await this.exitFileTransferMode(result);
     }
     return result;
   }
@@ -680,7 +703,6 @@ export class V5SerialConnection extends VexSerialConnection {
 
     let lastBlock = false;
 
-    let transferFailed = true;
     let result: Result<boolean, VexSerialError> = ok(false);
 
     try {
@@ -729,35 +751,18 @@ export class V5SerialConnection extends VexSerialConnection {
         );
       }
 
-      transferFailed = false;
+      result = ok(true);
     } catch (e) {
       result = err(
         e instanceof VexSerialError ? e : toVexSerialError(e, "transfer"),
       );
     } finally {
-      // Always exit file-transfer mode even if writing or cleanup throws.
-      // If the original transfer failed, keep its error so callers see
-      // the root cause rather than the cleanup failure.
-      try {
-        const exitResult = await this.request(
-          new ExitFileTransferH2DPacket(
-            transferFailed
-              ? FileExitAction.EXIT_HALT
-              : autoRun
-                ? FileExitAction.EXIT_RUN
-                : FileExitAction.EXIT_HALT,
-          ),
-          ExitFileTransferReplyD2HPacket,
-          30000,
-        );
-        if (!transferFailed) {
-          result = exitResult.map(() => true);
-        }
-      } catch (cleanupError) {
-        if (!transferFailed) {
-          result = err(toVexSerialError(cleanupError, "io"));
-        }
-      }
+      result = await this.exitFileTransferMode(
+        result,
+        result.isOk() && autoRun
+          ? FileExitAction.EXIT_RUN
+          : FileExitAction.EXIT_HALT,
+      );
     }
     return result;
   }
@@ -791,21 +796,7 @@ export class V5SerialConnection extends VexSerialConnection {
         } catch (e) {
           result = err(toVexSerialError(e, "io"));
         }
-        // Always exit file-transfer mode; a failed exit only overrides
-        // the result when the erase itself succeeded, so callers see
-        // the root cause rather than the cleanup failure.
-        try {
-          const exitResult = await this.request(
-            new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
-            ExitFileTransferReplyD2HPacket,
-            30000,
-          );
-          if (result.isOk() && exitResult.isErr())
-            result = err(exitResult.error);
-        } catch (e) {
-          if (result.isOk()) result = err(toVexSerialError(e, "io"));
-        }
-        return result;
+        return this.exitFileTransferMode(result);
       }),
     );
   }
@@ -828,21 +819,7 @@ export class V5SerialConnection extends VexSerialConnection {
         } catch (e) {
           result = err(toVexSerialError(e, "io"));
         }
-        // Always exit file-transfer mode; a failed exit only overrides
-        // the result when the clear itself succeeded, so callers see
-        // the root cause rather than the cleanup failure.
-        try {
-          const exitResult = await this.request(
-            new ExitFileTransferH2DPacket(FileExitAction.EXIT_HALT),
-            ExitFileTransferReplyD2HPacket,
-            30000,
-          );
-          if (result.isOk() && exitResult.isErr())
-            result = err(exitResult.error);
-        } catch (e) {
-          if (result.isOk()) result = err(toVexSerialError(e, "io"));
-        }
-        return result;
+        return this.exitFileTransferMode(result);
       }),
     );
   }

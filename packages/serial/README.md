@@ -78,10 +78,10 @@ await device.brain.setActiveProgram(1).mapErr((e) => console.error(e));
 await device.brain.setActiveProgram(0);
 ```
 
-The former `device.matchMode = value` and
-`device.brain.activeProgram = value` setters were fire-and-forget and have been
-removed. Migrate to the corresponding `setMatchMode()` / `setActiveProgram()`
-methods and handle the returned `Result`.
+The fire-and-forget `device.matchMode = value` setter is deprecated, and the
+former `device.brain.activeProgram = value` setter has been removed. Migrate to
+the corresponding `setMatchMode()` / `setActiveProgram()` methods and handle
+the returned `Result`.
 
 Legacy methods that resolved to `false`, `null`, or `undefined` on failure now
 return a typed `Err` instead. `open()` reports non-error connection outcomes on

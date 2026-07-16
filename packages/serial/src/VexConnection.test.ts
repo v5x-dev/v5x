@@ -32,6 +32,8 @@ import {
 } from "./VexPacket";
 import { ProgramIniConfig } from "./VexIniConfig";
 import { deferred, protocolReply } from "./protocol.test-support";
+import { runPacketReader } from "./PacketReader";
+import { ReaderClosedError } from "./ReaderClosedError";
 
 function connectionWithWriter() {
   const connection = new V5SerialConnection({} as Serial);
@@ -877,6 +879,29 @@ test("open resolves no-port when nothing matches and the user is not asked", asy
     getPorts: async () => [],
   } as unknown as Serial);
   expect((await connection.open(0, false))._unsafeUnwrap()).toBe("no-port");
+});
+
+test("reader shutdown only suppresses the dedicated close sentinel", async () => {
+  const warnings: string[] = [];
+  let closeCount = 0;
+  const run = (error: Error) =>
+    runPacketReader({
+      readData: async () => {
+        throw error;
+      },
+      shiftCallback: () => undefined,
+      reportWarning: (message) => warnings.push(message),
+      close: async () => {
+        closeCount++;
+      },
+    });
+
+  await run(new ReaderClosedError());
+  expect(warnings).toEqual([]);
+
+  await run(new Error("No data"));
+  expect(warnings).toEqual(["reader loop stopped by a read error"]);
+  expect(closeCount).toBe(2);
 });
 
 test("typed replies are not stolen by an earlier raw write", async () => {
