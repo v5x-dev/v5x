@@ -30,6 +30,10 @@ import type {
 } from "./types.js";
 
 const DEFAULT_BASE_URL = "https://events.vex.com/api/v2";
+const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
+const DEFAULT_RETRY_MAX_DELAY_MS = 30_000;
+const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
+const RETRY_AFTER_STATUSES = new Set([429, 503]);
 
 type QueryValue = DateInput | boolean | number | readonly (number | string)[];
 type QueryEntry = readonly [name: string, value: QueryValue | undefined];
@@ -44,6 +48,18 @@ export type Fetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+export interface RetryOptions {
+  /**
+   * Total attempts per request, including the first. Defaults to 3.
+   */
+  maxAttempts?: number;
+  /**
+   * Upper bound on a single retry delay in milliseconds. Responses that
+   * advertise a longer Retry-After fail immediately. Defaults to 30000.
+   */
+  maxDelayMs?: number;
+}
+
 export interface VexEventsClientOptions {
   /** Personal access token sent using bearer authentication. */
   token: string;
@@ -53,6 +69,12 @@ export interface VexEventsClientOptions {
   fetch?: Fetch;
   /** Additional headers included with every request. */
   headers?: Readonly<Record<string, string>>;
+  /**
+   * Opt in to retrying rate-limited (429) requests after the delay the API
+   * advertises through Retry-After. Requests still honor abort signals while
+   * waiting. Disabled when omitted.
+   */
+  retry?: RetryOptions;
 }
 
 export interface EventsResource {
@@ -189,6 +211,46 @@ function normalizeErrorBody(value: unknown): ApiErrorBody | string | null {
   return typeof value === "string" ? value : null;
 }
 
+function parseRetryAfterMs(headerValue: string | null): number | undefined {
+  if (headerValue === null) return undefined;
+  const value = headerValue.trim();
+  if (/^\d+$/.test(value)) return Number(value) * 1000;
+  const dateMs = Date.parse(value);
+  if (Number.isNaN(dateMs)) return undefined;
+  return Math.max(0, dateMs - Date.now());
+}
+
+function abortReason(signal: AbortSignal): unknown {
+  return (
+    signal.reason ?? new DOMException("The operation was aborted", "AbortError")
+  );
+}
+
+function sleep(
+  delayMs: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal === undefined) {
+      setTimeout(resolve, delayMs);
+      return;
+    }
+    if (signal.aborted) {
+      reject(abortReason(signal));
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(abortReason(signal));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function isJsonContentType(contentType: string): boolean {
   const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
   return (
@@ -227,6 +289,7 @@ export class VexEventsClient {
   private readonly baseUrl: string;
   private readonly fetch: Fetch;
   private readonly headers: Readonly<Record<string, string>>;
+  private readonly retry: RetryOptions | undefined;
 
   constructor(options: VexEventsClientOptions) {
     if (options.token.trim() === "") {
@@ -237,6 +300,7 @@ export class VexEventsClient {
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
     this.fetch = options.fetch ?? globalThis.fetch;
     this.headers = options.headers ?? {};
+    this.retry = options.retry;
 
     this.events = {
       list: (options = {}, request) =>
@@ -364,6 +428,42 @@ export class VexEventsClient {
     const url = new URL(`${this.baseUrl}${path}`);
     appendQuery(url, query);
 
+    const retry = this.retry;
+    if (retry === undefined) {
+      return this.requestOnce(url, path, options, responseShape);
+    }
+
+    const maxAttempts = retry.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
+    const maxDelayMs = retry.maxDelayMs ?? DEFAULT_RETRY_MAX_DELAY_MS;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.requestOnce(url, path, options, responseShape);
+      } catch (error) {
+        if (
+          attempt >= maxAttempts ||
+          !(error instanceof VexEventsApiError) ||
+          error.status !== 429
+        ) {
+          throw error;
+        }
+        const delayMs =
+          error.retryAfterMs ??
+          Math.min(
+            DEFAULT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+            maxDelayMs,
+          );
+        if (delayMs > maxDelayMs) throw error;
+        await sleep(delayMs, options?.signal);
+      }
+    }
+  }
+
+  private async requestOnce<T>(
+    url: URL,
+    path: string,
+    options: RequestOptions | undefined,
+    responseShape: ResponseShape,
+  ): Promise<T> {
     const response = await this.fetch(url, {
       headers: {
         ...this.headers,
@@ -392,6 +492,9 @@ export class VexEventsClient {
         response.statusText,
         normalizeErrorBody(body),
         url.toString(),
+        RETRY_AFTER_STATUSES.has(response.status)
+          ? parseRetryAfterMs(response.headers.get("retry-after"))
+          : undefined,
       );
     }
 

@@ -58,3 +58,16 @@ await vex.events.list(
   { signal: controller.signal },
 );
 ```
+
+The API is rate limited. Rate-limited (429) and unavailable (503) responses
+expose the `Retry-After` hint as `retryAfterMs` on the thrown
+`VexEventsApiError`, and the opt-in `retry` option retries rate-limited
+requests automatically after the advertised delay while honoring abort
+signals:
+
+```ts
+const vex = new VexEventsClient({
+  token: process.env.VEX_EVENTS_TOKEN!,
+  retry: { maxAttempts: 3, maxDelayMs: 30_000 },
+});
+```
