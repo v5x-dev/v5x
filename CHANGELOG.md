@@ -27,13 +27,12 @@ section to a dated package-version heading.
 - Keep throwing device event listeners from interrupting automatic refresh or
   reconnect lifecycle work.
 - Deprecate the mutable `VexSerialConnection` `writer`, `reader`, and `port`
-  setters and its `callbacksQueue` snapshot ahead of their next-major removal.
-  Connection lifecycle and pending-request state must be managed through the
-  public connection methods instead. The fire-and-forget `device.matchMode`
-  setter remains deprecated; migrate to the awaitable `setMatchMode()` method.
-- Avoid transient reply-queue and smart-device-list allocations, centralize
-  transfer cleanup and stale-lifecycle guards, and use a dedicated reader-close
-  signal instead of matching error text.
+  setters and its `callbacksQueue` snapshot ahead of their next-major removal;
+  manage connection lifecycle and pending-request state through the public
+  connection methods instead.
+- Centralize file-transfer exit cleanup and stale-lifecycle guards, signal
+  reader shutdown with a dedicated error class instead of matching error
+  text, and avoid transient reply-queue and smart-device-list allocations.
 
 ### @v5x/web
 

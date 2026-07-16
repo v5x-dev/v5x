@@ -227,6 +227,8 @@ export class V5SerialDevice extends VexSerialDevice {
   }
 
   get devices(): V5SmartDevice[] {
+    // The snapshot refresher replaces state.devices (never mutates it in
+    // place), so array identity is a reliable memoization key.
     if (this._devicesSource === this.state.devices) return this._devices;
 
     const devices: V5SmartDevice[] = [];
@@ -323,7 +325,7 @@ export class V5SerialDevice extends VexSerialDevice {
     if (conn != null) {
       if (!conn.isConnected) {
         const opened = await conn.open();
-        if (!(await this._guardLifecycle(generation, conn))) {
+        if (await this._lifecycleSuperseded(generation, conn)) {
           return this._staleLifecycleResult();
         }
         if (opened.isErr() || opened.value !== "opened") {
@@ -331,7 +333,7 @@ export class V5SerialDevice extends VexSerialDevice {
         }
       }
       const q = await conn.query1();
-      if (!(await this._guardLifecycle(generation, conn))) {
+      if (await this._lifecycleSuperseded(generation, conn)) {
         return this._staleLifecycleResult();
       }
       if (q.isErr()) {
@@ -354,13 +356,13 @@ export class V5SerialDevice extends VexSerialDevice {
         const c = this.createConnection();
 
         let result = await c.open(tryIdx++, false);
-        if (!(await this._guardLifecycle(generation, c))) {
+        if (await this._lifecycleSuperseded(generation, c)) {
           return this._staleLifecycleResult();
         }
         if (result.isOk() && result.value === "no-port" && canRequestPort) {
           canRequestPort = false;
           result = await c.open(tryIdx, true);
-          if (!(await this._guardLifecycle(generation, c))) {
+          if (await this._lifecycleSuperseded(generation, c)) {
             return this._staleLifecycleResult();
           }
         }
@@ -404,7 +406,7 @@ export class V5SerialDevice extends VexSerialDevice {
         }
 
         const q = await c.query1();
-        if (!(await this._guardLifecycle(generation, c))) {
+        if (await this._lifecycleSuperseded(generation, c)) {
           return this._staleLifecycleResult();
         }
         if (q.isErr()) {
@@ -501,7 +503,7 @@ export class V5SerialDevice extends VexSerialDevice {
         }
       }
 
-      if (!(await this._guardLifecycle(generation))) {
+      if (!this._isLifecycleCurrent(generation)) {
         return this._staleLifecycleResult();
       }
       if (this.isConnected) return ok(undefined);
@@ -518,7 +520,7 @@ export class V5SerialDevice extends VexSerialDevice {
           const c = this.createConnection();
 
           const result = await c.open(tryIdx++, false);
-          if (!(await this._guardLifecycle(generation, c))) {
+          if (await this._lifecycleSuperseded(generation, c)) {
             return this._staleLifecycleResult();
           }
 
@@ -533,7 +535,7 @@ export class V5SerialDevice extends VexSerialDevice {
           }
 
           const status = await c.getSystemStatus(200);
-          if (!(await this._guardLifecycle(generation, c))) {
+          if (await this._lifecycleSuperseded(generation, c)) {
             return this._staleLifecycleResult();
           }
           if (status.isErr()) {
@@ -564,14 +566,14 @@ export class V5SerialDevice extends VexSerialDevice {
         const getPortCount = async (): Promise<number> =>
           (await this.defaultSerial.getPorts()).length;
         const portsCount = await getPortCount();
-        if (!(await this._guardLifecycle(generation))) {
+        if (!this._isLifecycleCurrent(generation)) {
           return this._staleLifecycleResult();
         }
         await sleepUntilAsync(
           async () => (await getPortCount()) !== portsCount,
           1000,
         );
-        if (!(await this._guardLifecycle(generation))) {
+        if (!this._isLifecycleCurrent(generation)) {
           return this._staleLifecycleResult();
         }
       }
@@ -610,13 +612,14 @@ export class V5SerialDevice extends VexSerialDevice {
     return generation === this._lifecycleGeneration && !this._disposed;
   }
 
-  private async _guardLifecycle(
+  /** Closes the candidate connection when the lifecycle was superseded. */
+  private async _lifecycleSuperseded(
     generation: number,
-    candidate?: V5SerialConnection,
+    candidate: V5SerialConnection,
   ): Promise<boolean> {
-    if (this._isLifecycleCurrent(generation)) return true;
-    await candidate?.close();
-    return false;
+    if (this._isLifecycleCurrent(generation)) return false;
+    await candidate.close();
+    return true;
   }
 
   private _staleLifecycleResult(): Result<void, VexSerialError> {

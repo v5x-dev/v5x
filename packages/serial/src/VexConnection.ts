@@ -375,6 +375,11 @@ export class V5SerialConnection extends VexSerialConnection {
     return this.fileTransfers.run(operation);
   }
 
+  /**
+   * Always exit file-transfer mode, even when the transfer itself failed.
+   * A failed exit only overrides an `Ok` result, so callers see the root
+   * cause of a failed transfer rather than the cleanup failure.
+   */
   private async exitFileTransferMode<T>(
     result: Result<T, VexSerialError>,
     action: FileExitAction = FileExitAction.EXIT_HALT,
