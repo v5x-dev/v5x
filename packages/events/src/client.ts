@@ -28,6 +28,18 @@ import type {
   Skill,
   Team,
 } from "./types.js";
+import {
+  isAward,
+  isEvent,
+  isMatch,
+  isProgram,
+  isRanking,
+  isSeason,
+  isSkill,
+  isTeam,
+  paginated,
+  type Validator,
+} from "./validation.js";
 
 const DEFAULT_BASE_URL = "https://events.vex.com/api/v2";
 const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
@@ -37,7 +49,6 @@ const RETRY_AFTER_STATUSES = new Set([429, 503]);
 
 type QueryValue = DateInput | boolean | number | readonly (number | string)[];
 type QueryEntry = readonly [name: string, value: QueryValue | undefined];
-type ResponseShape = "object" | "paginated";
 
 export interface RequestOptions {
   signal?: AbortSignal;
@@ -319,27 +330,6 @@ function isJsonContentType(contentType: string): boolean {
   );
 }
 
-function isObjectResponse(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isPaginatedResponse(value: unknown): boolean {
-  if (!isObjectResponse(value)) return false;
-  return (
-    (value.data === undefined || Array.isArray(value.data)) &&
-    (value.meta === undefined || isObjectResponse(value.meta))
-  );
-}
-
-function hasResponseShape<T>(
-  value: unknown,
-  responseShape: ResponseShape,
-): value is T {
-  return responseShape === "paginated"
-    ? isPaginatedResponse(value)
-    : isObjectResponse(value);
-}
-
 export class Robot {
   readonly events: EventsResource;
   readonly teams: TeamsResource;
@@ -365,11 +355,11 @@ export class Robot {
 
     this.events = {
       list: (options = {}, request) =>
-        this.request<PaginatedResponse<Event>>(
+        this.request(
           "/events",
           eventEntries(options),
           request,
-          "paginated",
+          paginated(isEvent),
         ).then(filterCancelledEvents),
       listPages: (options = {}, request) =>
         iteratePages(options, (pageOptions) =>
@@ -377,102 +367,106 @@ export class Robot {
             "/events",
             eventEntries(pageOptions),
             request,
-            "paginated",
+            paginated(isEvent),
           ).then(filterCancelledEvents),
         ),
-      get: (id, request) =>
-        this.request(`/events/${id}`, [], request, "object"),
+      get: (id, request) => this.request(`/events/${id}`, [], request, isEvent),
       teams: (id, options = {}, request) =>
         this.request(
           `/events/${id}/teams`,
           eventTeamEntries(options),
           request,
-          "paginated",
+          paginated(isTeam),
         ),
       skills: (id, options = {}, request) =>
         this.request(
           `/events/${id}/skills`,
           eventSkillEntries(options),
           request,
-          "paginated",
+          paginated(isSkill),
         ),
       awards: (id, options = {}, request) =>
         this.request(
           `/events/${id}/awards`,
           eventAwardEntries(options),
           request,
-          "paginated",
+          paginated(isAward),
         ),
       matches: (id, division, options = {}, request) =>
         this.request(
           `/events/${id}/divisions/${division}/matches`,
           divisionMatchEntries(options),
           request,
-          "paginated",
+          paginated(isMatch),
         ),
       finalistRankings: (id, division, options = {}, request) =>
         this.request(
           `/events/${id}/divisions/${division}/finalistRankings`,
           divisionRankingEntries(options),
           request,
-          "paginated",
+          paginated(isRanking),
         ),
       rankings: (id, division, options = {}, request) =>
         this.request(
           `/events/${id}/divisions/${division}/rankings`,
           divisionRankingEntries(options),
           request,
-          "paginated",
+          paginated(isRanking),
         ),
     };
 
     this.teams = {
       list: (options = {}, request) =>
-        this.request("/teams", teamEntries(options), request, "paginated"),
+        this.request(
+          "/teams",
+          teamEntries(options),
+          request,
+          paginated(isTeam),
+        ),
       listPages: (options = {}, request) =>
         iteratePages(options, (pageOptions) =>
           this.request<PaginatedResponse<Team>>(
             "/teams",
             teamEntries(pageOptions),
             request,
-            "paginated",
+            paginated(isTeam),
           ),
         ),
-      get: (id, request) => this.request(`/teams/${id}`, [], request, "object"),
+      get: (id, request) => this.request(`/teams/${id}`, [], request, isTeam),
       events: (id, options = {}, request) =>
         this.request<PaginatedResponse<Event>>(
           `/teams/${id}/events`,
           teamEventEntries(options),
           request,
-          "paginated",
+          paginated(isEvent),
         ).then(filterCancelledEvents),
       matches: (id, options = {}, request) =>
         this.request(
           `/teams/${id}/matches`,
           teamMatchEntries(options),
           request,
-          "paginated",
+          paginated(isMatch),
         ),
       rankings: (id, options = {}, request) =>
         this.request(
           `/teams/${id}/rankings`,
           teamRankingEntries(options),
           request,
-          "paginated",
+          paginated(isRanking),
         ),
       skills: (id, options = {}, request) =>
         this.request(
           `/teams/${id}/skills`,
           teamSkillEntries(options),
           request,
-          "paginated",
+          paginated(isSkill),
         ),
       awards: (id, options = {}, request) =>
         this.request(
           `/teams/${id}/awards`,
           teamAwardEntries(options),
           request,
-          "paginated",
+          paginated(isAward),
         ),
     };
 
@@ -482,7 +476,7 @@ export class Robot {
           "/programs",
           [...paginationEntries(options), ["id[]", options.ids]],
           request,
-          "paginated",
+          paginated(isProgram),
         ),
       listPages: (options = {}, request) =>
         iteratePages(options, (pageOptions) =>
@@ -490,33 +484,38 @@ export class Robot {
             "/programs",
             [...paginationEntries(pageOptions), ["id[]", pageOptions.ids]],
             request,
-            "paginated",
+            paginated(isProgram),
           ),
         ),
       get: (id, request) =>
-        this.request(`/programs/${id}`, [], request, "object"),
+        this.request(`/programs/${id}`, [], request, isProgram),
     };
 
     this.seasons = {
       list: (options = {}, request) =>
-        this.request("/seasons", seasonEntries(options), request, "paginated"),
+        this.request(
+          "/seasons",
+          seasonEntries(options),
+          request,
+          paginated(isSeason),
+        ),
       listPages: (options = {}, request) =>
         iteratePages(options, (pageOptions) =>
           this.request<PaginatedResponse<Season>>(
             "/seasons",
             seasonEntries(pageOptions),
             request,
-            "paginated",
+            paginated(isSeason),
           ),
         ),
       get: (id, request) =>
-        this.request(`/seasons/${id}`, [], request, "object"),
+        this.request(`/seasons/${id}`, [], request, isSeason),
       events: (id, options = {}, request) =>
         this.request<PaginatedResponse<Event>>(
           `/seasons/${id}/events`,
           seasonEventEntries(options),
           request,
-          "paginated",
+          paginated(isEvent),
         ).then(filterCancelledEvents),
     };
   }
@@ -525,21 +524,21 @@ export class Robot {
     path: string,
     query: readonly QueryEntry[],
     options: RequestOptions | undefined,
-    responseShape: ResponseShape,
+    validate: Validator<T>,
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
     appendQuery(url, query);
 
     const retry = this.retry;
     if (retry === undefined) {
-      return this.requestOnce(url, path, options, responseShape);
+      return this.requestOnce(url, path, options, validate);
     }
 
     const maxAttempts = retry.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
     const maxDelayMs = retry.maxDelayMs ?? DEFAULT_RETRY_MAX_DELAY_MS;
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.requestOnce(url, path, options, responseShape);
+        return await this.requestOnce(url, path, options, validate);
       } catch (error) {
         if (
           attempt >= maxAttempts ||
@@ -564,7 +563,7 @@ export class Robot {
     url: URL,
     path: string,
     options: RequestOptions | undefined,
-    responseShape: ResponseShape,
+    validate: Validator<T>,
   ): Promise<T> {
     const response = await this.fetch(url, {
       headers: {
@@ -607,7 +606,7 @@ export class Robot {
       );
     }
 
-    if (!hasResponseShape<T>(body, responseShape)) {
+    if (!validate(body)) {
       throw new VexEventsResponseError(
         `VEX Events API returned an invalid response for ${path}`,
         url.toString(),

@@ -922,6 +922,78 @@ test("manual connect supersedes an in-flight reconnect", async () => {
   expect(reconnectCloses).toBe(1);
 });
 
+test("reconnect respects short deadlines without aggressive discovery polling", async () => {
+  let discoveryCalls = 0;
+  const emptySerial = Object.assign(new EventTarget(), {
+    getPorts: async () => {
+      discoveryCalls++;
+      return [];
+    },
+    requestPort: async () => {
+      throw new Error("no port");
+    },
+  }) as unknown as Serial;
+  const device = new V5SerialDevice(emptySerial);
+  devices.push(device);
+  const startedAt = Date.now();
+
+  const result = await device.reconnect(50);
+  const elapsed = Date.now() - startedAt;
+
+  expect(result.isErr()).toBe(true);
+  expect(elapsed).toBeGreaterThanOrEqual(35);
+  expect(elapsed).toBeLessThan(300);
+  expect(discoveryCalls).toBeLessThanOrEqual(2);
+});
+
+test("infinite reconnect wakes immediately for serial connect events", async () => {
+  const reconnectSerial = Object.assign(new EventTarget(), {
+    getPorts: async () => [],
+    requestPort: async () => {
+      throw new Error("no port");
+    },
+  }) as unknown as Serial;
+  let attempts = 0;
+
+  class EventDrivenReconnectDevice extends V5SerialDevice {
+    protected createConnection(): V5SerialConnection {
+      let connected = false;
+      return {
+        get isConnected() {
+          return connected;
+        },
+        open: () => {
+          attempts++;
+          if (attempts === 1) return okAsync("no-port" as const);
+          connected = true;
+          return okAsync("opened" as const);
+        },
+        getSystemStatus: () => okAsync({ uniqueId: 0 } as never),
+        on: () => {},
+        remove: () => {},
+        close: async () => {
+          connected = false;
+        },
+      } as unknown as V5SerialConnection;
+    }
+  }
+
+  const device = new EventDrivenReconnectDevice(reconnectSerial);
+  devices.push(device);
+  device.refresh = () => okAsync<boolean>(true);
+  const startedAt = Date.now();
+  const reconnect = device.reconnect();
+  while (attempts === 0) await Bun.sleep(0);
+  await Bun.sleep(0);
+
+  reconnectSerial.dispatchEvent(new Event("connect"));
+  const result = await reconnect;
+
+  expect(result.isOk()).toBe(true);
+  expect(attempts).toBe(2);
+  expect(Date.now() - startedAt).toBeLessThan(300);
+});
+
 test("reconnect clears its guard when port discovery throws", async () => {
   class InspectableDevice extends V5SerialDevice {
     get isReconnecting() {
