@@ -36,6 +36,33 @@ function createMockClient(
   return { client, requests };
 }
 
+function createDynamicClient(
+  respond: (
+    request: CapturedRequest,
+    requestNumber: number,
+  ) => Response | Promise<Response>,
+) {
+  const requests: CapturedRequest[] = [];
+  const mockFetch: Fetch = async (input, init) => {
+    const inputUrl =
+      input instanceof URL
+        ? input.href
+        : input instanceof Request
+          ? input.url
+          : input;
+    const request = { url: new URL(inputUrl), init };
+    requests.push(request);
+    return respond(request, requests.length);
+  };
+  const client = new Robot({
+    token: "test-token",
+    baseUrl: "https://example.test/api/v2/",
+    fetch: mockFetch,
+  });
+
+  return { client, requests };
+}
+
 describe("Robot", () => {
   test("requires a non-empty token", () => {
     expect(() => new Robot({ token: "  " })).toThrow("token must not be empty");
@@ -82,6 +109,170 @@ describe("Robot", () => {
     ]);
     expect(request?.url.searchParams.get("page")).toBe("2");
     expect(request?.url.searchParams.get("per_page")).toBe("250");
+  });
+
+  test("lazily iterates complete event pages from an explicit starting page", async () => {
+    const controller = new AbortController();
+    const { client, requests } = createDynamicClient(({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      return Response.json({
+        data: [{ id: page, name: `Event ${page}` }],
+        meta: { current_page: page, last_page: 4 },
+      });
+    });
+    const options = { seasons: [196], page: 2, perPage: 250 } as const;
+    const iterator = client.events.listPages(options, {
+      signal: controller.signal,
+    });
+    const pages: unknown[] = [];
+
+    expect(requests).toHaveLength(0);
+    for await (const page of iterator) pages.push(page);
+
+    expect(pages).toEqual([
+      {
+        data: [{ id: 2, name: "Event 2" }],
+        meta: { current_page: 2, last_page: 4 },
+      },
+      {
+        data: [{ id: 3, name: "Event 3" }],
+        meta: { current_page: 3, last_page: 4 },
+      },
+      {
+        data: [{ id: 4, name: "Event 4" }],
+        meta: { current_page: 4, last_page: 4 },
+      },
+    ]);
+    expect(requests.map(({ url }) => url.searchParams.get("page"))).toEqual([
+      "2",
+      "3",
+      "4",
+    ]);
+    for (const { url, init } of requests) {
+      expect(url.searchParams.getAll("season[]")).toEqual(["196"]);
+      expect(url.searchParams.get("per_page")).toBe("250");
+      expect(init?.signal).toBe(controller.signal);
+    }
+    expect(options.page).toBe(2);
+  });
+
+  test("does not prefetch after a consumer breaks iteration", async () => {
+    const { client, requests } = createDynamicClient(({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      return Response.json({
+        data: [],
+        meta: { current_page: page, last_page: 10 },
+      });
+    });
+    const iterator = client.events.listPages();
+
+    expect(requests).toHaveLength(0);
+    for await (const _page of iterator) break;
+
+    expect(requests).toHaveLength(1);
+  });
+
+  test("uses next_page_url when last_page is absent and stops without usable metadata", async () => {
+    const { client, requests } = createDynamicClient(
+      (_request, requestNumber) =>
+        Response.json({
+          data: [{ requestNumber }],
+          meta:
+            requestNumber === 1
+              ? { next_page_url: "https://example.test/api/v2/events?page=2" }
+              : { last_page: 0, next_page_url: "" },
+        }),
+    );
+    let yieldedPages = 0;
+
+    for await (const _page of client.events.listPages()) yieldedPages++;
+
+    expect(yieldedPages).toBe(2);
+    expect(requests.map(({ url }) => url.searchParams.get("page"))).toEqual([
+      "1",
+      "2",
+    ]);
+  });
+
+  test("advances monotonically when current_page metadata is stale", async () => {
+    const { client, requests } = createDynamicClient(() =>
+      Response.json({
+        data: [],
+        meta: { current_page: 1, last_page: 4 },
+      }),
+    );
+
+    for await (const _page of client.events.listPages({ page: 3 })) {
+      // Consume every page to exercise the iterator's termination logic.
+    }
+
+    expect(requests.map(({ url }) => url.searchParams.get("page"))).toEqual([
+      "3",
+      "4",
+    ]);
+  });
+
+  test("propagates an API error from a later page", async () => {
+    const { client, requests } = createDynamicClient(
+      (_request, requestNumber) => {
+        if (requestNumber === 1) {
+          return Response.json({
+            data: [],
+            meta: { current_page: 1, last_page: 2 },
+          });
+        }
+        return Response.json(
+          { message: "Page unavailable" },
+          { status: 503, statusText: "Service Unavailable" },
+        );
+      },
+    );
+    const iterator = client.events.listPages();
+
+    await expect(iterator.next()).resolves.toMatchObject({ done: false });
+    const error = await iterator.next().catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsApiError);
+    expect(error).toMatchObject({
+      status: 503,
+      message: "Page unavailable",
+    });
+    expect(requests).toHaveLength(2);
+  });
+
+  test("exposes listPages on every top-level collection resource", async () => {
+    const { client, requests } = createDynamicClient(({ url }) =>
+      Response.json({
+        data: [],
+        meta: {
+          current_page: Number(url.searchParams.get("page")),
+          last_page: 1,
+        },
+      }),
+    );
+
+    await client.events.listPages({ ids: [1] }).next();
+    await client.teams.listPages({ ids: [2] }).next();
+    await client.programs.listPages({ ids: [3] }).next();
+    await client.seasons.listPages({ ids: [4] }).next();
+
+    expect(requests.map(({ url }) => url.pathname)).toEqual([
+      "/api/v2/events",
+      "/api/v2/teams",
+      "/api/v2/programs",
+      "/api/v2/seasons",
+    ]);
+    expect(
+      requests.map(({ url }) => [
+        url.searchParams.get("page"),
+        url.searchParams.getAll("id[]"),
+      ]),
+    ).toEqual([
+      ["1", ["1"]],
+      ["1", ["2"]],
+      ["1", ["3"]],
+      ["1", ["4"]],
+    ]);
   });
 
   test("covers every event endpoint", async () => {

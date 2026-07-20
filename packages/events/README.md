@@ -44,6 +44,41 @@ exported as TypeScript types. Array filters use normal arrays; the client
 encodes them using the API's repeated `field[]` query parameters. `Date` values
 are converted to RFC 3339 strings automatically.
 
+## Pagination
+
+The top-level event, team, program, and season collections expose lazy
+`listPages()` async iterators. Each iteration yields a complete page, including
+its `data` and `meta` fields:
+
+```ts
+for await (const page of vex.events.listPages({
+  seasons: [196],
+  perPage: 250,
+})) {
+  for (const event of page.data ?? []) {
+    console.log(event.name);
+  }
+}
+```
+
+Pages are requested sequentially. The `page` option selects the starting page,
+and breaking out of the loop prevents any later page requests. When request
+options contain an `AbortSignal`, that same signal is used for every page:
+
+```ts
+const controller = new AbortController();
+
+for await (const page of vex.teams.listPages(
+  { registered: true },
+  { signal: controller.signal },
+)) {
+  // Each value is a complete PaginatedResponse<Team>.
+}
+```
+
+Only top-level `list()` endpoints have a corresponding `listPages()` method;
+nested paginated endpoints continue to return a single requested page.
+
 ```ts
 import { VexEventsApiError } from "@v5x/events";
 
