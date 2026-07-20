@@ -249,6 +249,78 @@ describe("WebSerialAdapter", () => {
     await port.close();
   });
 
+  test("invokes the current disconnect property handler and registered listeners once", async () => {
+    const adapter = new WebSerialAdapter("darwin", async () => [
+      { path: "/dev/cu.handlers" },
+    ]);
+    const port = (await adapter.getPorts())[0]!;
+    let replacedHandlerCalls = 0;
+    let currentHandlerCalls = 0;
+    let listenerCalls = 0;
+    port.ondisconnect = () => {
+      replacedHandlerCalls++;
+    };
+    port.ondisconnect = () => {
+      currentHandlerCalls++;
+    };
+    port.addEventListener("disconnect", () => {
+      listenerCalls++;
+    });
+
+    await port.open({ baudRate: 115200 });
+    await port.close();
+
+    expect(replacedHandlerCalls).toBe(0);
+    expect(currentHandlerCalls).toBe(1);
+    expect(listenerCalls).toBe(1);
+
+    port.ondisconnect = null;
+    await port.open({ baudRate: 115200 });
+    await port.close();
+    expect(currentHandlerCalls).toBe(1);
+    expect(listenerCalls).toBe(2);
+  });
+
+  test("isolates throwing property handlers from listeners and cleanup", async () => {
+    const adapter = new WebSerialAdapter("darwin", async () => [
+      { path: "/dev/cu.throwing-handler" },
+    ]);
+    const port = (await adapter.getPorts())[0]!;
+    let listenerCalls = 0;
+    port.ondisconnect = () => {
+      throw new Error("consumer handler failed");
+    };
+    port.addEventListener("disconnect", () => {
+      listenerCalls++;
+    });
+
+    await port.open({ baudRate: 115200 });
+    await expect(port.close()).resolves.toBeUndefined();
+
+    expect(listenerCalls).toBe(1);
+    expect(port.readable).toBeNull();
+    expect(port.writable).toBeNull();
+  });
+
+  test("honors serial-level event-handler properties", () => {
+    const adapter = new WebSerialAdapter("darwin", async () => []);
+    let propertyCalls = 0;
+    let listenerCalls = 0;
+    adapter.onconnect = () => {
+      propertyCalls++;
+    };
+    adapter.addEventListener("connect", () => {
+      listenerCalls++;
+    });
+
+    adapter.dispatchEvent(new Event("connect"));
+    adapter.onconnect = null;
+    adapter.dispatchEvent(new Event("connect"));
+
+    expect(propertyCalls).toBe(1);
+    expect(listenerCalls).toBe(2);
+  });
+
   test("native data and error events are ignored after cancellation", async () => {
     const adapter = new WebSerialAdapter("darwin", async () => [
       { path: "/dev/cu.cancel" },

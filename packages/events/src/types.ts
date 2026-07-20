@@ -197,8 +197,8 @@ export interface PageMeta {
 }
 
 export interface PaginatedResponse<T> {
-  meta?: PageMeta;
-  data?: T[];
+  meta: PageMeta;
+  data: T[];
 }
 
 export interface PaginationOptions {

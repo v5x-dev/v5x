@@ -18,8 +18,8 @@ export interface SerialPortInfo {
 }
 
 export interface SerialPort extends EventTarget {
-  onconnect: (event: Event) => void;
-  ondisconnect: (event: Event) => void;
+  onconnect: ((event: Event) => void) | null;
+  ondisconnect: ((event: Event) => void) | null;
   readonly readable: ReadableStream<Uint8Array> | null;
   readonly writable: WritableStream<Uint8Array> | null;
   getInfo(): SerialPortInfo;
@@ -29,8 +29,8 @@ export interface SerialPort extends EventTarget {
 }
 
 export interface Serial extends EventTarget {
-  onconnect: (event: Event) => void;
-  ondisconnect: (event: Event) => void;
+  onconnect: ((event: Event) => void) | null;
+  ondisconnect: ((event: Event) => void) | null;
   getPorts(): Promise<SerialPort[]>;
   requestPort(options?: { filters?: SerialPortFilter[] }): Promise<SerialPort>;
 }
@@ -68,6 +68,47 @@ const linuxDiscoveryOperations: LinuxDiscoveryOperations = {
   readUsbAttributes: readLinuxUsbDeviceAttributes,
 };
 
+type SerialEventHandler = ((event: Event) => void) | null;
+
+class WebSerialEventTarget extends EventTarget {
+  private connectHandler: SerialEventHandler = null;
+  private disconnectHandler: SerialEventHandler = null;
+
+  constructor() {
+    super();
+    this.addEventListener("connect", (event) =>
+      this.invokeHandler(this.connectHandler, event),
+    );
+    this.addEventListener("disconnect", (event) =>
+      this.invokeHandler(this.disconnectHandler, event),
+    );
+  }
+
+  get onconnect(): SerialEventHandler {
+    return this.connectHandler;
+  }
+
+  set onconnect(handler: SerialEventHandler) {
+    this.connectHandler = handler;
+  }
+
+  get ondisconnect(): SerialEventHandler {
+    return this.disconnectHandler;
+  }
+
+  set ondisconnect(handler: SerialEventHandler) {
+    this.disconnectHandler = handler;
+  }
+
+  private invokeHandler(handler: SerialEventHandler, event: Event): void {
+    try {
+      handler?.call(this, event);
+    } catch {
+      // Consumer callbacks cannot interrupt other listeners or cleanup.
+    }
+  }
+}
+
 export async function readLinuxUsbDeviceAttributes(
   device: string,
   readText: ReadTextFile = readTextFile,
@@ -94,10 +135,10 @@ export async function readLinuxUsbDeviceAttributes(
   return {};
 }
 
-export class WebSerialPortAdapter extends EventTarget implements SerialPort {
-  onconnect: (event: Event) => void = () => {};
-  ondisconnect: (event: Event) => void = () => {};
-
+export class WebSerialPortAdapter
+  extends WebSerialEventTarget
+  implements SerialPort
+{
   private port: BunSerialPortRaw | null = null;
   private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   private dataListener: ((data: Uint8Array) => void) | null = null;
@@ -251,10 +292,7 @@ export class WebSerialPortAdapter extends EventTarget implements SerialPort {
   }
 }
 
-export class WebSerialAdapter extends EventTarget implements Serial {
-  onconnect: (event: Event) => void = () => {};
-  ondisconnect: (event: Event) => void = () => {};
-
+export class WebSerialAdapter extends WebSerialEventTarget implements Serial {
   private readonly ports = new Map<string, WebSerialPortAdapter>();
 
   constructor(

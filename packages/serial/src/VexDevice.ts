@@ -12,7 +12,7 @@ import {
   VexSerialDevice,
   type VexSerialDeviceEvents,
 } from "./VexDeviceState.js";
-import { sleepUntil, sleepUntilAsync } from "./VexFirmware.js";
+import { sleepUntil } from "./VexFirmware.js";
 import {
   VexInvalidArgumentError,
   VexIoError,
@@ -80,6 +80,7 @@ export class V5SerialDevice extends VexSerialDevice {
   state: V5SerialDeviceState = new V5SerialDeviceState(this);
   private _disposed = false;
   private _lifecycleGeneration = 0;
+  private _cancelReconnectWait: (() => void) | undefined;
   private _disconnectListener:
     | {
         connection: V5SerialConnection;
@@ -309,7 +310,7 @@ export class V5SerialDevice extends VexSerialDevice {
     if (this.isConnected)
       return new ResultAsync(Promise.resolve(ok(undefined)));
 
-    const generation = ++this._lifecycleGeneration;
+    const generation = this._advanceLifecycle();
     return new ResultAsync(this._connect(conn, generation));
   }
 
@@ -436,7 +437,7 @@ export class V5SerialDevice extends VexSerialDevice {
   }
 
   async disconnect(): Promise<void> {
-    this._lifecycleGeneration++;
+    this._advanceLifecycle();
     this.snapshots.invalidate();
     this._isDisconnecting = true;
     const connection = this.connection;
@@ -475,7 +476,7 @@ export class V5SerialDevice extends VexSerialDevice {
 
     const generation = this._isReconnecting
       ? this._lifecycleGeneration
-      : ++this._lifecycleGeneration;
+      : this._advanceLifecycle();
     return new ResultAsync(this._reconnect(timeout, generation));
   }
 
@@ -517,6 +518,7 @@ export class V5SerialDevice extends VexSerialDevice {
           if (!this._isLifecycleCurrent(generation)) {
             return this._staleLifecycleResult();
           }
+          if (timeout !== 0 && Date.now() >= endTime) break;
           const c = this.createConnection();
 
           const result = await c.open(tryIdx++, false);
@@ -562,16 +564,11 @@ export class V5SerialDevice extends VexSerialDevice {
 
         if (this.isConnected) break;
 
-        // try again every second or when the number of ports is different
-        const getPortCount = async (): Promise<number> =>
-          (await this.defaultSerial.getPorts()).length;
-        const portsCount = await getPortCount();
-        if (!this._isLifecycleCurrent(generation)) {
-          return this._staleLifecycleResult();
-        }
-        await sleepUntilAsync(
-          async () => (await getPortCount()) !== portsCount,
-          1000,
+        const remaining = timeout === 0 ? 1000 : endTime - Date.now();
+        if (remaining <= 0) break;
+        await this._waitForReconnectRetry(
+          Math.min(1000, remaining),
+          generation,
         );
         if (!this._isLifecycleCurrent(generation)) {
           return this._staleLifecycleResult();
@@ -602,6 +599,32 @@ export class V5SerialDevice extends VexSerialDevice {
     }
   }
 
+  private async _waitForReconnectRetry(
+    delayMs: number,
+    generation: number,
+  ): Promise<void> {
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        if (timer !== undefined) clearTimeout(timer);
+        this.defaultSerial.removeEventListener("connect", finish);
+        if (this._cancelReconnectWait === finish) {
+          this._cancelReconnectWait = undefined;
+        }
+        resolve();
+      };
+
+      this._cancelReconnectWait?.();
+      this._cancelReconnectWait = finish;
+      this.defaultSerial.addEventListener("connect", finish, { once: true });
+      timer = setTimeout(finish, delayMs);
+      if (!this._isLifecycleCurrent(generation)) finish();
+    });
+  }
+
   protected createConnection(): V5SerialConnection {
     return new V5SerialConnection(this.defaultSerial, {
       maxFileDownloadBytes: this._maxFileDownloadBytes,
@@ -610,6 +633,12 @@ export class V5SerialDevice extends VexSerialDevice {
 
   private _isLifecycleCurrent(generation: number): boolean {
     return generation === this._lifecycleGeneration && !this._disposed;
+  }
+
+  private _advanceLifecycle(): number {
+    this._lifecycleGeneration++;
+    this._cancelReconnectWait?.();
+    return this._lifecycleGeneration;
   }
 
   /** Closes the candidate connection when the lifecycle was superseded. */
@@ -666,7 +695,7 @@ export class V5SerialDevice extends VexSerialDevice {
       // well as the committed connection. In particular, a refresh that was
       // already waiting for replies must not turn this into a successful
       // connect after the transport has gone away.
-      this._lifecycleGeneration++;
+      this._advanceLifecycle();
       this.snapshots.invalidate();
       this.connection = undefined;
       this._detachDisconnectListener();
@@ -714,7 +743,7 @@ export class V5SerialDevice extends VexSerialDevice {
     ) {
       return;
     }
-    this._lifecycleGeneration++;
+    this._advanceLifecycle();
     this.snapshots.invalidate();
     this.connection = undefined;
     this._detachDisconnectListener();

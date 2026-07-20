@@ -63,6 +63,39 @@ function createDynamicClient(
   return { client, requests };
 }
 
+const idInfo = { id: 1, name: "V5RC" };
+
+function validEvent(id: number = 1) {
+  return {
+    id,
+    sku: `RE-V5RC-${id}`,
+    name: `Event ${id}`,
+    season: idInfo,
+    program: idInfo,
+    location: {},
+  };
+}
+
+function validTeam(id: number = 1) {
+  return { id, number: `${id}A`, program: idInfo };
+}
+
+function endpointResponse(url: URL): Response {
+  if (/\/events\/\d+$/.test(url.pathname)) {
+    return Response.json(validEvent());
+  }
+  if (/\/teams\/\d+$/.test(url.pathname)) {
+    return Response.json(validTeam());
+  }
+  if (/\/programs\/\d+$/.test(url.pathname)) {
+    return Response.json({ id: 1, name: "V5RC" });
+  }
+  if (/\/seasons\/\d+$/.test(url.pathname)) {
+    return Response.json({ id: 1, name: "2026" });
+  }
+  return Response.json({ data: [], meta: {} });
+}
+
 describe("Robot", () => {
   test("requires a non-empty token", () => {
     expect(() => new Robot({ token: "  " })).toThrow("token must not be empty");
@@ -116,7 +149,7 @@ describe("Robot", () => {
     const { client, requests } = createDynamicClient(({ url }) => {
       const page = Number(url.searchParams.get("page"));
       return Response.json({
-        data: [{ id: page, name: `Event ${page}` }],
+        data: [validEvent(page)],
         meta: { current_page: page, last_page: 4 },
       });
     });
@@ -131,15 +164,15 @@ describe("Robot", () => {
 
     expect(pages).toEqual([
       {
-        data: [{ id: 2, name: "Event 2" }],
+        data: [validEvent(2)],
         meta: { current_page: 2, last_page: 4 },
       },
       {
-        data: [{ id: 3, name: "Event 3" }],
+        data: [validEvent(3)],
         meta: { current_page: 3, last_page: 4 },
       },
       {
-        data: [{ id: 4, name: "Event 4" }],
+        data: [validEvent(4)],
         meta: { current_page: 4, last_page: 4 },
       },
     ]);
@@ -176,7 +209,7 @@ describe("Robot", () => {
     const { client, requests } = createDynamicClient(
       (_request, requestNumber) =>
         Response.json({
-          data: [{ requestNumber }],
+          data: [{ ...validEvent(requestNumber), requestNumber }],
           meta:
             requestNumber === 1
               ? { next_page_url: "https://example.test/api/v2/events?page=2" }
@@ -276,7 +309,9 @@ describe("Robot", () => {
   });
 
   test("covers every event endpoint", async () => {
-    const { client, requests } = createMockClient();
+    const { client, requests } = createDynamicClient(({ url }) =>
+      endpointResponse(url),
+    );
 
     await client.events.get(10);
     await client.events.teams(10, { numbers: ["123A"], registered: true });
@@ -306,7 +341,9 @@ describe("Robot", () => {
   });
 
   test("covers every team endpoint", async () => {
-    const { client, requests } = createMockClient();
+    const { client, requests } = createDynamicClient(({ url }) =>
+      endpointResponse(url),
+    );
 
     await client.teams.list({
       ids: [1],
@@ -446,8 +483,38 @@ describe("Robot", () => {
     });
   });
 
-  test("rejects malformed paginated success responses with endpoint context", async () => {
-    const { client } = createMockClient({ data: {}, meta: [] });
+  test.each([{ meta: {} }, { data: [] }, { data: {}, meta: [] }])(
+    "rejects malformed paginated success response %p with endpoint context",
+    async (body) => {
+      const { client } = createMockClient(body);
+
+      const error = await client.events
+        .list()
+        .catch((reason: unknown) => reason);
+
+      expect(error).toBeInstanceOf(VexEventsResponseError);
+      expect(error).toMatchObject({
+        message: "VEX Events API returned an invalid response for /events",
+        url: "https://example.test/api/v2/events",
+      });
+    },
+  );
+
+  test("rejects an empty single-resource success response", async () => {
+    const { client } = createMockClient({});
+
+    const error = await client.teams.get(1).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(VexEventsResponseError);
+    expect(error).toHaveProperty(
+      "message",
+      "VEX Events API returned an invalid response for /teams/1",
+    );
+  });
+
+  test("rejects malformed nested resources in paginated responses", async () => {
+    const malformedEvent = { ...validEvent(), season: { id: 1 } };
+    const { client } = createMockClient({ data: [malformedEvent], meta: {} });
 
     const error = await client.events.list().catch((reason: unknown) => reason);
 
@@ -458,16 +525,39 @@ describe("Robot", () => {
     });
   });
 
-  test("rejects malformed single-resource success responses", async () => {
-    const { client } = createMockClient([]);
-
-    const error = await client.teams.get(1).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsResponseError);
-    expect(error).toHaveProperty(
-      "message",
-      "VEX Events API returned an invalid response for /teams/1",
+  test("accepts valid entries from every supported resource family", async () => {
+    const resources = [
+      validEvent(),
+      validTeam(),
+      { id: 1, name: "V5RC", abbr: "V5RC" },
+      { id: 1, name: "2026", program: idInfo },
+      {
+        id: 1,
+        event: idInfo,
+        division: idInfo,
+        round: 2,
+        instance: 1,
+        matchnum: 3,
+        scored: true,
+        name: "Qualification 3",
+        alliances: [{ color: "red", score: 10, teams: [] }],
+      },
+      { id: 1, event: idInfo, division: idInfo, team: idInfo, rank: 1 },
+      { id: 1, event: idInfo, team: idInfo, type: "driver", score: 42 },
+      { id: 1, event: idInfo, title: "Excellence Award" },
+    ];
+    const { client } = createDynamicClient((_request, requestNumber) =>
+      Response.json({ data: [resources[requestNumber - 1]], meta: {} }),
     );
+
+    await expect(client.events.list()).resolves.toBeDefined();
+    await expect(client.teams.list()).resolves.toBeDefined();
+    await expect(client.programs.list()).resolves.toBeDefined();
+    await expect(client.seasons.list()).resolves.toBeDefined();
+    await expect(client.events.matches(1, 1)).resolves.toBeDefined();
+    await expect(client.events.rankings(1, 1)).resolves.toBeDefined();
+    await expect(client.events.skills(1)).resolves.toBeDefined();
+    await expect(client.events.awards(1)).resolves.toBeDefined();
   });
 
   test("exposes Retry-After seconds on rate-limited responses", async () => {
