@@ -227,6 +227,19 @@ async function* iteratePages<T, Options extends PaginationOptions>(
   }
 }
 
+function filterCancelledEvents(
+  response: PaginatedResponse<Event>,
+): PaginatedResponse<Event> {
+  if (response.data === undefined) return response;
+
+  return {
+    ...response,
+    data: response.data.filter(
+      (event) => !/cancelled|canceled/i.test(event.name),
+    ),
+  };
+}
+
 function serializeDate(value: DateInput): string {
   return value instanceof Date ? value.toISOString() : value;
 }
@@ -352,7 +365,12 @@ export class Robot {
 
     this.events = {
       list: (options = {}, request) =>
-        this.request("/events", eventEntries(options), request, "paginated"),
+        this.request<PaginatedResponse<Event>>(
+          "/events",
+          eventEntries(options),
+          request,
+          "paginated",
+        ).then(filterCancelledEvents),
       listPages: (options = {}, request) =>
         iteratePages(options, (pageOptions) =>
           this.request<PaginatedResponse<Event>>(
@@ -360,7 +378,7 @@ export class Robot {
             eventEntries(pageOptions),
             request,
             "paginated",
-          ),
+          ).then(filterCancelledEvents),
         ),
       get: (id, request) =>
         this.request(`/events/${id}`, [], request, "object"),
@@ -422,12 +440,12 @@ export class Robot {
         ),
       get: (id, request) => this.request(`/teams/${id}`, [], request, "object"),
       events: (id, options = {}, request) =>
-        this.request(
+        this.request<PaginatedResponse<Event>>(
           `/teams/${id}/events`,
           teamEventEntries(options),
           request,
           "paginated",
-        ),
+        ).then(filterCancelledEvents),
       matches: (id, options = {}, request) =>
         this.request(
           `/teams/${id}/matches`,
@@ -494,12 +512,12 @@ export class Robot {
       get: (id, request) =>
         this.request(`/seasons/${id}`, [], request, "object"),
       events: (id, options = {}, request) =>
-        this.request(
+        this.request<PaginatedResponse<Event>>(
           `/seasons/${id}/events`,
           seasonEventEntries(options),
           request,
           "paginated",
-        ),
+        ).then(filterCancelledEvents),
     };
   }
 
