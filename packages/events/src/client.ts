@@ -279,7 +279,7 @@ function hasResponseShape<T>(
     : isObjectResponse(value);
 }
 
-export class VexEventsClient {
+export class Robot {
   readonly events: EventsResource;
   readonly teams: TeamsResource;
   readonly programs: ProgramsResource;
