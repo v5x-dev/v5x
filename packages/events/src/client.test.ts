@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   VexEventsApiError,
-  VexEventsClient,
+  Robot,
   VexEventsResponseError,
   type Fetch,
 } from "./index.js";
@@ -26,7 +26,7 @@ function createMockClient(
     requests.push({ url: new URL(inputUrl), init });
     return Response.json(body, responseInit);
   };
-  const client = new VexEventsClient({
+  const client = new Robot({
     token: "test-token",
     baseUrl: "https://example.test/api/v2/",
     fetch: mockFetch,
@@ -36,11 +36,9 @@ function createMockClient(
   return { client, requests };
 }
 
-describe("VexEventsClient", () => {
+describe("Robot", () => {
   test("requires a non-empty token", () => {
-    expect(() => new VexEventsClient({ token: "  " })).toThrow(
-      "token must not be empty",
-    );
+    expect(() => new Robot({ token: "  " })).toThrow("token must not be empty");
   });
 
   test("serializes event filters using the API's repeated array format", async () => {
@@ -231,7 +229,7 @@ describe("VexEventsClient", () => {
         status: 200,
         headers: { "content-type": "text/html" },
       });
-    const client = new VexEventsClient({ token: "token", fetch: mockFetch });
+    const client = new Robot({ token: "token", fetch: mockFetch });
 
     const error = await client.programs
       .list()
@@ -249,7 +247,7 @@ describe("VexEventsClient", () => {
       new Response(JSON.stringify({ id: 1, name: "V5RC" }), {
         headers: { "content-type": "application/problem+json; charset=utf-8" },
       });
-    const client = new VexEventsClient({ token: "token", fetch: mockFetch });
+    const client = new Robot({ token: "token", fetch: mockFetch });
 
     await expect(client.programs.get(1)).resolves.toEqual({
       id: 1,
@@ -344,7 +342,7 @@ describe("VexEventsClient", () => {
       }
       return Response.json({ id: 1, name: "V5RC" });
     };
-    const client = new VexEventsClient({
+    const client = new Robot({
       token: "token",
       fetch: mockFetch,
       retry: { maxAttempts: 3 },
@@ -366,7 +364,7 @@ describe("VexEventsClient", () => {
         { status: 429, headers: { "retry-after": "0" } },
       );
     };
-    const client = new VexEventsClient({
+    const client = new Robot({
       token: "token",
       fetch: mockFetch,
       retry: { maxAttempts: 2 },
@@ -390,7 +388,7 @@ describe("VexEventsClient", () => {
         { status: 429, headers: { "retry-after": "60" } },
       );
     };
-    const client = new VexEventsClient({
+    const client = new Robot({
       token: "token",
       fetch: mockFetch,
       retry: { maxAttempts: 3, maxDelayMs: 1_000 },
@@ -411,7 +409,7 @@ describe("VexEventsClient", () => {
       attempts++;
       return Response.json({ message: "Server Error" }, { status: 500 });
     };
-    const client = new VexEventsClient({
+    const client = new Robot({
       token: "token",
       fetch: mockFetch,
       retry: { maxAttempts: 3 },
@@ -436,7 +434,7 @@ describe("VexEventsClient", () => {
         { status: 429, headers: { "retry-after": "5" } },
       );
     };
-    const client = new VexEventsClient({
+    const client = new Robot({
       token: "token",
       fetch: mockFetch,
       retry: { maxAttempts: 3 },

@@ -15,9 +15,9 @@ client. The package works in browsers, Bun, and modern Node.js runtimes with
 `fetch`.
 
 ```ts
-import { VexEventsClient } from "@v5x/events";
+import { Robot } from "@v5x/events";
 
-const vex = new VexEventsClient({
+const vex = new Robot({
   token: process.env.VEX_EVENTS_TOKEN!,
 });
 
@@ -65,7 +65,7 @@ the opt-in `retry` option to retry rate-limited requests automatically after
 the advertised delay; abort signals are honored while waiting.
 
 ```ts
-const vex = new VexEventsClient({
+const vex = new Robot({
   token: process.env.VEX_EVENTS_TOKEN!,
   retry: { maxAttempts: 3, maxDelayMs: 30_000 },
 });

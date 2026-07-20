@@ -1,10 +1,10 @@
 import * as client from "./client.js";
 import * as errors from "./errors.js";
 
-export const VexEventsClient = client.VexEventsClient;
+export const Robot = client.Robot;
 export const VexEventsApiError = errors.VexEventsApiError;
 export const VexEventsResponseError = errors.VexEventsResponseError;
-export type VexEventsClient = client.VexEventsClient;
+export type Robot = client.Robot;
 export type VexEventsApiError = errors.VexEventsApiError;
 export type VexEventsResponseError = errors.VexEventsResponseError;
 export type {
