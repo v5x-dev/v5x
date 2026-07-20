@@ -3,7 +3,9 @@ import {
   VexEventsApiError,
   Robot,
   VexEventsResponseError,
+  type Event,
   type Fetch,
+  type PaginatedResponse,
 } from "./index.js";
 
 interface CapturedRequest {
@@ -142,6 +144,39 @@ describe("Robot", () => {
     ]);
     expect(request?.url.searchParams.get("page")).toBe("2");
     expect(request?.url.searchParams.get("per_page")).toBe("250");
+  });
+
+  test("filters cancelled events from every event listing", async () => {
+    const { client } = createDynamicClient(() =>
+      Response.json({
+        data: [
+          { ...validEvent(1), name: "Active Event" },
+          { ...validEvent(2), name: "Cancelled Event" },
+          { ...validEvent(3), name: "CANCELED: Venue unavailable" },
+          { ...validEvent(4), name: "Event cancellation policy" },
+        ],
+        meta: { current_page: 1, last_page: 1, total: 4 },
+      }),
+    );
+
+    const globalEvents = await client.events.list();
+    const iteratedPage = await client.events.listPages().next();
+    const teamEvents = await client.teams.events(1);
+    const seasonEvents = await client.seasons.events(1);
+
+    const responses: PaginatedResponse<Event>[] = [
+      globalEvents,
+      iteratedPage.value ?? {},
+      teamEvents,
+      seasonEvents,
+    ];
+    for (const response of responses) {
+      expect(response?.data?.map(({ name }) => name)).toEqual([
+        "Active Event",
+        "Event cancellation policy",
+      ]);
+      expect(response?.meta?.total).toBe(4);
+    }
   });
 
   test("lazily iterates complete event pages from an explicit starting page", async () => {
