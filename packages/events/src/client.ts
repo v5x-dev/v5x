@@ -82,6 +82,10 @@ export interface EventsResource {
     options?: ListEventsOptions,
     request?: RequestOptions,
   ): Promise<PaginatedResponse<Event>>;
+  listPages(
+    options?: ListEventsOptions,
+    request?: RequestOptions,
+  ): AsyncIterableIterator<PaginatedResponse<Event>>;
   get(id: number, request?: RequestOptions): Promise<Event>;
   teams(
     id: number,
@@ -123,6 +127,10 @@ export interface TeamsResource {
     options?: ListTeamsOptions,
     request?: RequestOptions,
   ): Promise<PaginatedResponse<Team>>;
+  listPages(
+    options?: ListTeamsOptions,
+    request?: RequestOptions,
+  ): AsyncIterableIterator<PaginatedResponse<Team>>;
   get(id: number, request?: RequestOptions): Promise<Team>;
   events(
     id: number,
@@ -156,6 +164,10 @@ export interface ProgramsResource {
     options?: ListProgramsOptions,
     request?: RequestOptions,
   ): Promise<PaginatedResponse<Program>>;
+  listPages(
+    options?: ListProgramsOptions,
+    request?: RequestOptions,
+  ): AsyncIterableIterator<PaginatedResponse<Program>>;
   get(id: number, request?: RequestOptions): Promise<Program>;
 }
 
@@ -164,6 +176,10 @@ export interface SeasonsResource {
     options?: ListSeasonsOptions,
     request?: RequestOptions,
   ): Promise<PaginatedResponse<Season>>;
+  listPages(
+    options?: ListSeasonsOptions,
+    request?: RequestOptions,
+  ): AsyncIterableIterator<PaginatedResponse<Season>>;
   get(id: number, request?: RequestOptions): Promise<Season>;
   events(
     id: number,
@@ -177,6 +193,38 @@ function paginationEntries(options: PaginationOptions): QueryEntry[] {
     ["page", options.page],
     ["per_page", options.perPage],
   ];
+}
+
+function isUsablePage(value: number | undefined): value is number {
+  return value !== undefined && Number.isSafeInteger(value) && value >= 1;
+}
+
+async function* iteratePages<T, Options extends PaginationOptions>(
+  options: Options,
+  requestPage: (options: Options) => Promise<PaginatedResponse<T>>,
+): AsyncGenerator<PaginatedResponse<T>, void, void> {
+  let page = options.page ?? 1;
+
+  while (true) {
+    const response = await requestPage({ ...options, page });
+    yield response;
+
+    const reportedCurrentPage = isUsablePage(response.meta?.current_page)
+      ? response.meta.current_page
+      : page;
+    const currentPage = Math.max(page, reportedCurrentPage);
+    const lastPage = response.meta?.last_page;
+    if (isUsablePage(lastPage)) {
+      if (currentPage >= lastPage) return;
+    } else if (
+      typeof response.meta?.next_page_url !== "string" ||
+      response.meta.next_page_url.length === 0
+    ) {
+      return;
+    }
+
+    page = Math.max(page, currentPage) + 1;
+  }
 }
 
 function serializeDate(value: DateInput): string {
@@ -305,6 +353,15 @@ export class Robot {
     this.events = {
       list: (options = {}, request) =>
         this.request("/events", eventEntries(options), request, "paginated"),
+      listPages: (options = {}, request) =>
+        iteratePages(options, (pageOptions) =>
+          this.request<PaginatedResponse<Event>>(
+            "/events",
+            eventEntries(pageOptions),
+            request,
+            "paginated",
+          ),
+        ),
       get: (id, request) =>
         this.request(`/events/${id}`, [], request, "object"),
       teams: (id, options = {}, request) =>
@@ -354,6 +411,15 @@ export class Robot {
     this.teams = {
       list: (options = {}, request) =>
         this.request("/teams", teamEntries(options), request, "paginated"),
+      listPages: (options = {}, request) =>
+        iteratePages(options, (pageOptions) =>
+          this.request<PaginatedResponse<Team>>(
+            "/teams",
+            teamEntries(pageOptions),
+            request,
+            "paginated",
+          ),
+        ),
       get: (id, request) => this.request(`/teams/${id}`, [], request, "object"),
       events: (id, options = {}, request) =>
         this.request(
@@ -400,6 +466,15 @@ export class Robot {
           request,
           "paginated",
         ),
+      listPages: (options = {}, request) =>
+        iteratePages(options, (pageOptions) =>
+          this.request<PaginatedResponse<Program>>(
+            "/programs",
+            [...paginationEntries(pageOptions), ["id[]", pageOptions.ids]],
+            request,
+            "paginated",
+          ),
+        ),
       get: (id, request) =>
         this.request(`/programs/${id}`, [], request, "object"),
     };
@@ -407,6 +482,15 @@ export class Robot {
     this.seasons = {
       list: (options = {}, request) =>
         this.request("/seasons", seasonEntries(options), request, "paginated"),
+      listPages: (options = {}, request) =>
+        iteratePages(options, (pageOptions) =>
+          this.request<PaginatedResponse<Season>>(
+            "/seasons",
+            seasonEntries(pageOptions),
+            request,
+            "paginated",
+          ),
+        ),
       get: (id, request) =>
         this.request(`/seasons/${id}`, [], request, "object"),
       events: (id, options = {}, request) =>

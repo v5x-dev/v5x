@@ -46,6 +46,41 @@ the API's `snake_case` and repeated `field[]` parameters. Date filters accept
 an RFC 3339 string or a `Date`; `Date` values are serialized with
 `toISOString()`.
 
+## Iterate through pages
+
+The top-level event, team, program, and season collections provide lazy
+`listPages()` async iterators. Each iteration yields a complete paginated
+response rather than an individual item:
+
+```ts
+for await (const page of vex.events.listPages({
+  seasons: [196],
+  perPage: 250,
+})) {
+  for (const event of page.data ?? []) {
+    console.log(event.name);
+  }
+}
+```
+
+Requests are made sequentially as the iterator advances. Pass `page` to choose
+the starting page, or break out of the loop to stop before another request is
+made. A request signal is reused for every page:
+
+```ts
+const controller = new AbortController();
+
+for await (const page of vex.teams.listPages(
+  { registered: true },
+  { signal: controller.signal },
+)) {
+  // Each value is a complete PaginatedResponse<Team>.
+}
+```
+
+`listPages()` is available only alongside the top-level `list()` methods.
+Nested paginated endpoints continue to return one requested page at a time.
+
 Every response model and filter is exported as a TypeScript type. HTTP errors
 throw `VexEventsApiError`, which includes `status`, `statusText`, `body`, and
 the requested `url`. An `AbortSignal` can be passed separately from filters:

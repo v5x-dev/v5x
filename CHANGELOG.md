@@ -13,6 +13,8 @@ Unreleased section to a dated package-version heading.
 
 ### @v5x/events
 
+- Add lazy `listPages()` async iterators for top-level event, team, program,
+  and season collections.
 - Expose the Retry-After delay as `retryAfterMs` on API errors for
   rate-limited (429) and unavailable (503) responses.
 - Add an opt-in `retry` client option that retries rate-limited requests after
