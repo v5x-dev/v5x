@@ -72,6 +72,10 @@ function isOneOf<const T extends string>(values: readonly T[]): Validator<T> {
 
 const isOptionalString = (object: Record<string, unknown>, key: string) =>
   isOptional(object, key, isString);
+const isOptionalNullableString = (
+  object: Record<string, unknown>,
+  key: string,
+) => isOptional(object, key, isNullable(isString));
 const isOptionalNumber = (object: Record<string, unknown>, key: string) =>
   isOptional(object, key, isNumber);
 const isOptionalBoolean = (object: Record<string, unknown>, key: string) =>
@@ -116,10 +120,10 @@ function isLocation(value: unknown): value is Location {
     isObject(value) &&
     isOptionalString(value, "venue") &&
     isOptionalString(value, "address_1") &&
-    isOptionalString(value, "address_2") &&
+    isOptionalNullableString(value, "address_2") &&
     isOptionalString(value, "city") &&
-    isOptionalString(value, "region") &&
-    isOptionalString(value, "postcode") &&
+    isOptionalNullableString(value, "region") &&
+    isOptionalNullableString(value, "postcode") &&
     isOptionalString(value, "country") &&
     isOptional(value, "coordinates", isCoordinates)
   );
@@ -158,12 +162,12 @@ export function isEvent(value: unknown): value is Event {
     isLocation(value.location) &&
     isOptionalString(value, "start") &&
     isOptionalString(value, "end") &&
-    isOptional(value, "locations", isArrayOf(isNamedLocations)) &&
+    isOptional(value, "locations", isNamedLocations) &&
     isOptional(value, "divisions", isArrayOf(isDivision)) &&
     isOptional(value, "level", isEventLevel) &&
     isOptionalBoolean(value, "ongoing") &&
     isOptionalBoolean(value, "awards_finalized") &&
-    isOptional(value, "event_type", isEventType)
+    isOptional(value, "event_type", isNullable(isEventType))
   );
 }
 
@@ -220,7 +224,7 @@ export function isMatch(value: unknown): value is Match {
     isBoolean(value.scored) &&
     isString(value.name) &&
     isArrayOf(isAlliance)(value.alliances) &&
-    isOptionalString(value, "scheduled") &&
+    isOptionalNullableString(value, "scheduled") &&
     isOptionalString(value, "started") &&
     isOptionalString(value, "field")
   );

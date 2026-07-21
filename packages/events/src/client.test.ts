@@ -5,6 +5,7 @@ import {
   VexEventsResponseError,
   type Event,
   type Fetch,
+  type Match,
   type PaginatedResponse,
 } from "./index.js";
 
@@ -452,6 +453,56 @@ describe("Robot", () => {
       "/api/v2/events/10/divisions/30/finalistRankings?team%5B%5D=20&rank%5B%5D=1",
       "/api/v2/events/10/divisions/30/rankings?team%5B%5D=20&rank%5B%5D=2",
     ]);
+  });
+
+  test("accepts nullable event fields and date-keyed locations from the API", async () => {
+    const event = {
+      ...validEvent(59997),
+      location: {
+        venue: "NJIT Wellness and Events Center",
+        address_1: "104 Lock Street",
+        address_2: null,
+        city: "Newark",
+        region: null,
+        postcode: null,
+        country: "United States",
+      },
+      locations: {
+        "2025-09-12": {
+          venue: "NJIT Wellness and Events Center",
+          address_2: null,
+          region: "New Jersey",
+          postcode: "07103",
+        },
+      },
+      event_type: null,
+    } satisfies Event;
+    const { client } = createMockClient(event);
+
+    await expect(client.events.get(59997)).resolves.toEqual(event);
+  });
+
+  test("accepts matches without a scheduled start time", async () => {
+    const match = {
+      id: 1,
+      event: idInfo,
+      division: idInfo,
+      round: 2,
+      instance: 1,
+      matchnum: 3,
+      scheduled: null,
+      started: "2025-09-13T10:03:48-04:00",
+      field: "Robot Revolution",
+      scored: false,
+      name: "Qualifier #3",
+      alliances: [],
+    } satisfies Match;
+    const { client } = createMockClient({ data: [match], meta: {} });
+
+    await expect(client.events.matches(59997, 1)).resolves.toEqual({
+      data: [match],
+      meta: {},
+    });
   });
 
   test("covers every team endpoint", async () => {
