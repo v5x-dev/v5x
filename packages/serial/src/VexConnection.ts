@@ -213,7 +213,8 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     this.maxFileDownloadBytes = maxFileDownloadBytes;
   }
 
-  protected reportWarning(message: string, details?: unknown): void {
+  /** Report a recovered, non-fatal condition to connection listeners. */
+  reportWarning(message: string, details?: unknown): void {
     this.emitSafely("warning", {
       message,
       details,
