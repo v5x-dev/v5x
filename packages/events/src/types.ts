@@ -33,10 +33,10 @@ export interface Coordinates {
 export interface Location {
   venue?: string;
   address_1?: string;
-  address_2?: string;
+  address_2?: string | null;
   city?: string;
-  region?: string;
-  postcode?: string;
+  region?: string | null;
+  postcode?: string | null;
   country?: string;
   coordinates?: Coordinates;
 }
@@ -64,12 +64,12 @@ export interface Event {
   season: IdInfo;
   program: IdInfo;
   location: Location;
-  locations?: NamedLocations[];
+  locations?: NamedLocations;
   divisions?: Division[];
   level?: EventLevel;
   ongoing?: boolean;
   awards_finalized?: boolean;
-  event_type?: EventType;
+  event_type?: EventType | null;
 }
 
 export interface Program {
@@ -108,7 +108,7 @@ export interface Match {
   round: number;
   instance: number;
   matchnum: number;
-  scheduled?: string;
+  scheduled?: string | null;
   started?: string;
   field?: string;
   scored: boolean;
