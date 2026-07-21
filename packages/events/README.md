@@ -44,6 +44,13 @@ exported as TypeScript types. Array filters use normal arrays; the client
 encodes them using the API's repeated `field[]` query parameters. `Date` values
 are converted to RFC 3339 strings automatically.
 
+Event listings include every upstream event by default, including names that
+contain `cancelled` or `canceled`. Pass `includeCancelled: false` to
+`robot.events.list()`, `robot.events.listPages()`, `robot.teams.events()`, or
+`robot.seasons.events()` to apply the legacy name-based filter. That filter is
+applied to each page's `data`; pagination metadata continues to describe the
+unfiltered upstream response.
+
 ## Pagination
 
 The top-level event, team, program, and season collections expose lazy

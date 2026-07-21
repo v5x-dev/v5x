@@ -208,7 +208,17 @@ export interface PaginationOptions {
   perPage?: number;
 }
 
-export interface ListEventsOptions extends PaginationOptions {
+export interface CancelledEventOptions {
+  /**
+   * Whether to include events whose names contain "cancelled" or "canceled".
+   * Defaults to true. When false, filtering is applied to each response page
+   * without recalculating the upstream pagination metadata.
+   */
+  includeCancelled?: boolean;
+}
+
+export interface ListEventsOptions
+  extends PaginationOptions, CancelledEventOptions {
   ids?: readonly number[];
   skus?: readonly string[];
   teams?: readonly number[];
@@ -262,7 +272,8 @@ export interface ListTeamsOptions extends PaginationOptions {
   myTeams?: boolean;
 }
 
-export interface ListTeamEventsOptions extends PaginationOptions {
+export interface ListTeamEventsOptions
+  extends PaginationOptions, CancelledEventOptions {
   skus?: readonly string[];
   seasons?: readonly number[];
   start?: DateInput;
@@ -308,7 +319,8 @@ export interface ListSeasonsOptions extends PaginationOptions {
   active?: boolean;
 }
 
-export interface ListSeasonEventsOptions extends PaginationOptions {
+export interface ListSeasonEventsOptions
+  extends PaginationOptions, CancelledEventOptions {
   skus?: readonly string[];
   teams?: readonly number[];
   start?: DateInput;
