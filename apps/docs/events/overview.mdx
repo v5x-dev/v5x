@@ -46,6 +46,20 @@ the API's `snake_case` and repeated `field[]` parameters. Date filters accept
 an RFC 3339 string or a `Date`; `Date` values are serialized with
 `toISOString()`.
 
+Event listings return every upstream event by default. To remove events whose
+names contain `cancelled` or `canceled`, opt into the legacy client-side name
+filter with `includeCancelled: false`:
+
+```ts
+const activeEvents = await robot.events.list({
+  seasons: [196],
+  includeCancelled: false,
+});
+```
+
+The filter applies only to each response page's `data`. Pagination metadata
+continues to describe the unfiltered upstream response.
+
 ## Iterate through pages
 
 The top-level event, team, program, and season collections provide lazy

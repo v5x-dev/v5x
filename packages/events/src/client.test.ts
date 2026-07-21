@@ -146,14 +146,14 @@ describe("Robot", () => {
     expect(request?.url.searchParams.get("per_page")).toBe("250");
   });
 
-  test("filters cancelled events from every event listing", async () => {
-    const { client } = createDynamicClient(() =>
+  test("includes cancelled event names in every event listing by default", async () => {
+    const { client, requests } = createDynamicClient(() =>
       Response.json({
         data: [
           { ...validEvent(1), name: "Active Event" },
           { ...validEvent(2), name: "Cancelled Event" },
           { ...validEvent(3), name: "CANCELED: Venue unavailable" },
-          { ...validEvent(4), name: "Event cancellation policy" },
+          { ...validEvent(4), name: "Not Canceled" },
         ],
         meta: { current_page: 1, last_page: 1, total: 4 },
       }),
@@ -173,9 +173,52 @@ describe("Robot", () => {
     for (const response of responses) {
       expect(response?.data?.map(({ name }) => name)).toEqual([
         "Active Event",
-        "Event cancellation policy",
+        "Cancelled Event",
+        "CANCELED: Venue unavailable",
+        "Not Canceled",
       ]);
       expect(response?.meta?.total).toBe(4);
+    }
+    for (const { url } of requests) {
+      expect(url.searchParams.has("includeCancelled")).toBe(false);
+    }
+  });
+
+  test("filters cancelled event names only when explicitly requested", async () => {
+    const { client, requests } = createDynamicClient(() =>
+      Response.json({
+        data: [
+          { ...validEvent(1), name: "Active Event" },
+          { ...validEvent(2), name: "Cancelled Event" },
+          { ...validEvent(3), name: "CANCELED: Venue unavailable" },
+          { ...validEvent(4), name: "Not Canceled" },
+          { ...validEvent(5), name: "Event cancellation policy" },
+        ],
+        meta: { current_page: 1, last_page: 1, total: 5 },
+      }),
+    );
+
+    const options = { includeCancelled: false } as const;
+    const globalEvents = await client.events.list(options);
+    const iteratedPage = await client.events.listPages(options).next();
+    const teamEvents = await client.teams.events(1, options);
+    const seasonEvents = await client.seasons.events(1, options);
+
+    const responses: PaginatedResponse<Event>[] = [
+      globalEvents,
+      iteratedPage.value ?? {},
+      teamEvents,
+      seasonEvents,
+    ];
+    for (const response of responses) {
+      expect(response.data.map(({ name }) => name)).toEqual([
+        "Active Event",
+        "Event cancellation policy",
+      ]);
+      expect(response.meta.total).toBe(5);
+    }
+    for (const { url } of requests) {
+      expect(url.searchParams.has("includeCancelled")).toBe(false);
     }
   });
 

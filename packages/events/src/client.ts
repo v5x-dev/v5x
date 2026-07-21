@@ -240,8 +240,9 @@ async function* iteratePages<T, Options extends PaginationOptions>(
 
 function filterCancelledEvents(
   response: PaginatedResponse<Event>,
+  includeCancelled: boolean | undefined,
 ): PaginatedResponse<Event> {
-  if (response.data === undefined) return response;
+  if (includeCancelled !== false) return response;
 
   return {
     ...response,
@@ -360,7 +361,9 @@ export class Robot {
           eventEntries(options),
           request,
           paginated(isEvent),
-        ).then(filterCancelledEvents),
+        ).then((response) =>
+          filterCancelledEvents(response, options.includeCancelled),
+        ),
       listPages: (options = {}, request) =>
         iteratePages(options, (pageOptions) =>
           this.request<PaginatedResponse<Event>>(
@@ -368,7 +371,9 @@ export class Robot {
             eventEntries(pageOptions),
             request,
             paginated(isEvent),
-          ).then(filterCancelledEvents),
+          ).then((response) =>
+            filterCancelledEvents(response, pageOptions.includeCancelled),
+          ),
         ),
       get: (id, request) => this.request(`/events/${id}`, [], request, isEvent),
       teams: (id, options = {}, request) =>
@@ -439,7 +444,9 @@ export class Robot {
           teamEventEntries(options),
           request,
           paginated(isEvent),
-        ).then(filterCancelledEvents),
+        ).then((response) =>
+          filterCancelledEvents(response, options.includeCancelled),
+        ),
       matches: (id, options = {}, request) =>
         this.request(
           `/teams/${id}/matches`,
@@ -516,7 +523,9 @@ export class Robot {
           seasonEventEntries(options),
           request,
           paginated(isEvent),
-        ).then(filterCancelledEvents),
+        ).then((response) =>
+          filterCancelledEvents(response, options.includeCancelled),
+        ),
     };
   }
 
