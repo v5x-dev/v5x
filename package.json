@@ -9,6 +9,7 @@
   "overrides": {
     "adm-zip": "^0.6.0",
     "axios": "^1.18.1",
+    "body-parser": "^1.20.6",
     "brace-expansion": "^1.1.16",
     "esbuild": "^0.28.1",
     "js-yaml": "^4.3.0",
