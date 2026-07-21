@@ -258,6 +258,24 @@ function filterCancelledEvents(
   };
 }
 
+function filterEventTypes(
+  response: PaginatedResponse<Event>,
+  eventTypes: ListEventsOptions["eventTypes"],
+): PaginatedResponse<Event> {
+  if (eventTypes === undefined || eventTypes.length === 0) return response;
+
+  const includedTypes = new Set(eventTypes);
+  return {
+    ...response,
+    data: response.data.filter(
+      (event) =>
+        event.event_type !== null &&
+        event.event_type !== undefined &&
+        includedTypes.has(event.event_type),
+    ),
+  };
+}
+
 function serializeDate(value: DateInput): string {
   return value instanceof Date ? value.toISOString() : value;
 }
@@ -368,7 +386,10 @@ export class Robot {
           request,
           paginated(isEvent),
         ).then((response) =>
-          filterCancelledEvents(response, options.includeCancelled),
+          filterEventTypes(
+            filterCancelledEvents(response, options.includeCancelled),
+            options.eventTypes,
+          ),
         ),
       listPages: (options = {}, request) =>
         iteratePages(options, (pageOptions) =>
@@ -378,7 +399,10 @@ export class Robot {
             request,
             paginated(isEvent),
           ).then((response) =>
-            filterCancelledEvents(response, pageOptions.includeCancelled),
+            filterEventTypes(
+              filterCancelledEvents(response, pageOptions.includeCancelled),
+              pageOptions.eventTypes,
+            ),
           ),
         ),
       get: (id, request) => this.request(`/events/${id}`, [], request, isEvent),

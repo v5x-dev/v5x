@@ -147,6 +147,29 @@ describe("Robot", () => {
     expect(request?.url.searchParams.get("per_page")).toBe("250");
   });
 
+  test("honors event type filters when the API returns non-matching events", async () => {
+    const { client } = createDynamicClient(() =>
+      Response.json({
+        data: [
+          { ...validEvent(1), event_type: "tournament" },
+          { ...validEvent(2), event_type: "league" },
+          { ...validEvent(3), event_type: null },
+          validEvent(4),
+        ],
+        meta: { current_page: 1, last_page: 1, total: 4 },
+      }),
+    );
+    const options = { eventTypes: ["tournament"] } as const;
+
+    const response = await client.events.list(options);
+    const iteratedPage = await client.events.listPages(options).next();
+
+    expect(response.data.map(({ id }) => id)).toEqual([1]);
+    expect(response.meta.total).toBe(4);
+    expect(iteratedPage.value?.data.map(({ id }) => id)).toEqual([1]);
+    expect(iteratedPage.value?.meta.total).toBe(4);
+  });
+
   test("includes cancelled event names in every event listing by default", async () => {
     const { client, requests } = createDynamicClient(() =>
       Response.json({
