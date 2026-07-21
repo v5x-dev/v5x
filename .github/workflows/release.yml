@@ -56,8 +56,8 @@ jobs:
               ;;
           esac
 
-          package_json_version="$(bun -e 'const packageJson = await Bun.file(process.argv[2]).json(); console.log(packageJson.version);' "$package_dir/package.json")"
-          serial_version="$(bun -e 'const packageJson = await Bun.file(process.argv[2]).json(); console.log(packageJson.version);' packages/serial/package.json)"
+          package_json_version="$(bun -e 'const packageJson = await Bun.file(process.argv[1]).json(); console.log(packageJson.version);' "$package_dir/package.json")"
+          serial_version="$(bun -e 'const packageJson = await Bun.file(process.argv[1]).json(); console.log(packageJson.version);' packages/serial/package.json)"
           if [ "$package_json_version" != "$version" ]; then
             echo "$package_name tag version $version does not match $package_dir/package.json version $package_json_version" >&2
             exit 1
