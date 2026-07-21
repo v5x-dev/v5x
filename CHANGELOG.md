@@ -8,10 +8,20 @@ Unreleased section to a dated package-version heading.
 
 ### @v5x/cli
 
+### @v5x/events
+
+### @v5x/serial
+
+### @v5x/web
+
+## Releases
+
+### @v5x/cli 0.0.25 - 2026-07-21
+
 - Add verbose stack traces, colored error output, and documented exit codes.
 - Publish the verified tarball and require its serial dependency to be released.
 
-### @v5x/events
+### @v5x/events 0.1.6 - 2026-07-21
 
 - Add lazy `listPages()` async iterators for top-level event, team, program,
   and season collections.
@@ -20,7 +30,7 @@ Unreleased section to a dated package-version heading.
 - Add an opt-in `retry` client option that retries rate-limited requests after
   the advertised delay while honoring abort signals.
 
-### @v5x/serial
+### @v5x/serial 0.5.8 - 2026-07-21
 
 - Bound device-reported file sizes before allocation and make the download
   limit configurable on serial connections and devices.
@@ -43,7 +53,7 @@ Unreleased section to a dated package-version heading.
   reader shutdown with a dedicated error class instead of matching error
   text, and avoid transient reply-queue and smart-device-list allocations.
 
-### @v5x/web
+### @v5x/web 0.1.4 - 2026-07-21
 
 - Isolate snapshot subscriber exceptions from connection lifecycle operations.
 - Prevent delayed device-disconnect and refresh-failure cleanup from publishing
@@ -51,8 +61,6 @@ Unreleased section to a dated package-version heading.
 - Publish the verified tarball and require its serial dependency to be released.
 - Consolidate the device-teardown sequence shared by disconnect, refresh
   failure, and device-disconnect handling into a single helper.
-
-## Releases
 
 ### @v5x/cli 0.0.23 - 2026-07-08
 

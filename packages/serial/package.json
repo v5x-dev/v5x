@@ -1,6 +1,6 @@
 {
   "name": "@v5x/serial",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "implementation of the v5 serial protocol",
   "type": "module",
   "main": "./dist/index.cjs",
