@@ -204,6 +204,7 @@ test("state-changing methods report a disconnected device", async () => {
 
 test("controller uploads restore the pit channel after upload failure", async () => {
   const channels: RadioChannelType[] = [];
+  const warnings: Array<{ message: string; details?: unknown }> = [];
   class ControllerDevice extends V5SerialDevice {
     override get isV5Controller(): boolean {
       return true;
@@ -226,6 +227,8 @@ test("controller uploads restore the pit channel after upload failure", async ()
     isConnected: true,
     getSystemStatus: () => okAsync({} as never),
     uploadProgramToDevice: () => okAsync<boolean>(false),
+    reportWarning: (message: string, details?: unknown) =>
+      warnings.push({ message, details }),
     close: async () => {},
   } as unknown as V5SerialConnection;
 
@@ -240,6 +243,57 @@ test("controller uploads restore the pit channel after upload failure", async ()
     ).isErr(),
   ).toBe(true);
   expect(channels).toEqual([RadioChannelType.DOWNLOAD, RadioChannelType.PIT]);
+  expect(warnings).toEqual([]);
+});
+
+test("controller uploads warn when pit channel restoration also fails", async () => {
+  const uploadError = new VexProtocolError("program upload rejected");
+  const restorationError = new VexIoError("PIT channel unavailable");
+  const warnings: Array<{ message: string; details?: unknown }> = [];
+  class ControllerDevice extends V5SerialDevice {
+    override get isV5Controller(): boolean {
+      return true;
+    }
+
+    override get radio(): V5Radio {
+      return {
+        changeChannel: (channel: RadioChannelType) =>
+          channel === RadioChannelType.PIT
+            ? errAsync(restorationError)
+            : okAsync(undefined),
+      } as unknown as V5Radio;
+    }
+  }
+
+  const device = new ControllerDevice(serial);
+  devices.push(device);
+  device.refresh = () => okAsync<boolean>(true);
+  device.connection = {
+    isConnected: true,
+    getSystemStatus: () => okAsync({} as never),
+    uploadProgramToDevice: () => errAsync(uploadError),
+    reportWarning: (message: string, details?: unknown) =>
+      warnings.push({ message, details }),
+    close: async () => {},
+  } as unknown as V5SerialConnection;
+
+  const result = await device.brain.uploadProgram(
+    {} as ProgramIniConfig,
+    new Uint8Array([1]),
+    undefined,
+    () => {},
+  );
+
+  expect(result._unsafeUnwrapErr()).toBe(uploadError);
+  expect(warnings).toEqual([
+    {
+      message: "failed to restore controller PIT channel after program upload",
+      details: {
+        error: restorationError,
+        targetChannel: RadioChannelType.PIT,
+      },
+    },
+  ]);
 });
 
 test("automatic refresh failures are emitted instead of left unhandled", async () => {

@@ -331,7 +331,25 @@ async function runUploadProgram(
       return ok(true);
     } finally {
       if (switchedToDownload) {
-        await device.radio.changeChannel(RadioChannelType.PIT);
+        try {
+          const restored = await device.radio.changeChannel(
+            RadioChannelType.PIT,
+          );
+          if (restored.isErr()) {
+            conn.reportWarning(
+              "failed to restore controller PIT channel after program upload",
+              {
+                error: restored.error,
+                targetChannel: RadioChannelType.PIT,
+              },
+            );
+          }
+        } catch (error: unknown) {
+          conn.reportWarning(
+            "failed to restore controller PIT channel after program upload",
+            { error, targetChannel: RadioChannelType.PIT },
+          );
+        }
       }
     }
   });

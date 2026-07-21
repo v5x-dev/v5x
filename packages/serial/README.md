@@ -95,6 +95,19 @@ a time. Await each high-level transfer; do not interleave manual low-level file
 packets. A `V5SerialDevice` pauses its background refresh while a high-level
 transfer is active by default.
 
+Controller program uploads temporarily switch the radio to the download
+channel. If an upload fails after that switch, the library still attempts to
+restore the PIT channel. When both the upload and restoration fail, the upload
+`Result` keeps the original upload error and the connection emits a `warning`
+event with the restoration error in `details.error` and the attempted channel
+in `details.targetChannel`:
+
+```ts
+connection.on("warning", ({ message, details }) => {
+  console.warn(message, details);
+});
+```
+
 Protocol requests default to a 1,000 ms response timeout. Individual transfer
 phases use longer timeouts where erase, write, or exit operations need them.
 `reconnect(0)` waits indefinitely, while a positive reconnect timeout is a total
