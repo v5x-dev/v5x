@@ -312,6 +312,83 @@ describe("createV5Client", () => {
     expect(statuses).toEqual(["connecting", "connected"]);
   });
 
+  test("concurrent connect calls share one successful attempt", async () => {
+    const connectDeferred = createDeferred<void>();
+    let factoryCalls = 0;
+    let connects = 0;
+    const client = createV5ClientWithFactory({ serial }, () => {
+      factoryCalls++;
+      return {
+        autoRefresh: true,
+        connect: () => {
+          connects++;
+          return ResultAsync.fromPromise(
+            connectDeferred.promise,
+            () => new VexSerialError("io", "connect failed"),
+          );
+        },
+        disconnect: async () => {},
+        refresh: () => okAsync(true),
+      };
+    });
+
+    const firstConnect = client.connect();
+    const secondConnect = client.connect();
+
+    expect(secondConnect).toBe(firstConnect);
+    expect(factoryCalls).toBe(1);
+    expect(connects).toBe(1);
+
+    connectDeferred.resolve(undefined);
+    expect(await Promise.all([firstConnect, secondConnect])).toEqual([
+      true,
+      true,
+    ]);
+    expect(client.getSnapshot().status).toBe("connected");
+  });
+
+  test("concurrent connect calls share one failed attempt", async () => {
+    const connectDeferred = createDeferred<void>();
+    const connectError = new VexSerialError("io", "connect failed");
+    let factoryCalls = 0;
+    let connects = 0;
+    const client = createV5ClientWithFactory({ serial }, () => {
+      factoryCalls++;
+      return {
+        autoRefresh: true,
+        connect: () => {
+          connects++;
+          return ResultAsync.fromPromise(
+            connectDeferred.promise.then(() => {
+              throw connectError;
+            }),
+            (error) => (error instanceof VexSerialError ? error : connectError),
+          );
+        },
+        disconnect: async () => {},
+        refresh: () => okAsync(true),
+      };
+    });
+
+    const firstConnect = client.connect();
+    const secondConnect = client.connect();
+
+    expect(secondConnect).toBe(firstConnect);
+    expect(factoryCalls).toBe(1);
+    expect(connects).toBe(1);
+
+    connectDeferred.resolve(undefined);
+    expect(await Promise.all([firstConnect, secondConnect])).toEqual([
+      false,
+      false,
+    ]);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "error",
+      connected: false,
+      error: { code: "connect-failed" },
+    });
+  });
+
   test("failed connect transitions to error", async () => {
     const client = createClient({
       autoRefresh: true,
@@ -399,13 +476,18 @@ describe("createV5Client", () => {
     );
 
     const connectPromise = client.connect();
+    const concurrentConnectPromise = client.connect();
+    expect(concurrentConnectPromise).toBe(connectPromise);
     expect(client.getSnapshot().status).toBe("connecting");
 
     await client.disconnect();
     connectDeferred.resolve(undefined);
-    const connected = await connectPromise;
+    const connections = await Promise.all([
+      connectPromise,
+      concurrentConnectPromise,
+    ]);
 
-    expect(connected).toBe(false);
+    expect(connections).toEqual([false, false]);
     expect(client.getSnapshot()).toMatchObject({
       status: "idle",
       connected: false,
@@ -616,6 +698,49 @@ describe("createV5Client", () => {
     expect(snapshot.device?.brain.battery.batteryPercent).toBe(82);
     expect(snapshot.device?.brain.activeProgram).toBe(3);
     expect(snapshot.device?.radio.isConnected).toBe(true);
+  });
+
+  test("preserves unknown partner charging state and detects reported changes", async () => {
+    const state = createFakeDeviceState();
+    state.controllers[0]!.isCharging = true;
+    state.controllers[1]!.isCharging = undefined;
+    let reportPartnerCharging = false;
+    const client = createClient({
+      autoRefresh: true,
+      state,
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      refresh: () => {
+        if (reportPartnerCharging) {
+          state.controllers[1]!.isCharging = false;
+        }
+        return okAsync(true);
+      },
+    });
+
+    await client.connect();
+    const unknownSnapshot = client.getSnapshot();
+    const primaryCharging: boolean =
+      unknownSnapshot.device!.controllers[0].isCharging;
+
+    expect(primaryCharging).toBe(true);
+    expect(unknownSnapshot.device?.controllers[1].isCharging).toBeUndefined();
+
+    await client.refresh();
+    expect(client.getSnapshot().device).toBe(unknownSnapshot.device);
+    expect(client.getSnapshot().deviceVersion).toBe(
+      unknownSnapshot.deviceVersion,
+    );
+
+    reportPartnerCharging = true;
+    await client.refresh();
+    const reportedSnapshot = client.getSnapshot();
+
+    expect(reportedSnapshot.device).not.toBe(unknownSnapshot.device);
+    expect(reportedSnapshot.device?.controllers[1].isCharging).toBe(false);
+    expect(reportedSnapshot.deviceVersion).toBeGreaterThan(
+      unknownSnapshot.deviceVersion,
+    );
   });
 
   test("unchanged refreshes preserve the device snapshot and do not notify", async () => {

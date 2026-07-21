@@ -11,6 +11,7 @@ export type {
   V5Client,
   V5ClientOptions,
   V5ConnectionStatus,
+  V5DeviceSnapshot,
   V5Snapshot,
   V5Store,
   V5Unsubscribe,

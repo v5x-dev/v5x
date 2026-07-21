@@ -93,7 +93,7 @@ export interface V5DeviceSnapshot {
     {
       battery: number;
       isAvailable: boolean;
-      isCharging: boolean;
+      isCharging: boolean | undefined;
     },
   ];
   radio: {
@@ -177,6 +177,7 @@ class V5WebClient implements V5Client {
   private deviceSnapshot: V5DeviceSnapshot | null = null;
   private deviceVersion = 0;
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
+  private connectPromise: Promise<boolean> | null = null;
   private refreshPromise: Promise<void> | null = null;
   private generation = 0;
   private detachDeviceListeners: (() => void) | null = null;
@@ -224,19 +225,33 @@ class V5WebClient implements V5Client {
     return this.listeners.subscribe(listener);
   }
 
-  async connect(): Promise<boolean> {
-    if (!this.supported || this.serial === undefined) return false;
-    if (this.status === "connected" && this.device !== null) return true;
-    if (this.status === "connecting" || this.status === "disconnecting") {
-      return false;
+  connect(): Promise<boolean> {
+    if (!this.supported || this.serial === undefined) {
+      return Promise.resolve(false);
     }
+    if (this.status === "connected" && this.device !== null) {
+      return Promise.resolve(true);
+    }
+    if (this.status === "connecting" && this.connectPromise !== null) {
+      return this.connectPromise;
+    }
+    if (this.status === "disconnecting") return Promise.resolve(false);
 
+    const connectPromise = this.runConnect(this.serial);
+    this.connectPromise = connectPromise;
+    void connectPromise.then(() => {
+      if (this.connectPromise === connectPromise) this.connectPromise = null;
+    });
+    return connectPromise;
+  }
+
+  private async runConnect(serial: Serial): Promise<boolean> {
     const generation = ++this.generation;
     this.setState("connecting", null, null);
     let device: V5DeviceLike | null = null;
 
     try {
-      device = this.device ?? this.createDevice(this.serial);
+      device = this.device ?? this.createDevice(serial);
       device.autoRefresh = false;
       device.autoReconnect = false;
       const result = await device.connect();
@@ -530,7 +545,7 @@ function createDeviceSnapshot(
       {
         battery: state.controllers[1]?.battery ?? 0,
         isAvailable: state.controllers[1]?.isAvailable ?? false,
-        isCharging: state.controllers[1]?.isCharging ?? false,
+        isCharging: state.controllers[1]?.isCharging,
       },
     ],
     radio: {

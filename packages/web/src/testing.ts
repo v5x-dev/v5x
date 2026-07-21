@@ -11,6 +11,7 @@ export type {
   V5ConnectionStatus,
   V5DeviceFactory,
   V5DeviceLike,
+  V5DeviceSnapshot,
   V5Snapshot,
   V5Store,
   V5Unsubscribe,

@@ -20,7 +20,7 @@ if (connected) {
 }
 ```
 
-Web Serial is browser-only and requires HTTPS or `localhost`. Call `connect()` from a user gesture so the browser can show the permission prompt.
+Web Serial is browser-only and requires HTTPS or `localhost`. Call `connect()` from a user gesture so the browser can show the permission prompt. Concurrent `connect()` calls share the active connection attempt and resolve to the same outcome.
 
 Pass `refreshIntervalMs` to enable background refreshes. When provided, it must
 be a positive finite number; `createV5Client()` throws a `RangeError` for zero,
@@ -42,6 +42,11 @@ with a normalized `refresh-error`. The stale device is disconnected or disposed,
 background refresh stops, and the attached device is cleared. Call `connect()`
 again to make a fresh connection attempt; call `disconnect()` from the error
 state to clear the error and return to `idle` without retrying.
+
+In device snapshots, the primary controller's `isCharging` value is a boolean.
+The partner controller's value is `boolean | undefined`: `undefined` means the
+device did not report that charging state, while `false` means it reported that
+the partner controller is not charging.
 
 Framework bindings are available as subpath exports:
 
