@@ -17,6 +17,10 @@ interface SerialTransportCallbacks {
   warning: (message: string, details?: unknown) => void;
 }
 
+function isPortSelectionCanceled(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "NotFoundError";
+}
+
 /** Owns port selection, stream locks, and transport teardown. */
 export class SerialTransport {
   writer: WritableStreamDefaultWriter<unknown> | undefined;
@@ -122,8 +126,10 @@ export class SerialTransport {
     if (port == null && askUser) {
       try {
         port = await serial.requestPort({ filters });
-      } catch {
-        // User canceled port selection or no matching port was available.
+      } catch (error) {
+        if (!isPortSelectionCanceled(error)) {
+          return err(toVexSerialError(error, "io"));
+        }
       }
     }
 

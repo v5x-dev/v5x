@@ -881,6 +881,38 @@ test("open resolves no-port when nothing matches and the user is not asked", asy
   expect((await connection.open(0, false))._unsafeUnwrap()).toBe("no-port");
 });
 
+test("open resolves no-port when port selection is canceled", async () => {
+  const connection = new V5SerialConnection({
+    getPorts: async () => [],
+    requestPort: async () => {
+      throw new DOMException("No port selected by the user.", "NotFoundError");
+    },
+  } as unknown as Serial);
+
+  expect((await connection.open(0, true))._unsafeUnwrap()).toBe("no-port");
+});
+
+test("open preserves unexpected port selection failures", async () => {
+  const cause = new DOMException(
+    "User activation is required.",
+    "SecurityError",
+  );
+  const connection = new V5SerialConnection({
+    getPorts: async () => [],
+    requestPort: async () => {
+      throw cause;
+    },
+  } as unknown as Serial);
+
+  const result = await connection.open(0, true);
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr()).toMatchObject({
+    kind: "io",
+    message: "User activation is required.",
+    cause,
+  });
+});
+
 test("reader shutdown only suppresses the dedicated close sentinel", async () => {
   const warnings: string[] = [];
   let closeCount = 0;
