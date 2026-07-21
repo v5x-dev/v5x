@@ -133,7 +133,7 @@ export function verifyManifest(
     const rootExport = isRecord(exports) ? exports["."] : undefined;
     if (
       parsed.name !== "@v5x/serial" ||
-      parsed.sideEffects !== false ||
+      parsed.sideEffects !== true ||
       parsed.types !== "./dist/index.d.ts" ||
       !isRecord(rootExport) ||
       rootExport.types !== "./dist/index.d.ts" ||

@@ -6,7 +6,7 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "sideEffects": false,
+  "sideEffects": true,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "bun run clean && bun run build:dts && bun run build:esm && bun run build:cjs",
+    "build": "bun run clean && bun run build:dts && bun run build:esm && bun run build:cjs && bun scripts/verify-built-registry.ts",
     "build:esm": "bun build ./src/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external unzipit --external neverthrow && bun build ./src/VexPacketCore.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=packet-core.js",
     "build:cjs": "bun build ./src/index.ts --target node --format cjs --sourcemap=linked --outdir ./dist --entry-naming=index.cjs --external unzipit --external neverthrow && bun build ./src/VexPacketCore.ts --target node --format cjs --sourcemap=linked --outdir ./dist --entry-naming=packet-core.cjs",
     "build:dts": "tsc -p tsconfig.build.json",
