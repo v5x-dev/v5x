@@ -22,8 +22,12 @@ export class VexSerialError extends Error {
   readonly kind: VexSerialErrorKind;
   readonly ackType: AckType | undefined = undefined;
 
-  constructor(kind: VexSerialErrorKind, message: string) {
-    super(message);
+  constructor(
+    kind: VexSerialErrorKind,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.name = "VexSerialError";
     this.kind = kind;
   }
@@ -98,5 +102,5 @@ export function toVexSerialError(
 ): VexSerialError {
   if (error instanceof VexSerialError) return error;
   const message = error instanceof Error ? error.message : String(error);
-  return new VexSerialError(fallback, message);
+  return new VexSerialError(fallback, message, { cause: error });
 }
