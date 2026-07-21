@@ -12,7 +12,7 @@ The command-line interface. Heavily inspired by [cargo-v5](https://github.com/ve
 
 ### [@v5x/serial](https://github.com/v5x-dev/v5x/tree/main/packages/serial)
 
-The low-level foundation that powers the CLI: the V5 serial protocol implemented in TypeScript. Instead of shelling out to external binaries, it talks directly to the V5 brain over USB/serial.
+The low-level foundation that powers the CLI: the v5 serial protocol implemented in TypeScript. Instead of shelling out to external binaries, it talks directly to the V5 brain over USB/serial.
 
 This is a fork of [v5-serial-protocol](https://github.com/LemLib/v5-serial-protocol) with extra features and fixes, major props to [jerrylum](https://github.com/Jerrylum) and the [LemLib](https://github.com/LemLib) team for making this whole project possible.
 
