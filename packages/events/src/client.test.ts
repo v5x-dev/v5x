@@ -283,6 +283,42 @@ describe("Robot", () => {
     expect(requests).toHaveLength(1);
   });
 
+  test("lazily iterates paginated event division matches", async () => {
+    const controller = new AbortController();
+    const { client, requests } = createDynamicClient(({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      return Response.json({
+        data: [],
+        meta: { current_page: page, last_page: 3 },
+      });
+    });
+    const options = {
+      teams: [20],
+      rounds: [2],
+      instances: [1],
+      matchNumbers: [4],
+      page: 2,
+      perPage: 25,
+    } as const;
+    const iterator = client.events.matchesPages(10, 30, options, {
+      signal: controller.signal,
+    });
+
+    expect(requests).toHaveLength(0);
+    for await (const _page of iterator) {
+      // Consume every page to verify the nested endpoint pagination.
+    }
+
+    expect(requests.map(({ url }) => `${url.pathname}${url.search}`)).toEqual([
+      "/api/v2/events/10/divisions/30/matches?page=2&per_page=25&team%5B%5D=20&round%5B%5D=2&instance%5B%5D=1&matchnum%5B%5D=4",
+      "/api/v2/events/10/divisions/30/matches?page=3&per_page=25&team%5B%5D=20&round%5B%5D=2&instance%5B%5D=1&matchnum%5B%5D=4",
+    ]);
+    for (const { init } of requests) {
+      expect(init?.signal).toBe(controller.signal);
+    }
+    expect(options.page).toBe(2);
+  });
+
   test("uses next_page_url when last_page is absent and stops without usable metadata", async () => {
     const { client, requests } = createDynamicClient(
       (_request, requestNumber) =>

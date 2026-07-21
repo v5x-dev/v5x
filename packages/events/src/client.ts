@@ -119,6 +119,12 @@ export interface EventsResource {
     options?: ListDivisionMatchesOptions,
     request?: RequestOptions,
   ): Promise<PaginatedResponse<Match>>;
+  matchesPages(
+    id: number,
+    division: number,
+    options?: ListDivisionMatchesOptions,
+    request?: RequestOptions,
+  ): AsyncIterableIterator<PaginatedResponse<Match>>;
   finalistRankings(
     id: number,
     division: number,
@@ -403,6 +409,15 @@ export class Robot {
           divisionMatchEntries(options),
           request,
           paginated(isMatch),
+        ),
+      matchesPages: (id, division, options = {}, request) =>
+        iteratePages(options, (pageOptions) =>
+          this.request<PaginatedResponse<Match>>(
+            `/events/${id}/divisions/${division}/matches`,
+            divisionMatchEntries(pageOptions),
+            request,
+            paginated(isMatch),
+          ),
         ),
       finalistRankings: (id, division, options = {}, request) =>
         this.request(

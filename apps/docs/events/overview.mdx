@@ -92,8 +92,22 @@ for await (const page of robot.teams.listPages(
 }
 ```
 
-`listPages()` is available only alongside the top-level `list()` methods.
-Nested paginated endpoints continue to return one requested page at a time.
+Event division matches also provide a lazy page iterator through
+`robot.events.matchesPages()`:
+
+```ts
+for await (const page of robot.events.matchesPages(eventId, divisionId, {
+  rounds: [2],
+  perPage: 250,
+})) {
+  for (const match of page.data) {
+    console.log(match.name);
+  }
+}
+```
+
+Other nested paginated endpoints continue to return one requested page at a
+time.
 
 Every response model and filter is exported as a TypeScript type. HTTP errors
 throw `VexEventsApiError`, which includes `status`, `statusText`, `body`, and

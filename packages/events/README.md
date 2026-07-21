@@ -83,8 +83,21 @@ for await (const page of robot.teams.listPages(
 }
 ```
 
-Only top-level `list()` endpoints have a corresponding `listPages()` method;
-nested paginated endpoints continue to return a single requested page.
+Event division matches also provide a lazy page iterator through
+`robot.events.matchesPages()`:
+
+```ts
+for await (const page of robot.events.matchesPages(eventId, divisionId, {
+  rounds: [2],
+  perPage: 250,
+})) {
+  for (const match of page.data) {
+    console.log(match.name);
+  }
+}
+```
+
+Other nested paginated endpoints continue to return a single requested page.
 
 ```ts
 import { VexEventsApiError } from "@v5x/events";
