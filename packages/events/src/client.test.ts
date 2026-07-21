@@ -163,11 +163,14 @@ describe("Robot", () => {
 
     const response = await client.events.list(options);
     const iteratedPage = await client.events.listPages(options).next();
+    if (iteratedPage.done !== false) {
+      throw new Error("Expected the event page iterator to yield a response");
+    }
 
     expect(response.data.map(({ id }) => id)).toEqual([1]);
     expect(response.meta.total).toBe(4);
-    expect(iteratedPage.value?.data.map(({ id }) => id)).toEqual([1]);
-    expect(iteratedPage.value?.meta.total).toBe(4);
+    expect(iteratedPage.value.data.map(({ id }) => id)).toEqual([1]);
+    expect(iteratedPage.value.meta.total).toBe(4);
   });
 
   test("includes cancelled event names in every event listing by default", async () => {
