@@ -16,6 +16,11 @@ Unreleased section to a dated package-version heading.
 
 ## Releases
 
+### @v5x/events 0.1.7 - 2026-07-21
+
+- Filter event listings by requested event types while safely skipping events
+  whose API event type is null.
+
 ### @v5x/cli 0.0.25 - 2026-07-21
 
 - Add verbose stack traces, colored error output, and documented exit codes.

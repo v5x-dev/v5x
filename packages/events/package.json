@@ -1,6 +1,6 @@
 {
   "name": "@v5x/events",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Strictly typed TypeScript client for the VEX Events API",
   "type": "module",
   "main": "./dist/index.js",
