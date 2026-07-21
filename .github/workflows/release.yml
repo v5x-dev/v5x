@@ -24,6 +24,13 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Set up npm for trusted publishing
+        run: npm install --global npm@12.0.1
       - run: bun install --frozen-lockfile
       - name: Resolve release tag
         id: release
@@ -139,18 +146,8 @@ jobs:
           fi
           bun scripts/verify-package-tarballs.ts --serial-version "${{ steps.release.outputs.serial_version }}" "${tarballs[0]}"
           echo "tarball=${tarballs[0]}" >> "$GITHUB_OUTPUT"
-      - name: Configure npm
-        run: |
-          set -euo pipefail
-          if [ -n "${NPM_TOKEN:-}" ]; then
-            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          fi
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish to npm
         run: npm publish "${{ steps.package.outputs.tarball }}" --provenance --access public
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   cli-binaries:
     if: ${{ startsWith(github.ref_name, '@v5x/cli@') }}
