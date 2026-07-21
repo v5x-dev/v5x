@@ -16,7 +16,7 @@ client:
 ```ts
 import { Robot } from "@v5x/events";
 
-const vex = new Robot({
+const robot = new Robot({
   token: process.env.VEX_EVENTS_TOKEN!,
 });
 ```
@@ -25,13 +25,13 @@ The client groups the complete API under four resources: `events`, `teams`,
 `programs`, and `seasons`.
 
 ```ts
-const teams = await vex.teams.list({
+const teams = await robot.teams.list({
   numbers: ["123A", "456B"],
   registered: true,
   perPage: 100,
 });
 
-const matches = await vex.events.matches(eventId, divisionId, {
+const matches = await robot.events.matches(eventId, divisionId, {
   teams: [teamId],
   rounds: [2],
 });
@@ -53,7 +53,7 @@ The top-level event, team, program, and season collections provide lazy
 response rather than an individual item:
 
 ```ts
-for await (const page of vex.events.listPages({
+for await (const page of robot.events.listPages({
   seasons: [196],
   perPage: 250,
 })) {
@@ -70,7 +70,7 @@ made. A request signal is reused for every page:
 ```ts
 const controller = new AbortController();
 
-for await (const page of vex.teams.listPages(
+for await (const page of robot.teams.listPages(
   { registered: true },
   { signal: controller.signal },
 )) {
@@ -88,7 +88,7 @@ the requested `url`. An `AbortSignal` can be passed separately from filters:
 ```ts
 const controller = new AbortController();
 
-await vex.events.list(
+await robot.events.list(
   { eventTypes: ["tournament"], page: 1 },
   { signal: controller.signal },
 );
@@ -101,7 +101,7 @@ requests automatically after the advertised delay while honoring abort
 signals:
 
 ```ts
-const vex = new Robot({
+const robot = new Robot({
   token: process.env.VEX_EVENTS_TOKEN!,
   retry: { maxAttempts: 3, maxDelayMs: 30_000 },
 });

@@ -17,11 +17,11 @@ client. The package works in browsers, Bun, and modern Node.js runtimes with
 ```ts
 import { Robot } from "@v5x/events";
 
-const vex = new Robot({
+const robot = new Robot({
   token: process.env.VEX_EVENTS_TOKEN!,
 });
 
-const teams = await vex.teams.list({
+const teams = await robot.teams.list({
   numbers: ["123A"],
   registered: true,
   perPage: 100,
@@ -34,10 +34,10 @@ for (const team of teams.data ?? []) {
 
 Resources mirror the API:
 
-- `vex.events`: events, event teams, skills, awards, division matches, and rankings
-- `vex.teams`: teams and their events, matches, rankings, skills, and awards
-- `vex.programs`: programs
-- `vex.seasons`: seasons and season events
+- `robot.events`: events, event teams, skills, awards, division matches, and rankings
+- `robot.teams`: teams and their events, matches, rankings, skills, and awards
+- `robot.programs`: programs
+- `robot.seasons`: seasons and season events
 
 All filters, response models, pagination metadata, and API error bodies are
 exported as TypeScript types. Array filters use normal arrays; the client
@@ -51,7 +51,7 @@ The top-level event, team, program, and season collections expose lazy
 its `data` and `meta` fields:
 
 ```ts
-for await (const page of vex.events.listPages({
+for await (const page of robot.events.listPages({
   seasons: [196],
   perPage: 250,
 })) {
@@ -68,7 +68,7 @@ options contain an `AbortSignal`, that same signal is used for every page:
 ```ts
 const controller = new AbortController();
 
-for await (const page of vex.teams.listPages(
+for await (const page of robot.teams.listPages(
   { registered: true },
   { signal: controller.signal },
 )) {
@@ -83,7 +83,7 @@ nested paginated endpoints continue to return a single requested page.
 import { VexEventsApiError } from "@v5x/events";
 
 try {
-  const event = await vex.events.get(123);
+  const event = await robot.events.get(123);
   console.log(event.name);
 } catch (error) {
   if (error instanceof VexEventsApiError) {
@@ -100,7 +100,7 @@ the opt-in `retry` option to retry rate-limited requests automatically after
 the advertised delay; abort signals are honored while waiting.
 
 ```ts
-const vex = new Robot({
+const robot = new Robot({
   token: process.env.VEX_EVENTS_TOKEN!,
   retry: { maxAttempts: 3, maxDelayMs: 30_000 },
 });
