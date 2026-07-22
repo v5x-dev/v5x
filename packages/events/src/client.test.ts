@@ -586,10 +586,12 @@ describe("Robot", () => {
         address_2: null,
         region: null,
         postcode: null,
+        coordinates: { lat: null, lon: null },
       },
       locations: {
         "2025-09-12": { region: "New Jersey", postcode: "07103" },
       },
+      awards_finalized: null,
       event_type: null,
     } satisfies Event;
     const { client } = createMockClient({

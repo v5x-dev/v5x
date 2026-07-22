@@ -110,8 +110,8 @@ const isSkillType = isOneOf([
 function isCoordinates(value: unknown): value is Coordinates {
   return (
     isObject(value) &&
-    isOptionalNumber(value, "lat") &&
-    isOptionalNumber(value, "lon")
+    isOptional(value, "lat", isNullable(isNumber)) &&
+    isOptional(value, "lon", isNullable(isNumber))
   );
 }
 
@@ -166,7 +166,7 @@ export function isEvent(value: unknown): value is Event {
     isOptional(value, "divisions", isArrayOf(isDivision)) &&
     isOptional(value, "level", isEventLevel) &&
     isOptionalBoolean(value, "ongoing") &&
-    isOptionalBoolean(value, "awards_finalized") &&
+    isOptional(value, "awards_finalized", isNullable(isBoolean)) &&
     isOptional(value, "event_type", isNullable(isEventType))
   );
 }

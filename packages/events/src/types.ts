@@ -26,8 +26,8 @@ export type SkillType = "driver" | "programming" | "package_delivery_time";
 export type SkillTypeFilter = Exclude<SkillType, "package_delivery_time">;
 
 export interface Coordinates {
-  lat?: number;
-  lon?: number;
+  lat?: number | null;
+  lon?: number | null;
 }
 
 export interface Location {
@@ -68,7 +68,7 @@ export interface Event {
   divisions?: Division[];
   level?: EventLevel;
   ongoing?: boolean;
-  awards_finalized?: boolean;
+  awards_finalized?: boolean | null;
   event_type?: EventType | null;
 }
 
