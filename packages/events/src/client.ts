@@ -371,6 +371,22 @@ export class Robot {
     if (options.token.trim() === "") {
       throw new TypeError("token must not be empty");
     }
+    if (
+      options.retry?.maxAttempts !== undefined &&
+      (!Number.isInteger(options.retry.maxAttempts) ||
+        options.retry.maxAttempts <= 0)
+    ) {
+      throw new RangeError("retry.maxAttempts must be a positive integer");
+    }
+    if (
+      options.retry?.maxDelayMs !== undefined &&
+      (!Number.isFinite(options.retry.maxDelayMs) ||
+        options.retry.maxDelayMs < 0)
+    ) {
+      throw new RangeError(
+        "retry.maxDelayMs must be a finite non-negative number",
+      );
+    }
 
     this.token = options.token;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");

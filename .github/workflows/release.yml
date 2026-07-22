@@ -112,6 +112,9 @@ jobs:
       - name: Typecheck
         if: ${{ !cancelled() }}
         run: bun run typecheck
+      - name: Check documentation
+        if: ${{ !cancelled() }}
+        run: bun run docs:check
       - name: Test
         if: ${{ !cancelled() }}
         run: bun run test

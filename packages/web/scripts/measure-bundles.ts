@@ -1,7 +1,20 @@
 const entries = [
-  ["complete", new URL("../src/index.ts", import.meta.url).pathname],
-  ["packet-core", new URL("../src/packet-core.ts", import.meta.url).pathname],
+  ["root", new URL("../src/index.ts", import.meta.url).pathname],
+  ["testing", new URL("../src/testing.ts", import.meta.url).pathname],
+  ["react", new URL("../src/react/index.ts", import.meta.url).pathname],
+  ["svelte", new URL("../src/svelte/index.ts", import.meta.url).pathname],
+  ["solid", new URL("../src/solid/index.tsx", import.meta.url).pathname],
 ] as const;
+
+const external = [
+  "@v5x/serial",
+  "neverthrow",
+  "react",
+  "svelte",
+  "svelte/reactivity",
+  "solid-js",
+  "solid-js/web",
+];
 
 for (const [name, entrypoint] of entries) {
   const result = await Bun.build({
@@ -10,7 +23,8 @@ for (const [name, entrypoint] of entries) {
     format: "esm",
     minify: true,
     write: false,
-    external: ["neverthrow", "unzipit"],
+    external,
+    jsx: { runtime: "automatic", importSource: "solid-js" },
   });
   if (!result.success) {
     throw new AggregateError(result.logs, `Failed to build ${name}`);
@@ -30,7 +44,8 @@ const shared = await Bun.build({
   splitting: true,
   minify: true,
   write: false,
-  external: ["neverthrow", "unzipit"],
+  external,
+  jsx: { runtime: "automatic", importSource: "solid-js" },
   naming: {
     entry: "[dir]/[name].js",
     chunk: "chunks/[name]-[hash].js",

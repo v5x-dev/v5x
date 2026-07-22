@@ -90,3 +90,11 @@ test("the release and quality workflows include the events package", async () =>
   expect(quality).toContain("bun add ./v5x-events-*.tgz");
   expect(quality).toContain('import("@v5x/events")');
 });
+
+test("the release and quality workflows validate documentation", async () => {
+  const release = await Bun.file(".github/workflows/release.yml").text();
+  const quality = await Bun.file(".github/workflows/quality.yml").text();
+
+  expect(release).toContain("run: bun run docs:check");
+  expect(quality).toContain("run: bun run docs:check");
+});
