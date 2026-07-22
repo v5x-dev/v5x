@@ -104,6 +104,36 @@ describe("Robot", () => {
     expect(() => new Robot({ token: "  " })).toThrow("token must not be empty");
   });
 
+  test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid retry maxAttempts %p",
+    (maxAttempts) => {
+      expect(
+        () => new Robot({ token: "token", retry: { maxAttempts } }),
+      ).toThrow("retry.maxAttempts must be a positive integer");
+    },
+  );
+
+  test.each([
+    -1,
+    Number.NaN,
+    Number.NEGATIVE_INFINITY,
+    Number.POSITIVE_INFINITY,
+  ])("rejects invalid retry maxDelayMs %p", (maxDelayMs) => {
+    expect(() => new Robot({ token: "token", retry: { maxDelayMs } })).toThrow(
+      "retry.maxDelayMs must be a finite non-negative number",
+    );
+  });
+
+  test("accepts retry boundary values", () => {
+    expect(
+      () =>
+        new Robot({
+          token: "token",
+          retry: { maxAttempts: 1, maxDelayMs: 0 },
+        }),
+    ).not.toThrow();
+  });
+
   test("serializes event filters using the API's repeated array format", async () => {
     const { client, requests } = createMockClient();
 

@@ -1,5 +1,7 @@
 import { createV5ClientWithFactory as createClientWithFactory } from "./client.js";
 
+export { V5WebError } from "./errors.js";
+
 export function createV5ClientWithFactory(
   ...parameters: Parameters<typeof createClientWithFactory>
 ): ReturnType<typeof createClientWithFactory> {

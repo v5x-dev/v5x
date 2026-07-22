@@ -34,6 +34,9 @@ jobs:
       - name: Typecheck
         if: ${{ !cancelled() }}
         run: bun run typecheck
+      - name: Check documentation
+        if: ${{ !cancelled() }}
+        run: bun run docs:check
       - name: Test
         if: ${{ !cancelled() }}
         run: bun run test
@@ -63,10 +66,10 @@ jobs:
           node -e 'const module = require("@v5x/serial"); if (typeof module.V5SerialDevice !== "function") throw new Error("missing CommonJS export")'
           bun -e 'const module = await import("@v5x/events"); if (typeof module.Robot !== "function") throw new Error("missing @v5x/events Robot export");'
           bun -e 'const module = await import("@v5x/web"); if (typeof module.createV5Client !== "function") throw new Error("missing @v5x/web createV5Client export");'
-          bun -e 'const module = await import("@v5x/web/testing"); if (typeof module.createV5ClientWithFactory !== "function") throw new Error("missing @v5x/web/testing createV5ClientWithFactory export");'
-          bun -e 'const module = await import("@v5x/web/react"); if (typeof module.V5Provider !== "function" || typeof module.useV5Snapshot !== "function") throw new Error("missing @v5x/web/react exports");'
-          bun -e 'const module = await import("@v5x/web/svelte"); if (typeof module.createV5State !== "function") throw new Error("missing @v5x/web/svelte exports");'
-          bun -e 'const module = await import("@v5x/web/solid"); if (typeof module.V5Provider !== "function" || typeof module.createV5Snapshot !== "function") throw new Error("missing @v5x/web/solid exports");'
+          bun -e 'const root = await import("@v5x/web"); const module = await import("@v5x/web/testing"); if (typeof module.createV5ClientWithFactory !== "function") throw new Error("missing @v5x/web/testing createV5ClientWithFactory export"); if (!(new module.V5WebError("connect-error", "test") instanceof root.V5WebError)) throw new Error("testing entrypoint duplicated V5WebError");'
+          bun -e 'const root = await import("@v5x/web"); const module = await import("@v5x/web/react"); if (typeof module.V5Provider !== "function" || typeof module.useV5Snapshot !== "function") throw new Error("missing @v5x/web/react exports"); if (!(new module.V5WebError("connect-error", "test") instanceof root.V5WebError)) throw new Error("React entrypoint duplicated V5WebError");'
+          bun -e 'const root = await import("@v5x/web"); const module = await import("@v5x/web/svelte"); if (typeof module.createV5State !== "function") throw new Error("missing @v5x/web/svelte exports"); if (!(new module.V5WebError("connect-error", "test") instanceof root.V5WebError)) throw new Error("Svelte entrypoint duplicated V5WebError");'
+          bun -e 'const root = await import("@v5x/web"); const module = await import("@v5x/web/solid"); if (typeof module.V5Provider !== "function" || typeof module.createV5Snapshot !== "function") throw new Error("missing @v5x/web/solid exports"); if (!(new module.V5WebError("connect-error", "test") instanceof root.V5WebError)) throw new Error("Solid entrypoint duplicated V5WebError");'
           bun -e 'await Bun.write("consumer.ts", "import { Robot } from \"@v5x/events\";\nimport { VexFirmwareVersion } from \"@v5x/serial\";\nimport { createV5Client } from \"@v5x/web\";\nimport { createV5ClientWithFactory } from \"@v5x/web/testing\";\nimport { V5Provider as ReactV5Provider } from \"@v5x/web/react\";\nimport { createV5State } from \"@v5x/web/svelte\";\nimport { V5Provider as SolidV5Provider } from \"@v5x/web/solid\";\nvoid Robot;\nnew VexFirmwareVersion(1, 2, 3, 4);\nvoid createV5Client;\nvoid createV5ClientWithFactory;\nvoid ReactV5Provider;\nvoid createV5State;\nvoid SolidV5Provider;\n"); await Bun.write("tsconfig.json", JSON.stringify({ compilerOptions: { module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true } }));'
           "$GITHUB_WORKSPACE/node_modules/.bin/tsc" -p tsconfig.json
           bun build consumer.ts --target browser --outdir browser-smoke

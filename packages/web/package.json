@@ -30,17 +30,13 @@
     }
   },
   "scripts": {
-    "build": "bun run clean && bun run build:dts && bun run build:esm",
-    "build:esm": "bun run build:esm:core && bun run build:esm:testing && bun run build:esm:react && bun run build:esm:svelte && bun run build:esm:solid",
-    "build:esm:core": "bun build ./src/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external @v5x/serial --external neverthrow",
-    "build:esm:testing": "bun build ./src/testing.ts --target browser --format esm --sourcemap=linked --outdir ./dist --entry-naming=testing.js --external @v5x/serial --external neverthrow",
-    "build:esm:react": "bun build ./src/react/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist/react --entry-naming=index.js --external @v5x/serial --external neverthrow --external react",
-    "build:esm:svelte": "bun build ./src/svelte/index.ts --target browser --format esm --sourcemap=linked --outdir ./dist/svelte --entry-naming=index.js --external @v5x/serial --external neverthrow --external svelte --external svelte/reactivity",
-    "build:esm:solid": "bun build ./src/solid/index.tsx --target browser --format esm --sourcemap=linked --outdir ./dist/solid --entry-naming=index.js --external @v5x/serial --external neverthrow --external solid-js --external solid-js/web --jsx-import-source solid-js --jsx-runtime automatic",
+    "build": "bun run clean && bun run build:dts && bun run build:esm && bun scripts/verify-built-entrypoints.ts",
+    "build:esm": "bun build ./src/index.ts ./src/testing.ts ./src/react/index.ts ./src/svelte/index.ts ./src/solid/index.tsx --root ./src --target browser --format esm --splitting --sourcemap=linked --outdir ./dist --entry-naming='[dir]/[name].js' --chunk-naming='chunks/[name]-[hash].js' --external @v5x/serial --external neverthrow --external react --external svelte --external svelte/reactivity --external solid-js --external solid-js/web --jsx-import-source solid-js --jsx-runtime automatic",
     "build:dts": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
     "test": "bun test",
+    "measure:bundles": "bun ./scripts/measure-bundles.ts",
     "prepack": "bun run --cwd ../serial build && bun run build && bun ../../scripts/add-dom-serial-references.ts dist",
     "clean": "rm -rf dist"
   },

@@ -107,20 +107,27 @@ export class SerialTransport {
     if (this.port !== undefined)
       return err(new VexIoError("Already connected."));
 
-    const filters = this.getFilters();
-    const serial = this.getSerial();
-    const ports = (await serial.getPorts())
-      .filter((port) => {
-        const info = port.getInfo();
-        return filters.some(
-          (filter) =>
-            (filter.usbVendorId === undefined ||
-              filter.usbVendorId === info.usbVendorId) &&
-            (filter.usbProductId === undefined ||
-              filter.usbProductId === info.usbProductId),
-        );
-      })
-      .filter((candidate) => candidate.readable === null);
+    let filters: SerialPortFilter[];
+    let serial: Serial;
+    let ports: SerialPort[];
+    try {
+      filters = this.getFilters();
+      serial = this.getSerial();
+      ports = (await serial.getPorts())
+        .filter((port) => {
+          const info = port.getInfo();
+          return filters.some(
+            (filter) =>
+              (filter.usbVendorId === undefined ||
+                filter.usbVendorId === info.usbVendorId) &&
+              (filter.usbProductId === undefined ||
+                filter.usbProductId === info.usbProductId),
+          );
+        })
+        .filter((candidate) => candidate.readable === null);
+    } catch (error) {
+      return err(toVexSerialError(error, "io"));
+    }
 
     let port: SerialPort | undefined = ports[use];
     if (port == null && askUser) {

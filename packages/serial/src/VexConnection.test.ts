@@ -34,6 +34,7 @@ import { ProgramIniConfig } from "./VexIniConfig";
 import { deferred, protocolReply } from "./protocol.test-support";
 import { runPacketReader } from "./PacketReader";
 import { ReaderClosedError } from "./ReaderClosedError";
+import { VexSerialError } from "./VexError";
 
 function connectionWithWriter() {
   const connection = new V5SerialConnection({} as Serial);
@@ -872,6 +873,61 @@ test("open reports real port failures as errors, not as busy", async () => {
   const result = await connection.open(0, false);
   expect(result.isErr()).toBe(true);
   expect(result._unsafeUnwrapErr().message).toContain("EACCES");
+});
+
+test("open returns getPorts failures through the error channel", async () => {
+  const cause = new Error("port discovery failed");
+  const connection = new V5SerialConnection({
+    getPorts: async () => {
+      throw cause;
+    },
+  } as unknown as Serial);
+
+  const result = await connection.open(0, false);
+
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexSerialError);
+  expect(result._unsafeUnwrapErr()).toMatchObject({ kind: "io", cause });
+});
+
+test("open returns getInfo failures through the error channel", async () => {
+  const cause = new Error("port metadata failed");
+  const port = {
+    getInfo: () => {
+      throw cause;
+    },
+  } as unknown as SerialPort;
+  const connection = new V5SerialConnection({
+    getPorts: async () => [port],
+  } as unknown as Serial);
+
+  const result = await connection.open(0, false);
+
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexSerialError);
+  expect(result._unsafeUnwrapErr()).toMatchObject({ kind: "io", cause });
+});
+
+test("open returns port filtering failures through the error channel", async () => {
+  const cause = new Error("filter inspection failed");
+  const filter = Object.defineProperty({}, "usbVendorId", {
+    get() {
+      throw cause;
+    },
+  }) as SerialPortFilter;
+  const port = {
+    getInfo: () => ({ usbVendorId: 10376 }),
+  } as unknown as SerialPort;
+  const connection = new V5SerialConnection({
+    getPorts: async () => [port],
+  } as unknown as Serial);
+  connection.filters = [filter];
+
+  const result = await connection.open(0, false);
+
+  expect(result.isErr()).toBe(true);
+  expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexSerialError);
+  expect(result._unsafeUnwrapErr()).toMatchObject({ kind: "io", cause });
 });
 
 test("open resolves no-port when nothing matches and the user is not asked", async () => {
