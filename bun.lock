@@ -80,7 +80,7 @@
     },
     "packages/events": {
       "name": "@v5x/events",
-      "version": "0.1.7",
+      "version": "0.2.0",
       "devDependencies": {
         "@types/bun": "latest",
       },

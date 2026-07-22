@@ -10,19 +10,20 @@ Unreleased section to a dated package-version heading.
 
 ### @v5x/events
 
-- Replace page-oriented collection methods with `events.search()`,
-  `teams.search()`, `programs.all()`, and `seasons.all()`, which retrieve every
-  API page and return validated arrays.
-- Add exact event and team lookup helpers, stable program and round constants,
-  and plain-object URL and match utilities.
-- Remove `list()`, `listPages()`, `matchesPages()`, `page`, and `perPage` ahead
-  of the breaking `0.2.0` release.
-
 ### @v5x/serial
 
 ### @v5x/web
 
 ## Releases
+
+### @v5x/events 0.2.0 - 2026-07-21
+
+- Replace page-oriented collection methods with `events.search()`,
+  `teams.search()`, `programs.all()`, and `seasons.all()`, which retrieve every
+  API page and return validated arrays.
+- Add exact event and team lookup helpers, stable program and round constants,
+  and plain-object URL and match utilities.
+- Remove `list()`, `listPages()`, `matchesPages()`, `page`, and `perPage`.
 
 ### @v5x/events 0.1.7 - 2026-07-21
 
