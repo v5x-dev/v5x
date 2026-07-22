@@ -74,9 +74,17 @@ section and into a dated heading using this exact format:
 ```
 
 The release workflow fails if `CHANGELOG.md` does not contain a heading for the
-tagged package and version dated with the UTC date of the workflow run.
+tagged package and version with a valid calendar date in `YYYY-MM-DD` format.
+The date does not have to match the day the workflow runs.
 
 The workflow requests `id-token: write` for npm provenance and trusted
-publishing. If trusted publishing is not configured for the package on npm, add
-an `NPM_TOKEN` repository secret with publish access; the workflow will use it
-when present.
+publishing. It tries trusted publishing first. If that attempt fails and an
+`NPM_TOKEN` repository secret with publish access is configured, the publish
+step retries with that token as `NODE_AUTH_TOKEN`. The token is available only
+to that step.
+
+To retry a release after npm has accepted the package, manually run the Release
+workflow and provide the existing package tag (for example,
+`@v5x/cli@0.0.25`). The workflow checks out and validates that tag, skips npm
+when the exact version is already published, and resumes the CLI GitHub release
+when applicable.
