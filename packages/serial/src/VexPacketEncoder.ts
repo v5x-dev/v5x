@@ -9,6 +9,9 @@ export function encodeFixedText(
   field: string,
   maxBytes: number,
 ): Uint8Array {
+  if (value.includes("\0")) {
+    throw new TypeError(`${field} must not contain NUL characters`);
+  }
   const encoded = textEncoder.encode(value);
   if (encoded.byteLength > maxBytes) {
     throw new RangeError(`${field} must be at most ${maxBytes} UTF-8 bytes`);

@@ -74,6 +74,44 @@ axis         = "1"`);
 button       = "A"`);
 });
 
+test("serializes safe dynamic keys without changing their spelling", () => {
+  const config = new ProgramIniConfig();
+  config.program.date = "2026-07-08T12:34:56.000Z";
+  config.controller1 = { "axis-1.dead": "5" };
+
+  expect(config.createIni()).toContain('axis-1.dead  = "5"');
+});
+
+test.each(["unsafe\nkey", 'unsafe"key', "unsafe[key]", "unsafe=key"])(
+  "rejects unsafe dynamic key %p",
+  (key) => {
+    const config = new ProgramIniConfig();
+    config.controller1 = { [key]: "value" };
+
+    expect(() => config.createIni()).toThrow(
+      `INI key for controller_1.${key} contains an unsupported character`,
+    );
+  },
+);
+
+test("rejects dynamic keys instead of truncating them", () => {
+  const config = new ProgramIniConfig();
+  config.controller1 = { key_that_is_too_long: "value" };
+
+  expect(() => config.createIni()).toThrow(
+    "INI key for controller_1.key_that_is_too_long must be at most 12 characters",
+  );
+});
+
+test("rejects transformed key collisions", () => {
+  const config = new ProgramIniConfig();
+  config.config = { 1: "motor", 101: "sensor" };
+
+  expect(() => config.createIni()).toThrow(
+    "INI key for config.101 collides with port_01",
+  );
+});
+
 test("preserves backslashes without nonstandard escaping", () => {
   const config = new ProgramIniConfig();
   config.program.description = String.raw`C:\robot`;

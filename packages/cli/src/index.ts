@@ -9,6 +9,7 @@ import devices from "./commands/devices";
 import dir from "./commands/dir";
 import doctor from "./commands/doctor";
 import init from "./commands/init";
+import hardwareSmoke from "./commands/hardware-smoke";
 import install from "./commands/install";
 import kv from "./commands/kv";
 import newProject from "./commands/new";
@@ -38,6 +39,7 @@ const commands = [
   programs,
   newProject,
   init,
+  hardwareSmoke,
   dir,
   doctor,
   cat,

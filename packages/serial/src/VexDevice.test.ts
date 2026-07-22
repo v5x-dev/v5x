@@ -10,7 +10,12 @@ import {
   sleepUntilAsync,
 } from "./VexDevice";
 import { V5SerialConnection } from "./VexConnection";
-import { VexIoError, VexNotConnectedError, VexProtocolError } from "./VexError";
+import {
+  VexInvalidArgumentError,
+  VexIoError,
+  VexNotConnectedError,
+  VexProtocolError,
+} from "./VexError";
 import { type ProgramIniConfig } from "./VexIniConfig";
 import {
   GetDeviceStatusReplyD2HPacket as GetDeviceStatusReplyD2HPacketClass,
@@ -493,6 +498,59 @@ test("connect opens and retains a supplied connection", async () => {
   expect(opened).toBe(true);
   expect(device.connection).toBe(connection);
 });
+
+test("connect preserves and cleans up supplied connection open errors", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const openError = new VexIoError("permission denied");
+  let closes = 0;
+  const connection = {
+    isConnected: false,
+    open: () => errAsync(openError),
+    close: async () => {
+      closes++;
+      throw new Error("close failed");
+    },
+  } as unknown as V5SerialConnection;
+
+  const result = await device.connect(connection);
+
+  expect(result._unsafeUnwrapErr()).toBe(openError);
+  expect(device.connection).toBeUndefined();
+  expect(closes).toBe(1);
+});
+
+test.each([
+  ["busy", "the supplied V5 serial port is busy"],
+  ["no-port", "the supplied connection did not select a V5 serial port"],
+] as const)(
+  "connect maps and cleans up a supplied connection %s result",
+  async (openResult, message) => {
+    const device = new V5SerialDevice(serial);
+    devices.push(device);
+    let closes = 0;
+    let queries = 0;
+    const connection = {
+      isConnected: false,
+      open: () => okAsync(openResult),
+      query1: () => {
+        queries++;
+        return okAsync({} as never);
+      },
+      close: async () => {
+        closes++;
+      },
+    } as unknown as V5SerialConnection;
+
+    const result = await device.connect(connection);
+
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexNotConnectedError);
+    expect(result._unsafeUnwrapErr().message).toBe(message);
+    expect(device.connection).toBeUndefined();
+    expect(queries).toBe(0);
+    expect(closes).toBe(1);
+  },
+);
 
 test("connect requires its initial refresh to produce a current snapshot", async () => {
   const device = new V5SerialDevice(serial);
@@ -999,6 +1057,28 @@ test("reconnect respects short deadlines without aggressive discovery polling", 
   expect(elapsed).toBeLessThan(300);
   expect(discoveryCalls).toBeLessThanOrEqual(2);
 });
+
+test.each([-1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+  "reconnect rejects invalid timeout %p before lifecycle changes",
+  async (timeout) => {
+    let discoveryCalls = 0;
+    const invalidSerial = Object.assign(new EventTarget(), {
+      getPorts: async () => {
+        discoveryCalls++;
+        return [];
+      },
+    }) as unknown as Serial;
+    const device = new V5SerialDevice(invalidSerial);
+    devices.push(device);
+
+    const result = await device.reconnect(timeout);
+
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexInvalidArgumentError);
+    expect(result._unsafeUnwrapErr().message).toContain("finite, non-negative");
+    expect(device.connection).toBeUndefined();
+    expect(discoveryCalls).toBe(0);
+  },
+);
 
 test("infinite reconnect wakes immediately for serial connect events", async () => {
   const reconnectSerial = Object.assign(new EventTarget(), {

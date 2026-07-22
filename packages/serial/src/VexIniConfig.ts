@@ -25,6 +25,8 @@ class BaseIniBuilder {
 class IniSectionBuilder<
   O extends Record<number | string, string | number>,
 > extends BaseIniBuilder {
+  private readonly formattedKeys = new Set<string>();
+
   constructor(
     public readonly name: string,
     private readonly object: O,
@@ -53,7 +55,25 @@ class IniSectionBuilder<
       );
     }
 
-    const formattedKey = this.keyTransform(key).padEnd(12).slice(0, 12);
+    const transformedKey = this.keyTransform(key);
+    if (!/^[A-Za-z0-9_.-]+$/.test(transformedKey)) {
+      throw new Error(
+        `INI key for ${this.name}.${String(key)} contains an unsupported character`,
+      );
+    }
+    if (transformedKey.length > 12) {
+      throw new Error(
+        `INI key for ${this.name}.${String(key)} must be at most 12 characters`,
+      );
+    }
+    if (this.formattedKeys.has(transformedKey)) {
+      throw new Error(
+        `INI key for ${this.name}.${String(key)} collides with ${transformedKey}`,
+      );
+    }
+    this.formattedKeys.add(transformedKey);
+
+    const formattedKey = transformedKey.padEnd(12);
     const trimmedValue = value.slice(0, maxValueLength);
     this.addLine(`${formattedKey} = "${trimmedValue}"`);
   }
