@@ -10,7 +10,7 @@ bun add @v5x/events
 
 ## Usage
 
-Create a personal access token in your VEX Events account, then pass it to the
+Create a personal access token in your VEX Events account, then initialize the
 client. The package works in browsers, Bun, and modern Node.js runtimes with
 `fetch`.
 
@@ -21,103 +21,102 @@ const robot = new Robot({
   token: process.env.VEX_EVENTS_TOKEN!,
 });
 
-const teams = await robot.teams.list({
-  numbers: ["123A"],
-  registered: true,
-  perPage: 100,
+const events = await robot.events.search({
+  seasons: [seasonId],
+  eventTypes: ["tournament"],
 });
 
-for (const team of teams.data ?? []) {
-  console.log(team.number, team.team_name);
+for (const event of events) {
+  console.log(event.name);
 }
 ```
 
-Resources mirror the API:
+Resources mirror the complete API:
 
-- `robot.events`: events, event teams, skills, awards, division matches, and rankings
-- `robot.teams`: teams and their events, matches, rankings, skills, and awards
-- `robot.programs`: programs
-- `robot.seasons`: seasons and season events
+- `robot.events`: search events and get event teams, skills, awards, matches,
+  and rankings
+- `robot.teams`: search teams and get their events, matches, rankings, skills,
+  and awards
+- `robot.programs`: program constants plus `all()` and `get()`
+- `robot.seasons`: `all()`, `get()`, and season events
 
-All filters, response models, pagination metadata, and API error bodies are
-exported as TypeScript types. Array filters use normal arrays; the client
-encodes them using the API's repeated `field[]` query parameters. `Date` values
-are converted to RFC 3339 strings automatically.
-
-Event listings include every upstream event by default, including names that
-contain `cancelled` or `canceled`. Pass `includeCancelled: false` to
-`robot.events.list()`, `robot.events.listPages()`, `robot.teams.events()`, or
-`robot.seasons.events()` to apply the legacy name-based filter. That filter is
-applied to each page's `data`; pagination metadata continues to describe the
-unfiltered upstream response.
-
-## Pagination
-
-The top-level event, team, program, and season collections expose lazy
-`listPages()` async iterators. Each iteration yields a complete page, including
-its `data` and `meta` fields:
+Every collection method automatically retrieves all matching API pages and
+returns a plain array. The client starts at page 1, requests 250 items per
+page, and follows the API's pagination metadata until the collection is
+complete.
 
 ```ts
-for await (const page of robot.events.listPages({
-  seasons: [196],
-  perPage: 250,
-})) {
-  for (const event of page.data ?? []) {
-    console.log(event.name);
-  }
-}
+const team = await robot.teams.getByNumber("123A", robot.programs.V5RC);
+
+const matches = await robot.events.matches(eventId, divisionId, {
+  rounds: [robot.rounds.qualification],
+});
 ```
 
-Pages are requested sequentially. The `page` option selects the starting page,
-and breaking out of the loop prevents any later page requests. When request
-options contain an `AbortSignal`, that same signal is used for every page:
+Broad searches can make many requests and retain the complete result in
+memory. Pass an `AbortSignal` as the separate request argument when an
+operation needs to be cancellable:
 
 ```ts
 const controller = new AbortController();
 
-for await (const page of robot.teams.listPages(
+const teams = await robot.teams.search(
   { registered: true },
   { signal: controller.signal },
-)) {
-  // Each value is a complete PaginatedResponse<Team>.
-}
+);
 ```
 
-Event division matches also provide a lazy page iterator through
-`robot.events.matchesPages()`:
+Options use camelCase names and normal arrays. The client translates these to
+the API's `snake_case` and repeated `field[]` parameters. Date filters accept
+an RFC 3339 string or a `Date`; `Date` values are serialized with
+`toISOString()`.
+
+`eventTypes` is sent to the API as `eventTypes[]`; returned events are not
+filtered again by the client. Event listings include cancelled events by
+default. Pass `includeCancelled: false` to apply the legacy name-based filter
+after all pages have been collected.
+
+## Constants and helpers
+
+Stable program and round identifiers are available from both the package and
+the client. Seasons are intentionally queried dynamically rather than shipped
+as a dated constant table.
 
 ```ts
-for await (const page of robot.events.matchesPages(eventId, divisionId, {
-  rounds: [2],
-  perPage: 250,
-})) {
-  for (const match of page.data) {
-    console.log(match.name);
-  }
+import {
+  getEventUrl,
+  getMatchShortName,
+  getTeamOutcome,
+  programs,
+  rounds,
+} from "@v5x/events";
+
+const program = await robot.programs.get(programs.V5RC);
+const qualificationMatches = await robot.events.matches(eventId, divisionId, {
+  rounds: [rounds.qualification],
+});
+
+for (const match of qualificationMatches) {
+  console.log(getMatchShortName(match), getTeamOutcome(match, "123A"));
 }
+
+console.log(getEventUrl(events[0]!));
 ```
 
-Other nested paginated endpoints continue to return a single requested page.
+The package also exports `getTeamUrl`, `getAlliance`, `getMatchOutcome`, and
+`getMatchTeams`. All helpers operate on the same plain response objects
+returned by the client.
 
-```ts
-import { VexEventsApiError } from "@v5x/events";
+## Errors and rate limiting
 
-try {
-  const event = await robot.events.get(123);
-  console.log(event.name);
-} catch (error) {
-  if (error instanceof VexEventsApiError) {
-    console.error(error.status, error.body);
-  }
-}
-```
-
-## Rate limiting
+HTTP errors throw `VexEventsApiError`, including `status`, `statusText`,
+`body`, and the requested `url`. Invalid or unreadable successful responses
+throw `VexEventsResponseError`. If a later page fails, the collection method
+rejects without returning partial results.
 
 Rate-limited (429) and unavailable (503) responses expose the API's
-`Retry-After` hint as `retryAfterMs` on the thrown `VexEventsApiError`. Pass
-the opt-in `retry` option to retry rate-limited requests automatically after
-the advertised delay; abort signals are honored while waiting.
+`Retry-After` hint as `retryAfterMs`. Pass the opt-in `retry` option to retry
+429 responses automatically while honoring abort signals:
 
 ```ts
 const robot = new Robot({
@@ -126,8 +125,41 @@ const robot = new Robot({
 });
 ```
 
+## Migrating from 0.1
+
+The 0.2 API replaces page-oriented collection methods with complete arrays:
+
+| 0.1                              | 0.2                           |
+| -------------------------------- | ----------------------------- |
+| `robot.events.list()`            | `robot.events.search()`       |
+| `robot.teams.list()`             | `robot.teams.search()`        |
+| `robot.programs.list()`          | `robot.programs.all()`        |
+| `robot.seasons.list()`           | `robot.seasons.all()`         |
+| `PaginatedResponse<T>`           | `T[]`                         |
+| `listPages()` / `matchesPages()` | Automatic internal pagination |
+
+```ts
+// 0.1
+const page = await robot.events.list(options);
+for (const event of page.data) console.log(event.name);
+
+// 0.2
+const events = await robot.events.search(options);
+for (const event of events) console.log(event.name);
+```
+
+The `page` and `perPage` options have been removed because collection methods
+always fetch the complete result set.
+
 ## Build
 
 ```sh
 bun run build
 ```
+
+## Acknowledgements
+
+The resource naming, automatic pagination, lookup helpers, domain constants,
+URL helpers, and match utilities were inspired by
+[`events.vex`](https://better-hub.com/Jerrylum/events.vex) by Brendan McGuire
+and Jerry Lum.

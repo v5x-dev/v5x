@@ -201,13 +201,6 @@ export interface PaginatedResponse<T> {
   data: T[];
 }
 
-export interface PaginationOptions {
-  /** One-indexed page number. */
-  page?: number;
-  /** Number of results per page. The API maximum is 250. */
-  perPage?: number;
-}
-
 export interface CancelledEventOptions {
   /**
    * Whether to include events whose names contain "cancelled" or "canceled".
@@ -217,8 +210,7 @@ export interface CancelledEventOptions {
   includeCancelled?: boolean;
 }
 
-export interface ListEventsOptions
-  extends PaginationOptions, CancelledEventOptions {
+export interface ListEventsOptions extends CancelledEventOptions {
   ids?: readonly number[];
   skus?: readonly string[];
   teams?: readonly number[];
@@ -231,7 +223,7 @@ export interface ListEventsOptions
   eventTypes?: readonly EventType[];
 }
 
-export interface ListEventTeamsOptions extends PaginationOptions {
+export interface ListEventTeamsOptions {
   numbers?: readonly string[];
   registered?: boolean;
   grades?: readonly Grade[];
@@ -239,29 +231,29 @@ export interface ListEventTeamsOptions extends PaginationOptions {
   myTeams?: boolean;
 }
 
-export interface ListEventSkillsOptions extends PaginationOptions {
+export interface ListEventSkillsOptions {
   teams?: readonly number[];
   types?: readonly SkillTypeFilter[];
 }
 
-export interface ListEventAwardsOptions extends PaginationOptions {
+export interface ListEventAwardsOptions {
   teams?: readonly number[];
   winners?: readonly string[];
 }
 
-export interface ListDivisionMatchesOptions extends PaginationOptions {
+export interface ListDivisionMatchesOptions {
   teams?: readonly number[];
   rounds?: readonly number[];
   instances?: readonly number[];
   matchNumbers?: readonly number[];
 }
 
-export interface ListDivisionRankingsOptions extends PaginationOptions {
+export interface ListDivisionRankingsOptions {
   teams?: readonly number[];
   ranks?: readonly number[];
 }
 
-export interface ListTeamsOptions extends PaginationOptions {
+export interface ListTeamsOptions {
   ids?: readonly number[];
   numbers?: readonly string[];
   events?: readonly number[];
@@ -272,8 +264,7 @@ export interface ListTeamsOptions extends PaginationOptions {
   myTeams?: boolean;
 }
 
-export interface ListTeamEventsOptions
-  extends PaginationOptions, CancelledEventOptions {
+export interface ListTeamEventsOptions extends CancelledEventOptions {
   skus?: readonly string[];
   seasons?: readonly number[];
   start?: DateInput;
@@ -281,7 +272,7 @@ export interface ListTeamEventsOptions
   levels?: readonly EventLevelFilter[];
 }
 
-export interface ListTeamMatchesOptions extends PaginationOptions {
+export interface ListTeamMatchesOptions {
   events?: readonly number[];
   seasons?: readonly number[];
   rounds?: readonly number[];
@@ -289,28 +280,28 @@ export interface ListTeamMatchesOptions extends PaginationOptions {
   matchNumbers?: readonly number[];
 }
 
-export interface ListTeamRankingsOptions extends PaginationOptions {
+export interface ListTeamRankingsOptions {
   events?: readonly number[];
   ranks?: readonly number[];
   seasons?: readonly number[];
 }
 
-export interface ListTeamSkillsOptions extends PaginationOptions {
+export interface ListTeamSkillsOptions {
   events?: readonly number[];
   types?: readonly SkillTypeFilter[];
   seasons?: readonly number[];
 }
 
-export interface ListTeamAwardsOptions extends PaginationOptions {
+export interface ListTeamAwardsOptions {
   events?: readonly number[];
   seasons?: readonly number[];
 }
 
-export interface ListProgramsOptions extends PaginationOptions {
+export interface ListProgramsOptions {
   ids?: readonly number[];
 }
 
-export interface ListSeasonsOptions extends PaginationOptions {
+export interface ListSeasonsOptions {
   ids?: readonly number[];
   programs?: readonly number[];
   teams?: readonly number[];
@@ -319,8 +310,7 @@ export interface ListSeasonsOptions extends PaginationOptions {
   active?: boolean;
 }
 
-export interface ListSeasonEventsOptions
-  extends PaginationOptions, CancelledEventOptions {
+export interface ListSeasonEventsOptions extends CancelledEventOptions {
   skus?: readonly string[];
   teams?: readonly number[];
   start?: DateInput;

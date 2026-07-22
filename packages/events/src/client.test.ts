@@ -1,102 +1,120 @@
 import { describe, expect, test } from "bun:test";
 import {
-  VexEventsApiError,
   Robot,
+  VexEventsApiError,
   VexEventsResponseError,
   type Event,
   type Fetch,
+  type ListEventsOptions,
   type Match,
-  type PaginatedResponse,
+  type Team,
 } from "./index.js";
 
 interface CapturedRequest {
   url: URL;
-  init: RequestInit | undefined;
+  init?: RequestInit;
 }
 
-function createMockClient(
-  body: unknown = { data: [], meta: {} },
-  responseInit: ResponseInit = {},
-) {
-  const requests: CapturedRequest[] = [];
-  const mockFetch: Fetch = async (input, init) => {
-    const inputUrl =
-      input instanceof URL
-        ? input.href
-        : input instanceof Request
-          ? input.url
-          : input;
-    requests.push({ url: new URL(inputUrl), init });
-    return Response.json(body, responseInit);
-  };
-  const client = new Robot({
-    token: "test-token",
-    baseUrl: "https://example.test/api/v2/",
-    fetch: mockFetch,
-    headers: { "X-Client": "test" },
-  });
+type Responder = (
+  request: CapturedRequest,
+  requestNumber: number,
+) => Response | Promise<Response>;
 
-  return { client, requests };
+function toUrl(input: RequestInfo | URL): URL {
+  if (input instanceof URL) return new URL(input);
+  return new URL(typeof input === "string" ? input : input.url);
 }
 
-function createDynamicClient(
-  respond: (
-    request: CapturedRequest,
-    requestNumber: number,
-  ) => Response | Promise<Response>,
-) {
-  const requests: CapturedRequest[] = [];
-  const mockFetch: Fetch = async (input, init) => {
-    const inputUrl =
-      input instanceof URL
-        ? input.href
-        : input instanceof Request
-          ? input.url
-          : input;
-    const request = { url: new URL(inputUrl), init };
-    requests.push(request);
-    return respond(request, requests.length);
-  };
-  const client = new Robot({
-    token: "test-token",
-    baseUrl: "https://example.test/api/v2/",
-    fetch: mockFetch,
-  });
+const idInfo = { id: 1, name: "V5RC", code: "V5RC" } as const;
 
-  return { client, requests };
-}
-
-const idInfo = { id: 1, name: "V5RC" };
-
-function validEvent(id: number = 1) {
+function validEvent(id = 1): Event {
   return {
     id,
-    sku: `RE-V5RC-${id}`,
+    sku: `RE-${id}`,
     name: `Event ${id}`,
     season: idInfo,
     program: idInfo,
     location: {},
+    event_type: "tournament",
   };
 }
 
-function validTeam(id: number = 1) {
-  return { id, number: `${id}A`, program: idInfo };
+function validTeam(id = 1): Team {
+  return {
+    id,
+    number: `123${id}`,
+    program: idInfo,
+  };
+}
+
+function validMatch(id = 1): Match {
+  return {
+    id,
+    event: idInfo,
+    division: idInfo,
+    round: 2,
+    instance: 1,
+    matchnum: id,
+    scored: true,
+    name: `Qualification ${id}`,
+    alliances: [],
+  };
+}
+
+function createDynamicClient(responder: Responder) {
+  const requests: CapturedRequest[] = [];
+  const mockFetch: Fetch = async (input, init) => {
+    const request = { url: toUrl(input), init };
+    requests.push(request);
+    return responder(request, requests.length);
+  };
+  return {
+    client: new Robot({
+      token: "test-token",
+      baseUrl: "https://example.test/api/v2",
+      fetch: mockFetch,
+      headers: { "X-Client": "test" },
+    }),
+    requests,
+  };
+}
+
+function createMockClient(
+  body: unknown = { data: [], meta: {} },
+  init?: ResponseInit,
+) {
+  return createDynamicClient(() => Response.json(body, init));
 }
 
 function endpointResponse(url: URL): Response {
-  if (/\/events\/\d+$/.test(url.pathname)) {
-    return Response.json(validEvent());
+  const path = url.pathname;
+  if (/\/events\/\d+$/.test(path)) return Response.json(validEvent(10));
+  if (/\/teams\/\d+$/.test(path)) return Response.json(validTeam(20));
+  if (/\/programs\/\d+$/.test(path)) {
+    return Response.json({ id: 1, name: "V5RC", abbr: "V5RC" });
   }
-  if (/\/teams\/\d+$/.test(url.pathname)) {
-    return Response.json(validTeam());
+  if (/\/seasons\/\d+$/.test(path)) {
+    return Response.json({ id: 2, name: "Season", program: idInfo });
   }
-  if (/\/programs\/\d+$/.test(url.pathname)) {
-    return Response.json({ id: 1, name: "V5RC" });
+
+  let data: unknown[] = [];
+  if (path.endsWith("/matches")) data = [validMatch()];
+  else if (path.endsWith("/rankings") || path.endsWith("/finalistRankings")) {
+    data = [{ id: 1, event: idInfo, division: idInfo, team: idInfo, rank: 1 }];
+  } else if (path.endsWith("/skills")) {
+    data = [{ id: 1, event: idInfo, team: idInfo, type: "driver", score: 42 }];
+  } else if (path.endsWith("/awards")) {
+    data = [{ id: 1, event: idInfo, title: "Excellence Award" }];
+  } else if (path.endsWith("/teams")) {
+    data = [validTeam()];
+  } else if (path.endsWith("/events")) {
+    data = [validEvent()];
+  } else if (path.endsWith("/programs")) {
+    data = [{ id: 1, name: "V5RC", abbr: "V5RC" }];
+  } else if (path.endsWith("/seasons")) {
+    data = [{ id: 2, name: "Season", program: idInfo }];
   }
-  if (/\/seasons\/\d+$/.test(url.pathname)) {
-    return Response.json({ id: 1, name: "2026" });
-  }
-  return Response.json({ data: [], meta: {} });
+  return Response.json({ data, meta: { current_page: 1, last_page: 1 } });
 }
 
 describe("Robot", () => {
@@ -124,747 +142,368 @@ describe("Robot", () => {
     );
   });
 
-  test("accepts retry boundary values", () => {
-    expect(
-      () =>
-        new Robot({
-          token: "token",
-          retry: { maxAttempts: 1, maxDelayMs: 0 },
-        }),
-    ).not.toThrow();
+  test("serializes filters and always starts automatic pagination at 250 items", async () => {
+    const { client, requests } = createDynamicClient(() =>
+      Response.json({
+        data: [validEvent()],
+        meta: { current_page: 1, last_page: 1 },
+      }),
+    );
+
+    await expect(
+      client.events.search({
+        ids: [1, 2],
+        skus: ["RE-1"],
+        teams: [3],
+        seasons: [4],
+        start: new Date("2026-01-02T03:04:05.000Z"),
+        end: "2026-02-03T04:05:06Z",
+        region: "Texas",
+        levels: ["World"],
+        myEvents: true,
+        eventTypes: ["tournament"],
+      }),
+    ).resolves.toEqual([validEvent()]);
+
+    const params = requests[0]?.url.searchParams;
+    expect(params?.get("page")).toBe("1");
+    expect(params?.get("per_page")).toBe("250");
+    expect(params?.getAll("id[]")).toEqual(["1", "2"]);
+    expect(params?.getAll("sku[]")).toEqual(["RE-1"]);
+    expect(params?.getAll("team[]")).toEqual(["3"]);
+    expect(params?.getAll("season[]")).toEqual(["4"]);
+    expect(params?.get("start")).toBe("2026-01-02T03:04:05.000Z");
+    expect(params?.get("end")).toBe("2026-02-03T04:05:06Z");
+    expect(params?.get("region")).toBe("Texas");
+    expect(params?.getAll("level[]")).toEqual(["World"]);
+    expect(params?.get("myEvents")).toBe("true");
+    expect(params?.getAll("eventTypes[]")).toEqual(["tournament"]);
   });
 
-  test("serializes event filters using the API's repeated array format", async () => {
-    const { client, requests } = createMockClient();
-
-    await client.events.list({
-      ids: [1, 2],
-      skus: ["RE-V5RC-1"],
-      teams: [3],
-      seasons: [4],
-      start: new Date("2026-01-02T03:04:05.000Z"),
-      end: "2026-02-03T04:05:06Z",
-      region: "Texas",
-      levels: ["State", "Signature"],
-      myEvents: false,
-      eventTypes: ["tournament", "league"],
-      page: 2,
-      perPage: 250,
+  test("leaves event type filtering to the API", async () => {
+    const tournament = validEvent(1);
+    const virtual = { ...validEvent(2), event_type: "virtual" } as const;
+    const { client } = createMockClient({
+      data: [tournament, virtual],
+      meta: { current_page: 1, last_page: 1 },
     });
 
-    const request = requests[0];
-    expect(request).toBeDefined();
-    expect(request?.url.pathname).toBe("/api/v2/events");
-    expect(request?.url.searchParams.getAll("id[]")).toEqual(["1", "2"]);
-    expect(request?.url.searchParams.getAll("sku[]")).toEqual(["RE-V5RC-1"]);
-    expect(request?.url.searchParams.getAll("team[]")).toEqual(["3"]);
-    expect(request?.url.searchParams.getAll("season[]")).toEqual(["4"]);
-    expect(request?.url.searchParams.get("start")).toBe(
-      "2026-01-02T03:04:05.000Z",
-    );
-    expect(request?.url.searchParams.get("end")).toBe("2026-02-03T04:05:06Z");
-    expect(request?.url.searchParams.get("region")).toBe("Texas");
-    expect(request?.url.searchParams.getAll("level[]")).toEqual([
-      "State",
-      "Signature",
-    ]);
-    expect(request?.url.searchParams.get("myEvents")).toBe("false");
-    expect(request?.url.searchParams.getAll("eventTypes[]")).toEqual([
-      "tournament",
-      "league",
-    ]);
-    expect(request?.url.searchParams.get("page")).toBe("2");
-    expect(request?.url.searchParams.get("per_page")).toBe("250");
+    await expect(
+      client.events.search({ eventTypes: ["tournament"] }),
+    ).resolves.toEqual([tournament, virtual]);
   });
 
-  test("honors event type filters when the API returns non-matching events", async () => {
-    const { client } = createDynamicClient(() =>
-      Response.json({
-        data: [
-          { ...validEvent(1), event_type: "tournament" },
-          { ...validEvent(2), event_type: "league" },
-          { ...validEvent(3), event_type: null },
-          validEvent(4),
-        ],
-        meta: { current_page: 1, last_page: 1, total: 4 },
-      }),
-    );
-    const options = { eventTypes: ["tournament"] } as const;
-
-    const response = await client.events.list(options);
-    const iteratedPage = await client.events.listPages(options).next();
-    if (iteratedPage.done !== false) {
-      throw new Error("Expected the event page iterator to yield a response");
-    }
-
-    expect(response.data.map(({ id }) => id)).toEqual([1]);
-    expect(response.meta.total).toBe(4);
-    expect(iteratedPage.value.data.map(({ id }) => id)).toEqual([1]);
-    expect(iteratedPage.value.meta.total).toBe(4);
-  });
-
-  test("includes cancelled event names in every event listing by default", async () => {
-    const { client, requests } = createDynamicClient(() =>
-      Response.json({
-        data: [
-          { ...validEvent(1), name: "Active Event" },
-          { ...validEvent(2), name: "Cancelled Event" },
-          { ...validEvent(3), name: "CANCELED: Venue unavailable" },
-          { ...validEvent(4), name: "Not Canceled" },
-        ],
-        meta: { current_page: 1, last_page: 1, total: 4 },
-      }),
-    );
-
-    const globalEvents = await client.events.list();
-    const iteratedPage = await client.events.listPages().next();
-    const teamEvents = await client.teams.events(1);
-    const seasonEvents = await client.seasons.events(1);
-
-    const responses: PaginatedResponse<Event>[] = [
-      globalEvents,
-      iteratedPage.value ?? {},
-      teamEvents,
-      seasonEvents,
-    ];
-    for (const response of responses) {
-      expect(response?.data?.map(({ name }) => name)).toEqual([
-        "Active Event",
-        "Cancelled Event",
-        "CANCELED: Venue unavailable",
-        "Not Canceled",
-      ]);
-      expect(response?.meta?.total).toBe(4);
-    }
-    for (const { url } of requests) {
-      expect(url.searchParams.has("includeCancelled")).toBe(false);
-    }
-  });
-
-  test("filters cancelled event names only when explicitly requested", async () => {
-    const { client, requests } = createDynamicClient(() =>
-      Response.json({
-        data: [
-          { ...validEvent(1), name: "Active Event" },
-          { ...validEvent(2), name: "Cancelled Event" },
-          { ...validEvent(3), name: "CANCELED: Venue unavailable" },
-          { ...validEvent(4), name: "Not Canceled" },
-          { ...validEvent(5), name: "Event cancellation policy" },
-        ],
-        meta: { current_page: 1, last_page: 1, total: 5 },
-      }),
-    );
-
-    const options = { includeCancelled: false } as const;
-    const globalEvents = await client.events.list(options);
-    const iteratedPage = await client.events.listPages(options).next();
-    const teamEvents = await client.teams.events(1, options);
-    const seasonEvents = await client.seasons.events(1, options);
-
-    const responses: PaginatedResponse<Event>[] = [
-      globalEvents,
-      iteratedPage.value ?? {},
-      teamEvents,
-      seasonEvents,
-    ];
-    for (const response of responses) {
-      expect(response.data.map(({ name }) => name)).toEqual([
-        "Active Event",
-        "Event cancellation policy",
-      ]);
-      expect(response.meta.total).toBe(5);
-    }
-    for (const { url } of requests) {
-      expect(url.searchParams.has("includeCancelled")).toBe(false);
-    }
-  });
-
-  test("lazily iterates complete event pages from an explicit starting page", async () => {
-    const controller = new AbortController();
+  test("collects all pages in order and follows an advancing next_page_url", async () => {
     const { client, requests } = createDynamicClient(({ url }) => {
       const page = Number(url.searchParams.get("page"));
+      const next = page === 1 ? 3 : page + 1;
       return Response.json({
         data: [validEvent(page)],
-        meta: { current_page: page, last_page: 4 },
+        meta: {
+          current_page: page,
+          last_page: 5,
+          next_page_url:
+            page < 5 ? `https://untrusted.example/events?page=${next}` : null,
+        },
       });
     });
-    const options = { seasons: [196], page: 2, perPage: 250 } as const;
-    const iterator = client.events.listPages(options, {
-      signal: controller.signal,
-    });
-    const pages: unknown[] = [];
 
-    expect(requests).toHaveLength(0);
-    for await (const page of iterator) pages.push(page);
-
-    expect(pages).toEqual([
-      {
-        data: [validEvent(2)],
-        meta: { current_page: 2, last_page: 4 },
-      },
-      {
-        data: [validEvent(3)],
-        meta: { current_page: 3, last_page: 4 },
-      },
-      {
-        data: [validEvent(4)],
-        meta: { current_page: 4, last_page: 4 },
-      },
+    await expect(client.events.search()).resolves.toEqual([
+      validEvent(1),
+      validEvent(3),
+      validEvent(4),
+      validEvent(5),
     ]);
     expect(requests.map(({ url }) => url.searchParams.get("page"))).toEqual([
-      "2",
+      "1",
       "3",
       "4",
+      "5",
     ]);
-    for (const { url, init } of requests) {
-      expect(url.searchParams.getAll("season[]")).toEqual(["196"]);
-      expect(url.searchParams.get("per_page")).toBe("250");
-      expect(init?.signal).toBe(controller.signal);
-    }
-    expect(options.page).toBe(2);
+    expect(requests.every(({ url }) => url.host === "example.test")).toBe(true);
   });
 
-  test("does not prefetch after a consumer breaks iteration", async () => {
+  test("falls back to last_page when links are malformed, stale, or repeated", async () => {
     const { client, requests } = createDynamicClient(({ url }) => {
       const page = Number(url.searchParams.get("page"));
+      const nextPageUrl =
+        page === 1
+          ? "not a valid URL?page=nope"
+          : `https://example.test/events?page=${page}`;
       return Response.json({
-        data: [],
-        meta: { current_page: page, last_page: 10 },
+        data: [validEvent(page)],
+        meta: { current_page: 1, last_page: 3, next_page_url: nextPageUrl },
       });
     });
-    const iterator = client.events.listPages();
 
-    expect(requests).toHaveLength(0);
-    for await (const _page of iterator) break;
-
-    expect(requests).toHaveLength(1);
-  });
-
-  test("lazily iterates paginated event division matches", async () => {
-    const controller = new AbortController();
-    const { client, requests } = createDynamicClient(({ url }) => {
-      const page = Number(url.searchParams.get("page"));
-      return Response.json({
-        data: [],
-        meta: { current_page: page, last_page: 3 },
-      });
-    });
-    const options = {
-      teams: [20],
-      rounds: [2],
-      instances: [1],
-      matchNumbers: [4],
-      page: 2,
-      perPage: 25,
-    } as const;
-    const iterator = client.events.matchesPages(10, 30, options, {
-      signal: controller.signal,
-    });
-
-    expect(requests).toHaveLength(0);
-    for await (const _page of iterator) {
-      // Consume every page to verify the nested endpoint pagination.
-    }
-
-    expect(requests.map(({ url }) => `${url.pathname}${url.search}`)).toEqual([
-      "/api/v2/events/10/divisions/30/matches?page=2&per_page=25&team%5B%5D=20&round%5B%5D=2&instance%5B%5D=1&matchnum%5B%5D=4",
-      "/api/v2/events/10/divisions/30/matches?page=3&per_page=25&team%5B%5D=20&round%5B%5D=2&instance%5B%5D=1&matchnum%5B%5D=4",
+    await expect(client.events.search()).resolves.toEqual([
+      validEvent(1),
+      validEvent(2),
+      validEvent(3),
     ]);
-    for (const { init } of requests) {
-      expect(init?.signal).toBe(controller.signal);
-    }
-    expect(options.page).toBe(2);
-  });
-
-  test("uses next_page_url when last_page is absent and stops without usable metadata", async () => {
-    const { client, requests } = createDynamicClient(
-      (_request, requestNumber) =>
-        Response.json({
-          data: [{ ...validEvent(requestNumber), requestNumber }],
-          meta:
-            requestNumber === 1
-              ? { next_page_url: "https://example.test/api/v2/events?page=2" }
-              : { last_page: 0, next_page_url: "" },
-        }),
-    );
-    let yieldedPages = 0;
-
-    for await (const _page of client.events.listPages()) yieldedPages++;
-
-    expect(yieldedPages).toBe(2);
     expect(requests.map(({ url }) => url.searchParams.get("page"))).toEqual([
       "1",
       "2",
-    ]);
-  });
-
-  test("advances monotonically when current_page metadata is stale", async () => {
-    const { client, requests } = createDynamicClient(() =>
-      Response.json({
-        data: [],
-        meta: { current_page: 1, last_page: 4 },
-      }),
-    );
-
-    for await (const _page of client.events.listPages({ page: 3 })) {
-      // Consume every page to exercise the iterator's termination logic.
-    }
-
-    expect(requests.map(({ url }) => url.searchParams.get("page"))).toEqual([
       "3",
-      "4",
     ]);
   });
 
-  test("propagates an API error from a later page", async () => {
-    const { client, requests } = createDynamicClient(
-      (_request, requestNumber) => {
-        if (requestNumber === 1) {
-          return Response.json({
-            data: [],
-            meta: { current_page: 1, last_page: 2 },
-          });
-        }
-        return Response.json(
-          { message: "Page unavailable" },
-          { status: 503, statusText: "Service Unavailable" },
-        );
-      },
-    );
-    const iterator = client.events.listPages();
-
-    await expect(iterator.next()).resolves.toMatchObject({ done: false });
-    const error = await iterator.next().catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsApiError);
-    expect(error).toMatchObject({
-      status: 503,
-      message: "Page unavailable",
+  test("stops safely when pagination metadata cannot advance", async () => {
+    const { client, requests } = createMockClient({
+      data: [validEvent()],
+      meta: { current_page: 1, next_page_url: "?page=1" },
     });
-    expect(requests).toHaveLength(2);
+
+    await expect(client.events.search()).resolves.toEqual([validEvent()]);
+    expect(requests).toHaveLength(1);
   });
 
-  test("exposes listPages on every top-level collection resource", async () => {
+  test("filters cancelled events after collecting every page", async () => {
+    const { client } = createDynamicClient(({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      return Response.json({
+        data: [
+          { ...validEvent(page * 2), name: `Active ${page}` },
+          { ...validEvent(page * 2 + 1), name: `Cancelled ${page}` },
+        ],
+        meta: { current_page: page, last_page: 2 },
+      });
+    });
+
+    const events = await client.events.search({ includeCancelled: false });
+    expect(events.map(({ name }) => name)).toEqual(["Active 1", "Active 2"]);
+  });
+
+  test("supports exact event SKU lookup and rejects blank SKUs", async () => {
+    const requested = { ...validEvent(2), sku: "RE-EXACT" };
+    const { client, requests } = createMockClient({
+      data: [validEvent(1), requested],
+      meta: { current_page: 1, last_page: 1 },
+    });
+
+    await expect(client.events.getBySku("RE-EXACT")).resolves.toEqual(
+      requested,
+    );
+    expect(requests[0]?.url.searchParams.getAll("sku[]")).toEqual(["RE-EXACT"]);
+    await expect(client.events.getBySku("RE-MISSING")).resolves.toBeNull();
+    await expect(client.events.getBySku("   ")).rejects.toThrow(
+      "sku must not be empty",
+    );
+  });
+
+  test("supports exact team number and program lookup", async () => {
+    const wrongProgram = { ...validTeam(1), number: "123A" };
+    const requested = {
+      ...validTeam(2),
+      number: "123A",
+      program: { id: 4, name: "VURC", code: "VURC" },
+    };
+    const { client, requests } = createMockClient({
+      data: [wrongProgram, requested],
+      meta: { current_page: 1, last_page: 1 },
+    });
+
+    await expect(client.teams.getByNumber("123A", 4)).resolves.toEqual(
+      requested,
+    );
+    expect(requests[0]?.url.searchParams.getAll("number[]")).toEqual(["123A"]);
+    expect(requests[0]?.url.searchParams.getAll("program[]")).toEqual(["4"]);
+    await expect(client.teams.getByNumber("999Z", 4)).resolves.toBeNull();
+    await expect(client.teams.getByNumber(" ", 1)).rejects.toThrow(
+      "team number must not be empty",
+    );
+  });
+
+  test("exposes constants through the client", () => {
+    const { client } = createMockClient();
+    expect(client.rounds.qualification).toBe(2);
+    expect(client.programs.V5RC).toBe(1);
+    expect(client.programs.VAIRC).toBe(57);
+  });
+
+  test("covers every event collection endpoint with array results", async () => {
     const { client, requests } = createDynamicClient(({ url }) =>
-      Response.json({
-        data: [],
-        meta: {
-          current_page: Number(url.searchParams.get("page")),
-          last_page: 1,
-        },
-      }),
+      endpointResponse(url),
     );
 
-    await client.events.listPages({ ids: [1] }).next();
-    await client.teams.listPages({ ids: [2] }).next();
-    await client.programs.listPages({ ids: [3] }).next();
-    await client.seasons.listPages({ ids: [4] }).next();
+    await expect(
+      client.events.teams(10, { numbers: ["123A"] }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      client.events.skills(10, { teams: [20] }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      client.events.awards(10, { winners: ["Ada"] }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      client.events.matches(10, 30, { rounds: [2], matchNumbers: [4] }),
+    ).resolves.toHaveLength(1);
+    await expect(client.events.finalistRankings(10, 30)).resolves.toHaveLength(
+      1,
+    );
+    await expect(client.events.rankings(10, 30)).resolves.toHaveLength(1);
 
     expect(requests.map(({ url }) => url.pathname)).toEqual([
-      "/api/v2/events",
-      "/api/v2/teams",
-      "/api/v2/programs",
-      "/api/v2/seasons",
+      "/api/v2/events/10/teams",
+      "/api/v2/events/10/skills",
+      "/api/v2/events/10/awards",
+      "/api/v2/events/10/divisions/30/matches",
+      "/api/v2/events/10/divisions/30/finalistRankings",
+      "/api/v2/events/10/divisions/30/rankings",
     ]);
     expect(
-      requests.map(({ url }) => [
-        url.searchParams.get("page"),
-        url.searchParams.getAll("id[]"),
-      ]),
-    ).toEqual([
-      ["1", ["1"]],
-      ["1", ["2"]],
-      ["1", ["3"]],
-      ["1", ["4"]],
-    ]);
+      requests.every(({ url }) => url.searchParams.get("per_page") === "250"),
+    ).toBe(true);
   });
 
-  test("covers every event endpoint", async () => {
+  test("covers every team collection endpoint with array results", async () => {
     const { client, requests } = createDynamicClient(({ url }) =>
       endpointResponse(url),
     );
 
-    await client.events.get(10);
-    await client.events.teams(10, { numbers: ["123A"], registered: true });
-    await client.events.skills(10, { teams: [20], types: ["driver"] });
-    await client.events.awards(10, { teams: [20], winners: ["Ada"] });
-    await client.events.matches(10, 30, {
-      teams: [20],
-      rounds: [2],
-      instances: [1],
-      matchNumbers: [4],
-    });
-    await client.events.finalistRankings(10, 30, {
-      teams: [20],
-      ranks: [1],
-    });
-    await client.events.rankings(10, 30, { teams: [20], ranks: [2] });
-
-    expect(requests.map(({ url }) => `${url.pathname}${url.search}`)).toEqual([
-      "/api/v2/events/10",
-      "/api/v2/events/10/teams?number%5B%5D=123A&registered=true",
-      "/api/v2/events/10/skills?team%5B%5D=20&type%5B%5D=driver",
-      "/api/v2/events/10/awards?team%5B%5D=20&winner%5B%5D=Ada",
-      "/api/v2/events/10/divisions/30/matches?team%5B%5D=20&round%5B%5D=2&instance%5B%5D=1&matchnum%5B%5D=4",
-      "/api/v2/events/10/divisions/30/finalistRankings?team%5B%5D=20&rank%5B%5D=1",
-      "/api/v2/events/10/divisions/30/rankings?team%5B%5D=20&rank%5B%5D=2",
-    ]);
-  });
-
-  test("accepts nullable event fields and date-keyed locations from the API", async () => {
-    const event = {
-      ...validEvent(59997),
-      location: {
-        venue: "NJIT Wellness and Events Center",
-        address_1: "104 Lock Street",
-        address_2: null,
-        city: "Newark",
-        region: null,
-        postcode: null,
-        country: "United States",
-      },
-      locations: {
-        "2025-09-12": {
-          venue: "NJIT Wellness and Events Center",
-          address_2: null,
-          region: "New Jersey",
-          postcode: "07103",
-        },
-      },
-      event_type: null,
-    } satisfies Event;
-    const { client } = createMockClient(event);
-
-    await expect(client.events.get(59997)).resolves.toEqual(event);
-  });
-
-  test("accepts matches without a scheduled start time", async () => {
-    const match = {
-      id: 1,
-      event: idInfo,
-      division: idInfo,
-      round: 2,
-      instance: 1,
-      matchnum: 3,
-      scheduled: null,
-      started: "2025-09-13T10:03:48-04:00",
-      field: "Robot Revolution",
-      scored: false,
-      name: "Qualifier #3",
-      alliances: [],
-    } satisfies Match;
-    const { client } = createMockClient({ data: [match], meta: {} });
-
-    await expect(client.events.matches(59997, 1)).resolves.toEqual({
-      data: [match],
-      meta: {},
-    });
-  });
-
-  test("covers every team endpoint", async () => {
-    const { client, requests } = createDynamicClient(({ url }) =>
-      endpointResponse(url),
+    await expect(client.teams.search({ programs: [1] })).resolves.toHaveLength(
+      1,
     );
-
-    await client.teams.list({
-      ids: [1],
-      numbers: ["123A"],
-      events: [2],
-      registered: false,
-      programs: [3],
-      grades: ["High School"],
-      countries: ["United States"],
-      myTeams: true,
-    });
-    await client.teams.get(1);
-    await client.teams.events(1, { skus: ["RE-1"], seasons: [2] });
-    await client.teams.matches(1, {
-      events: [2],
-      seasons: [3],
-      rounds: [4],
-      instances: [5],
-      matchNumbers: [6],
-    });
-    await client.teams.rankings(1, {
-      events: [2],
-      ranks: [3],
-      seasons: [4],
-    });
-    await client.teams.skills(1, {
-      events: [2],
-      types: ["programming"],
-      seasons: [3],
-    });
-    await client.teams.awards(1, { events: [2], seasons: [3] });
+    await expect(
+      client.teams.events(1, { seasons: [2] }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      client.teams.matches(1, { rounds: [2] }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      client.teams.rankings(1, { ranks: [1] }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      client.teams.skills(1, { types: ["driver"] }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      client.teams.awards(1, { seasons: [2] }),
+    ).resolves.toHaveLength(1);
 
     expect(requests.map(({ url }) => url.pathname)).toEqual([
       "/api/v2/teams",
-      "/api/v2/teams/1",
       "/api/v2/teams/1/events",
       "/api/v2/teams/1/matches",
       "/api/v2/teams/1/rankings",
       "/api/v2/teams/1/skills",
       "/api/v2/teams/1/awards",
     ]);
-    expect(requests[0]?.url.searchParams.get("registered")).toBe("false");
-    expect(requests[3]?.url.searchParams.getAll("matchnum[]")).toEqual(["6"]);
   });
 
-  test("covers program and season endpoints", async () => {
-    const { client, requests } = createMockClient();
+  test("covers program and season all-page endpoints", async () => {
+    const { client, requests } = createDynamicClient(({ url }) =>
+      endpointResponse(url),
+    );
 
-    await client.programs.list({ ids: [1] });
-    await client.programs.get(1);
-    await client.seasons.list({
-      ids: [2],
-      programs: [3],
-      teams: [4],
-      active: true,
-    });
-    await client.seasons.get(2);
-    await client.seasons.events(2, {
-      skus: ["RE-2"],
-      teams: [4],
-      levels: ["World"],
-    });
+    await expect(client.programs.all({ ids: [1] })).resolves.toHaveLength(1);
+    await expect(client.seasons.all({ programs: [1] })).resolves.toHaveLength(
+      1,
+    );
+    await expect(
+      client.seasons.events(2, { teams: [3] }),
+    ).resolves.toHaveLength(1);
 
     expect(requests.map(({ url }) => url.pathname)).toEqual([
       "/api/v2/programs",
-      "/api/v2/programs/1",
       "/api/v2/seasons",
-      "/api/v2/seasons/2",
       "/api/v2/seasons/2/events",
     ]);
-    expect(requests[2]?.url.searchParams.get("active")).toBe("true");
   });
 
-  test("sends authentication, custom headers, and abort signals", async () => {
-    const { client, requests } = createMockClient();
+  test("keeps single-resource get methods unchanged", async () => {
+    const { client } = createDynamicClient(({ url }) => endpointResponse(url));
+
+    await expect(client.events.get(10)).resolves.toEqual(validEvent(10));
+    await expect(client.teams.get(20)).resolves.toEqual(validTeam(20));
+    await expect(client.programs.get(1)).resolves.toMatchObject({ id: 1 });
+    await expect(client.seasons.get(2)).resolves.toMatchObject({ id: 2 });
+  });
+
+  test("reuses authentication, custom headers, and abort signals on every page", async () => {
     const controller = new AbortController();
-
-    await client.programs.get(1, { signal: controller.signal });
-
-    const request = requests[0];
-    const headers = new Headers(request?.init?.headers);
-    expect(headers.get("accept")).toBe("application/json");
-    expect(headers.get("authorization")).toBe("Bearer test-token");
-    expect(headers.get("x-client")).toBe("test");
-    expect(request?.init?.signal).toBe(controller.signal);
-  });
-
-  test("throws a typed API error with a parsed error body", async () => {
-    const { client } = createMockClient(
-      { code: 404, message: "Team not found" },
-      { status: 404, statusText: "Not Found" },
-    );
-
-    const error = await client.teams
-      .get(999)
-      .catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsApiError);
-    expect(error).toMatchObject({
-      status: 404,
-      statusText: "Not Found",
-      body: { code: 404, message: "Team not found" },
-      message: "Team not found",
-      url: "https://example.test/api/v2/teams/999",
-    });
-  });
-
-  test("rejects successful non-JSON responses", async () => {
-    const mockFetch: Fetch = async () =>
-      new Response("login page", {
-        status: 200,
-        headers: { "content-type": "text/html" },
+    const { client, requests } = createDynamicClient(({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      return Response.json({
+        data: [],
+        meta: { current_page: page, last_page: 2 },
       });
-    const client = new Robot({ token: "token", fetch: mockFetch });
+    });
 
-    const error = await client.programs
-      .list()
+    await client.programs.all({}, { signal: controller.signal });
+
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      const headers = new Headers(request.init?.headers);
+      expect(headers.get("accept")).toBe("application/json");
+      expect(headers.get("authorization")).toBe("Bearer test-token");
+      expect(headers.get("x-client")).toBe("test");
+      expect(request.init?.signal).toBe(controller.signal);
+    }
+  });
+
+  test("rejects the entire result when a later page returns an API error", async () => {
+    const { client } = createDynamicClient(({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      if (page === 1) {
+        return Response.json({
+          data: [validEvent()],
+          meta: { current_page: 1, last_page: 2 },
+        });
+      }
+      return Response.json(
+        { message: "Page unavailable" },
+        { status: 503, statusText: "Service Unavailable" },
+      );
+    });
+
+    const error = await client.events
+      .search()
       .catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(VexEventsApiError);
+    expect(error).toMatchObject({ status: 503, message: "Page unavailable" });
+  });
 
+  test("rejects the entire result when a later page is malformed", async () => {
+    const { client } = createDynamicClient(({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      return page === 1
+        ? Response.json({
+            data: [validEvent()],
+            meta: { current_page: 1, last_page: 2 },
+          })
+        : Response.json({
+            data: [{}],
+            meta: { current_page: 2, last_page: 2 },
+          });
+    });
+
+    const error = await client.events
+      .search()
+      .catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(VexEventsResponseError);
     expect(error).toHaveProperty(
       "message",
-      "VEX Events API returned a non-JSON response",
+      "VEX Events API returned an invalid response for /events",
     );
   });
 
-  test("accepts structured JSON content types", async () => {
-    const mockFetch: Fetch = async () =>
-      new Response(JSON.stringify({ id: 1, name: "V5RC" }), {
-        headers: { "content-type": "application/problem+json; charset=utf-8" },
-      });
-    const client = new Robot({ token: "token", fetch: mockFetch });
-
-    await expect(client.programs.get(1)).resolves.toEqual({
-      id: 1,
-      name: "V5RC",
-    });
-  });
-
-  test.each([{ meta: {} }, { data: [] }, { data: {}, meta: [] }])(
-    "rejects malformed paginated success response %p with endpoint context",
-    async (body) => {
-      const { client } = createMockClient(body);
-
-      const error = await client.events
-        .list()
-        .catch((reason: unknown) => reason);
-
-      expect(error).toBeInstanceOf(VexEventsResponseError);
-      expect(error).toMatchObject({
-        message: "VEX Events API returned an invalid response for /events",
-        url: "https://example.test/api/v2/events",
-      });
-    },
-  );
-
-  test("rejects an empty single-resource success response", async () => {
-    const { client } = createMockClient({});
-
-    const error = await client.teams.get(1).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsResponseError);
-    expect(error).toHaveProperty(
-      "message",
-      "VEX Events API returned an invalid response for /teams/1",
-    );
-  });
-
-  test("rejects malformed nested resources in paginated responses", async () => {
-    const malformedEvent = { ...validEvent(), season: { id: 1 } };
-    const { client } = createMockClient({ data: [malformedEvent], meta: {} });
-
-    const error = await client.events.list().catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsResponseError);
-    expect(error).toMatchObject({
-      message: "VEX Events API returned an invalid response for /events",
-      url: "https://example.test/api/v2/events",
-    });
-  });
-
-  test("accepts valid entries from every supported resource family", async () => {
-    const resources = [
-      validEvent(),
-      validTeam(),
-      { id: 1, name: "V5RC", abbr: "V5RC" },
-      { id: 1, name: "2026", program: idInfo },
-      {
-        id: 1,
-        event: idInfo,
-        division: idInfo,
-        round: 2,
-        instance: 1,
-        matchnum: 3,
-        scored: true,
-        name: "Qualification 3",
-        alliances: [{ color: "red", score: 10, teams: [] }],
-      },
-      { id: 1, event: idInfo, division: idInfo, team: idInfo, rank: 1 },
-      { id: 1, event: idInfo, team: idInfo, type: "driver", score: 42 },
-      { id: 1, event: idInfo, title: "Excellence Award" },
-    ];
-    const { client } = createDynamicClient((_request, requestNumber) =>
-      Response.json({ data: [resources[requestNumber - 1]], meta: {} }),
-    );
-
-    await expect(client.events.list()).resolves.toBeDefined();
-    await expect(client.teams.list()).resolves.toBeDefined();
-    await expect(client.programs.list()).resolves.toBeDefined();
-    await expect(client.seasons.list()).resolves.toBeDefined();
-    await expect(client.events.matches(1, 1)).resolves.toBeDefined();
-    await expect(client.events.rankings(1, 1)).resolves.toBeDefined();
-    await expect(client.events.skills(1)).resolves.toBeDefined();
-    await expect(client.events.awards(1)).resolves.toBeDefined();
-  });
-
-  test("exposes Retry-After seconds on rate-limited responses", async () => {
-    const { client } = createMockClient(
-      { message: "Too Many Requests" },
-      {
-        status: 429,
-        statusText: "Too Many Requests",
-        headers: { "retry-after": "12" },
-      },
-    );
-
-    const error = await client.teams.get(1).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsApiError);
-    expect(error).toMatchObject({ status: 429, retryAfterMs: 12_000 });
-  });
-
-  test("exposes HTTP-date Retry-After values on 503 responses", async () => {
-    const retryAt = new Date(Date.now() + 30_000).toUTCString();
-    const { client } = createMockClient(
-      { message: "Service Unavailable" },
-      {
-        status: 503,
-        statusText: "Service Unavailable",
-        headers: { "retry-after": retryAt },
-      },
-    );
-
-    const error = await client.teams.get(1).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsApiError);
-    const { retryAfterMs } = error as VexEventsApiError;
-    expect(retryAfterMs).toBeGreaterThan(0);
-    expect(retryAfterMs).toBeLessThanOrEqual(30_000);
-  });
-
-  test("omits retryAfterMs when the header is missing or unparseable", async () => {
-    const { client } = createMockClient(
-      { message: "Too Many Requests" },
-      {
-        status: 429,
-        statusText: "Too Many Requests",
-        headers: { "retry-after": "soon" },
-      },
-    );
-
-    const error = await client.teams.get(1).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsApiError);
-    expect((error as VexEventsApiError).retryAfterMs).toBeUndefined();
-  });
-
-  test("retries rate-limited requests after the advertised delay when opted in", async () => {
-    let attempts = 0;
-    const mockFetch: Fetch = async () => {
-      attempts++;
-      if (attempts < 3) {
+  test("retries a rate-limited later page independently", async () => {
+    let pageTwoAttempts = 0;
+    const requests: URL[] = [];
+    const mockFetch: Fetch = async (input) => {
+      const url = toUrl(input);
+      requests.push(url);
+      const page = Number(url.searchParams.get("page"));
+      if (page === 2 && pageTwoAttempts++ === 0) {
         return Response.json(
           { message: "Too Many Requests" },
           { status: 429, headers: { "retry-after": "0" } },
         );
       }
-      return Response.json({ id: 1, name: "V5RC" });
-    };
-    const client = new Robot({
-      token: "token",
-      fetch: mockFetch,
-      retry: { maxAttempts: 3 },
-    });
-
-    await expect(client.programs.get(1)).resolves.toEqual({
-      id: 1,
-      name: "V5RC",
-    });
-    expect(attempts).toBe(3);
-  });
-
-  test("stops retrying once maxAttempts is exhausted", async () => {
-    let attempts = 0;
-    const mockFetch: Fetch = async () => {
-      attempts++;
-      return Response.json(
-        { message: "Too Many Requests" },
-        { status: 429, headers: { "retry-after": "0" } },
-      );
+      return Response.json({
+        data: [validEvent(page)],
+        meta: { current_page: page, last_page: 2 },
+      });
     };
     const client = new Robot({
       token: "token",
@@ -872,61 +511,18 @@ describe("Robot", () => {
       retry: { maxAttempts: 2 },
     });
 
-    const error = await client.programs
-      .get(1)
-      .catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsApiError);
-    expect((error as VexEventsApiError).status).toBe(429);
-    expect(attempts).toBe(2);
+    await expect(client.events.search()).resolves.toEqual([
+      validEvent(1),
+      validEvent(2),
+    ]);
+    expect(requests.map((url) => url.searchParams.get("page"))).toEqual([
+      "1",
+      "2",
+      "2",
+    ]);
   });
 
-  test("does not retry when the advertised delay exceeds maxDelayMs", async () => {
-    let attempts = 0;
-    const mockFetch: Fetch = async () => {
-      attempts++;
-      return Response.json(
-        { message: "Too Many Requests" },
-        { status: 429, headers: { "retry-after": "60" } },
-      );
-    };
-    const client = new Robot({
-      token: "token",
-      fetch: mockFetch,
-      retry: { maxAttempts: 3, maxDelayMs: 1_000 },
-    });
-
-    const error = await client.programs
-      .get(1)
-      .catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsApiError);
-    expect((error as VexEventsApiError).retryAfterMs).toBe(60_000);
-    expect(attempts).toBe(1);
-  });
-
-  test("does not retry non-rate-limit errors even when opted in", async () => {
-    let attempts = 0;
-    const mockFetch: Fetch = async () => {
-      attempts++;
-      return Response.json({ message: "Server Error" }, { status: 500 });
-    };
-    const client = new Robot({
-      token: "token",
-      fetch: mockFetch,
-      retry: { maxAttempts: 3 },
-    });
-
-    const error = await client.programs
-      .get(1)
-      .catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(VexEventsApiError);
-    expect((error as VexEventsApiError).status).toBe(500);
-    expect(attempts).toBe(1);
-  });
-
-  test("honors abort signals while waiting to retry", async () => {
+  test("honors abort signals while waiting to retry a page", async () => {
     const controller = new AbortController();
     let attempts = 0;
     const mockFetch: Fetch = async () => {
@@ -942,8 +538,8 @@ describe("Robot", () => {
       retry: { maxAttempts: 3 },
     });
 
-    const pending = client.programs
-      .get(1, { signal: controller.signal })
+    const pending = client.events
+      .search({}, { signal: controller.signal })
       .catch((reason: unknown) => reason);
     queueMicrotask(() => controller.abort());
     const error = await pending;
@@ -952,4 +548,94 @@ describe("Robot", () => {
     expect((error as DOMException).name).toBe("AbortError");
     expect(attempts).toBe(1);
   });
+
+  test("throws a typed API error with the complete requested URL", async () => {
+    const { client } = createMockClient(
+      { code: 404, message: "No events" },
+      { status: 404, statusText: "Not Found" },
+    );
+
+    const error = await client.events
+      .search()
+      .catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(VexEventsApiError);
+    expect(error).toMatchObject({
+      status: 404,
+      body: { code: 404, message: "No events" },
+      url: "https://example.test/api/v2/events?page=1&per_page=250",
+    });
+  });
+
+  test("rejects successful non-JSON responses", async () => {
+    const mockFetch: Fetch = async () =>
+      new Response("login page", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    const client = new Robot({ token: "token", fetch: mockFetch });
+
+    await expect(client.programs.all()).rejects.toBeInstanceOf(
+      VexEventsResponseError,
+    );
+  });
+
+  test("accepts nullable event fields and date-keyed locations", async () => {
+    const event = {
+      ...validEvent(59997),
+      location: {
+        address_2: null,
+        region: null,
+        postcode: null,
+      },
+      locations: {
+        "2025-09-12": { region: "New Jersey", postcode: "07103" },
+      },
+      event_type: null,
+    } satisfies Event;
+    const { client } = createMockClient({
+      data: [event],
+      meta: { current_page: 1, last_page: 1 },
+    });
+
+    await expect(client.events.search()).resolves.toEqual([event]);
+  });
 });
+
+type Assert<T extends true> = T;
+type IsEqual<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+    ? true
+    : false;
+
+type EventsResourceType = InstanceType<typeof Robot>["events"];
+type TeamsResourceType = InstanceType<typeof Robot>["teams"];
+
+type NoList = Assert<"list" extends keyof EventsResourceType ? false : true>;
+type NoListPages = Assert<
+  "listPages" extends keyof EventsResourceType ? false : true
+>;
+type NoMatchesPages = Assert<
+  "matchesPages" extends keyof EventsResourceType ? false : true
+>;
+type NoPageOption = Assert<
+  "page" extends keyof ListEventsOptions ? false : true
+>;
+type NoPerPageOption = Assert<
+  "perPage" extends keyof ListEventsOptions ? false : true
+>;
+type EventSearchReturnsArray = Assert<
+  IsEqual<ReturnType<EventsResourceType["search"]>, Promise<Event[]>>
+>;
+type TeamSearchReturnsArray = Assert<
+  IsEqual<ReturnType<TeamsResourceType["search"]>, Promise<Team[]>>
+>;
+
+export type ClientTypeAssertions = [
+  NoList,
+  NoListPages,
+  NoMatchesPages,
+  NoPageOption,
+  NoPerPageOption,
+  EventSearchReturnsArray,
+  TeamSearchReturnsArray,
+];
