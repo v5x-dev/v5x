@@ -21,112 +21,103 @@ const robot = new Robot({
 });
 ```
 
-The client groups the complete API under four resources: `events`, `teams`,
-`programs`, and `seasons`.
+## Search complete collections
+
+The client groups the complete API under `events`, `teams`, `programs`, and
+`seasons`. Every collection method automatically retrieves all matching pages
+and returns a plain array.
 
 ```ts
-const teams = await robot.teams.list({
-  numbers: ["123A", "456B"],
-  registered: true,
-  perPage: 100,
+const events = await robot.events.search({
+  seasons: [seasonId],
+  eventTypes: ["tournament"],
 });
+
+const team = await robot.teams.getByNumber("123A", robot.programs.V5RC);
 
 const matches = await robot.events.matches(eventId, divisionId, {
-  teams: [teamId],
-  rounds: [2],
-});
-
-for (const match of matches.data ?? []) {
-  console.log(match.name, match.alliances);
-}
-```
-
-Options use camelCase names and normal arrays. The client translates these to
-the API's `snake_case` and repeated `field[]` parameters. Date filters accept
-an RFC 3339 string or a `Date`; `Date` values are serialized with
-`toISOString()`.
-
-Event listings return every upstream event by default. To remove events whose
-names contain `cancelled` or `canceled`, opt into the legacy client-side name
-filter with `includeCancelled: false`:
-
-```ts
-const activeEvents = await robot.events.list({
-  seasons: [196],
-  includeCancelled: false,
+  rounds: [robot.rounds.qualification],
 });
 ```
 
-The filter applies only to each response page's `data`. Pagination metadata
-continues to describe the unfiltered upstream response.
+Collection methods start at page 1, request 250 items per page, and follow the
+API's pagination metadata. Broad filters can make many requests and retain the
+complete result set in memory.
 
-## Iterate through pages
-
-The top-level event, team, program, and season collections provide lazy
-`listPages()` async iterators. Each iteration yields a complete paginated
-response rather than an individual item:
-
-```ts
-for await (const page of robot.events.listPages({
-  seasons: [196],
-  perPage: 250,
-})) {
-  for (const event of page.data ?? []) {
-    console.log(event.name);
-  }
-}
-```
-
-Requests are made sequentially as the iterator advances. Pass `page` to choose
-the starting page, or break out of the loop to stop before another request is
-made. A request signal is reused for every page:
+Pass an `AbortSignal` separately from filters to cancel the current request,
+pagination, or a retry delay:
 
 ```ts
 const controller = new AbortController();
 
-for await (const page of robot.teams.listPages(
+const teams = await robot.teams.search(
   { registered: true },
-  { signal: controller.signal },
-)) {
-  // Each value is a complete PaginatedResponse<Team>.
-}
-```
-
-Event division matches also provide a lazy page iterator through
-`robot.events.matchesPages()`:
-
-```ts
-for await (const page of robot.events.matchesPages(eventId, divisionId, {
-  rounds: [2],
-  perPage: 250,
-})) {
-  for (const match of page.data) {
-    console.log(match.name);
-  }
-}
-```
-
-Other nested paginated endpoints continue to return one requested page at a
-time.
-
-Every response model and filter is exported as a TypeScript type. HTTP errors
-throw `VexEventsApiError`, which includes `status`, `statusText`, `body`, and
-the requested `url`. An `AbortSignal` can be passed separately from filters:
-
-```ts
-const controller = new AbortController();
-
-await robot.events.list(
-  { eventTypes: ["tournament"], page: 1 },
   { signal: controller.signal },
 );
 ```
 
-The API is rate limited. Rate-limited (429) and unavailable (503) responses
-expose the `Retry-After` hint as `retryAfterMs` on the thrown
-`VexEventsApiError`, and the opt-in `retry` option retries rate-limited
-requests automatically after the advertised delay while honoring abort
-signals:
+Options use camelCase names and normal arrays. The client translates these to
+the API's `snake_case` and repeated `field[]` parameters. Date filters accept
+an RFC 3339 string or a `Date`.
+
+The `eventTypes` option is handled by the API and is not rechecked by the
+client. To remove events whose names contain `cancelled` or `canceled`, pass
+`includeCancelled: false`; that legacy name-based filter runs after all pages
+have been collected.
+
+## Resources
+
+```ts
+const events = await robot.events.search();
+const event = await robot.events.get(eventId);
+const eventBySku = await robot.events.getBySku("RE-VRC-26-1234");
+const eventTeams = await robot.events.teams(eventId);
+const eventSkills = await robot.events.skills(eventId);
+const eventAwards = await robot.events.awards(eventId);
+const divisionMatches = await robot.events.matches(eventId, divisionId);
+const divisionRankings = await robot.events.rankings(eventId, divisionId);
+
+const teams = await robot.teams.search();
+const teamById = await robot.teams.get(teamId);
+const teamByNumber = await robot.teams.getByNumber("123A", robot.programs.V5RC);
+const teamEvents = await robot.teams.events(teamId);
+const teamMatches = await robot.teams.matches(teamId);
+
+const programs = await robot.programs.all();
+const seasons = await robot.seasons.all({ programs: [robot.programs.V5RC] });
+```
+
+## Constants and match helpers
+
+```ts
+import {
+  getEventUrl,
+  getMatchShortName,
+  getTeamOutcome,
+  programs,
+  rounds,
+} from "@v5x/events";
+
+const program = await robot.programs.get(programs.V5RC);
+const matches = await robot.events.matches(eventId, divisionId, {
+  rounds: [rounds.qualification],
+});
+
+for (const match of matches) {
+  console.log(getMatchShortName(match), getTeamOutcome(match, "123A"));
+}
+
+console.log(getEventUrl(events[0]!));
+```
+
+`getTeamUrl`, `getAlliance`, `getMatchOutcome`, and `getMatchTeams` provide
+additional helpers without wrapping API responses in classes.
+
+## Errors and retries
+
+HTTP errors throw `VexEventsApiError`; invalid successful responses throw
+`VexEventsResponseError`. When a later page fails, the collection rejects
+without returning partial data.
 
 ```ts
 const robot = new Robot({
@@ -134,3 +125,21 @@ const robot = new Robot({
   retry: { maxAttempts: 3, maxDelayMs: 30_000 },
 });
 ```
+
+The retry option handles 429 responses and honors the same abort signal on
+every attempt and every page.
+
+## Migrating from 0.1
+
+Page-oriented methods have been replaced by complete arrays:
+
+| 0.1                              | 0.2                           |
+| -------------------------------- | ----------------------------- |
+| `robot.events.list()`            | `robot.events.search()`       |
+| `robot.teams.list()`             | `robot.teams.search()`        |
+| `robot.programs.list()`          | `robot.programs.all()`        |
+| `robot.seasons.list()`           | `robot.seasons.all()`         |
+| `PaginatedResponse<T>`           | `T[]`                         |
+| `listPages()` / `matchesPages()` | Automatic internal pagination |
+
+`page` and `perPage` are no longer public filter options.

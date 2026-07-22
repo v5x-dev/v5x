@@ -1,4 +1,5 @@
 import { VexEventsApiError, VexEventsResponseError } from "./errors.js";
+import { programs as programIds, rounds as roundIds } from "./constants.js";
 import type {
   ApiErrorBody,
   Award,
@@ -20,8 +21,6 @@ import type {
   ListTeamsOptions,
   ListTeamSkillsOptions,
   Match,
-  PaginatedResponse,
-  PaginationOptions,
   Program,
   Ranking,
   Season,
@@ -89,191 +88,125 @@ export interface VexEventsClientOptions {
 }
 
 export interface EventsResource {
-  list(
+  search(
     options?: ListEventsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Event>>;
-  listPages(
-    options?: ListEventsOptions,
-    request?: RequestOptions,
-  ): AsyncIterableIterator<PaginatedResponse<Event>>;
+  ): Promise<Event[]>;
   get(id: number, request?: RequestOptions): Promise<Event>;
+  getBySku(sku: string, request?: RequestOptions): Promise<Event | null>;
   teams(
     id: number,
     options?: ListEventTeamsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Team>>;
+  ): Promise<Team[]>;
   skills(
     id: number,
     options?: ListEventSkillsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Skill>>;
+  ): Promise<Skill[]>;
   awards(
     id: number,
     options?: ListEventAwardsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Award>>;
+  ): Promise<Award[]>;
   matches(
     id: number,
     division: number,
     options?: ListDivisionMatchesOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Match>>;
-  matchesPages(
-    id: number,
-    division: number,
-    options?: ListDivisionMatchesOptions,
-    request?: RequestOptions,
-  ): AsyncIterableIterator<PaginatedResponse<Match>>;
+  ): Promise<Match[]>;
   finalistRankings(
     id: number,
     division: number,
     options?: ListDivisionRankingsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Ranking>>;
+  ): Promise<Ranking[]>;
   rankings(
     id: number,
     division: number,
     options?: ListDivisionRankingsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Ranking>>;
+  ): Promise<Ranking[]>;
 }
 
 export interface TeamsResource {
-  list(
-    options?: ListTeamsOptions,
-    request?: RequestOptions,
-  ): Promise<PaginatedResponse<Team>>;
-  listPages(
-    options?: ListTeamsOptions,
-    request?: RequestOptions,
-  ): AsyncIterableIterator<PaginatedResponse<Team>>;
+  search(options?: ListTeamsOptions, request?: RequestOptions): Promise<Team[]>;
   get(id: number, request?: RequestOptions): Promise<Team>;
+  getByNumber(
+    number: string,
+    programId: number,
+    request?: RequestOptions,
+  ): Promise<Team | null>;
   events(
     id: number,
     options?: ListTeamEventsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Event>>;
+  ): Promise<Event[]>;
   matches(
     id: number,
     options?: ListTeamMatchesOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Match>>;
+  ): Promise<Match[]>;
   rankings(
     id: number,
     options?: ListTeamRankingsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Ranking>>;
+  ): Promise<Ranking[]>;
   skills(
     id: number,
     options?: ListTeamSkillsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Skill>>;
+  ): Promise<Skill[]>;
   awards(
     id: number,
     options?: ListTeamAwardsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Award>>;
+  ): Promise<Award[]>;
 }
 
-export interface ProgramsResource {
-  list(
+export type ProgramsResource = typeof programIds & {
+  all(
     options?: ListProgramsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Program>>;
-  listPages(
-    options?: ListProgramsOptions,
-    request?: RequestOptions,
-  ): AsyncIterableIterator<PaginatedResponse<Program>>;
+  ): Promise<Program[]>;
   get(id: number, request?: RequestOptions): Promise<Program>;
-}
+};
 
 export interface SeasonsResource {
-  list(
+  all(
     options?: ListSeasonsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Season>>;
-  listPages(
-    options?: ListSeasonsOptions,
-    request?: RequestOptions,
-  ): AsyncIterableIterator<PaginatedResponse<Season>>;
+  ): Promise<Season[]>;
   get(id: number, request?: RequestOptions): Promise<Season>;
   events(
     id: number,
     options?: ListSeasonEventsOptions,
     request?: RequestOptions,
-  ): Promise<PaginatedResponse<Event>>;
-}
-
-function paginationEntries(options: PaginationOptions): QueryEntry[] {
-  return [
-    ["page", options.page],
-    ["per_page", options.perPage],
-  ];
+  ): Promise<Event[]>;
 }
 
 function isUsablePage(value: number | undefined): value is number {
   return value !== undefined && Number.isSafeInteger(value) && value >= 1;
 }
 
-async function* iteratePages<T, Options extends PaginationOptions>(
-  options: Options,
-  requestPage: (options: Options) => Promise<PaginatedResponse<T>>,
-): AsyncGenerator<PaginatedResponse<T>, void, void> {
-  let page = options.page ?? 1;
-
-  while (true) {
-    const response = await requestPage({ ...options, page });
-    yield response;
-
-    const reportedCurrentPage = isUsablePage(response.meta?.current_page)
-      ? response.meta.current_page
-      : page;
-    const currentPage = Math.max(page, reportedCurrentPage);
-    const lastPage = response.meta?.last_page;
-    if (isUsablePage(lastPage)) {
-      if (currentPage >= lastPage) return;
-    } else if (
-      typeof response.meta?.next_page_url !== "string" ||
-      response.meta.next_page_url.length === 0
-    ) {
-      return;
-    }
-
-    page = Math.max(page, currentPage) + 1;
+function pageFromUrl(value: string | null | undefined): number | undefined {
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  try {
+    const page = Number(
+      new URL(value, DEFAULT_BASE_URL).searchParams.get("page"),
+    );
+    return isUsablePage(page) ? page : undefined;
+  } catch {
+    return undefined;
   }
 }
 
 function filterCancelledEvents(
-  response: PaginatedResponse<Event>,
+  events: Event[],
   includeCancelled: boolean | undefined,
-): PaginatedResponse<Event> {
-  if (includeCancelled !== false) return response;
-
-  return {
-    ...response,
-    data: response.data.filter(
-      (event) => !/cancelled|canceled/i.test(event.name),
-    ),
-  };
-}
-
-function filterEventTypes(
-  response: PaginatedResponse<Event>,
-  eventTypes: ListEventsOptions["eventTypes"],
-): PaginatedResponse<Event> {
-  if (eventTypes === undefined || eventTypes.length === 0) return response;
-
-  const includedTypes = new Set(eventTypes);
-  return {
-    ...response,
-    data: response.data.filter(
-      (event) =>
-        event.event_type !== null &&
-        event.event_type !== undefined &&
-        includedTypes.has(event.event_type),
-    ),
-  };
+): Event[] {
+  if (includeCancelled !== false) return events;
+  return events.filter((event) => !/cancelled|canceled/i.test(event.name));
 }
 
 function serializeDate(value: DateInput): string {
@@ -356,6 +289,7 @@ function isJsonContentType(contentType: string): boolean {
 }
 
 export class Robot {
+  readonly rounds = roundIds;
   readonly events: EventsResource;
   readonly teams: TeamsResource;
   readonly programs: ProgramsResource;
@@ -395,193 +329,212 @@ export class Robot {
     this.retry = options.retry;
 
     this.events = {
-      list: (options = {}, request) =>
-        this.request(
+      search: (options = {}, request) =>
+        this.requestAllPages(
           "/events",
           eventEntries(options),
           request,
-          paginated(isEvent),
-        ).then((response) =>
-          filterEventTypes(
-            filterCancelledEvents(response, options.includeCancelled),
-            options.eventTypes,
-          ),
-        ),
-      listPages: (options = {}, request) =>
-        iteratePages(options, (pageOptions) =>
-          this.request<PaginatedResponse<Event>>(
-            "/events",
-            eventEntries(pageOptions),
-            request,
-            paginated(isEvent),
-          ).then((response) =>
-            filterEventTypes(
-              filterCancelledEvents(response, pageOptions.includeCancelled),
-              pageOptions.eventTypes,
-            ),
-          ),
+          isEvent,
+        ).then((events) =>
+          filterCancelledEvents(events, options.includeCancelled),
         ),
       get: (id, request) => this.request(`/events/${id}`, [], request, isEvent),
+      getBySku: async (sku, request) => {
+        if (sku.trim() === "") throw new TypeError("sku must not be empty");
+        const events = await this.requestAllPages(
+          "/events",
+          [["sku[]", [sku]]],
+          request,
+          isEvent,
+        );
+        return events.find((event) => event.sku === sku) ?? null;
+      },
       teams: (id, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/events/${id}/teams`,
           eventTeamEntries(options),
           request,
-          paginated(isTeam),
+          isTeam,
         ),
       skills: (id, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/events/${id}/skills`,
           eventSkillEntries(options),
           request,
-          paginated(isSkill),
+          isSkill,
         ),
       awards: (id, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/events/${id}/awards`,
           eventAwardEntries(options),
           request,
-          paginated(isAward),
+          isAward,
         ),
       matches: (id, division, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/events/${id}/divisions/${division}/matches`,
           divisionMatchEntries(options),
           request,
-          paginated(isMatch),
-        ),
-      matchesPages: (id, division, options = {}, request) =>
-        iteratePages(options, (pageOptions) =>
-          this.request<PaginatedResponse<Match>>(
-            `/events/${id}/divisions/${division}/matches`,
-            divisionMatchEntries(pageOptions),
-            request,
-            paginated(isMatch),
-          ),
+          isMatch,
         ),
       finalistRankings: (id, division, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/events/${id}/divisions/${division}/finalistRankings`,
           divisionRankingEntries(options),
           request,
-          paginated(isRanking),
+          isRanking,
         ),
       rankings: (id, division, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/events/${id}/divisions/${division}/rankings`,
           divisionRankingEntries(options),
           request,
-          paginated(isRanking),
+          isRanking,
         ),
     };
 
     this.teams = {
-      list: (options = {}, request) =>
-        this.request(
-          "/teams",
-          teamEntries(options),
-          request,
-          paginated(isTeam),
-        ),
-      listPages: (options = {}, request) =>
-        iteratePages(options, (pageOptions) =>
-          this.request<PaginatedResponse<Team>>(
-            "/teams",
-            teamEntries(pageOptions),
-            request,
-            paginated(isTeam),
-          ),
-        ),
+      search: (options = {}, request) =>
+        this.requestAllPages("/teams", teamEntries(options), request, isTeam),
       get: (id, request) => this.request(`/teams/${id}`, [], request, isTeam),
+      getByNumber: async (number, programId, request) => {
+        if (number.trim() === "") {
+          throw new TypeError("team number must not be empty");
+        }
+        const teams = await this.requestAllPages(
+          "/teams",
+          [
+            ["number[]", [number]],
+            ["program[]", [programId]],
+          ],
+          request,
+          isTeam,
+        );
+        return (
+          teams.find(
+            (team) => team.number === number && team.program.id === programId,
+          ) ?? null
+        );
+      },
       events: (id, options = {}, request) =>
-        this.request<PaginatedResponse<Event>>(
+        this.requestAllPages(
           `/teams/${id}/events`,
           teamEventEntries(options),
           request,
-          paginated(isEvent),
-        ).then((response) =>
-          filterCancelledEvents(response, options.includeCancelled),
+          isEvent,
+        ).then((events) =>
+          filterCancelledEvents(events, options.includeCancelled),
         ),
       matches: (id, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/teams/${id}/matches`,
           teamMatchEntries(options),
           request,
-          paginated(isMatch),
+          isMatch,
         ),
       rankings: (id, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/teams/${id}/rankings`,
           teamRankingEntries(options),
           request,
-          paginated(isRanking),
+          isRanking,
         ),
       skills: (id, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/teams/${id}/skills`,
           teamSkillEntries(options),
           request,
-          paginated(isSkill),
+          isSkill,
         ),
       awards: (id, options = {}, request) =>
-        this.request(
+        this.requestAllPages(
           `/teams/${id}/awards`,
           teamAwardEntries(options),
           request,
-          paginated(isAward),
+          isAward,
         ),
     };
 
     this.programs = {
-      list: (options = {}, request) =>
-        this.request(
+      ...programIds,
+      all: (options = {}, request) =>
+        this.requestAllPages(
           "/programs",
-          [...paginationEntries(options), ["id[]", options.ids]],
+          [["id[]", options.ids]],
           request,
-          paginated(isProgram),
-        ),
-      listPages: (options = {}, request) =>
-        iteratePages(options, (pageOptions) =>
-          this.request<PaginatedResponse<Program>>(
-            "/programs",
-            [...paginationEntries(pageOptions), ["id[]", pageOptions.ids]],
-            request,
-            paginated(isProgram),
-          ),
+          isProgram,
         ),
       get: (id, request) =>
         this.request(`/programs/${id}`, [], request, isProgram),
     };
 
     this.seasons = {
-      list: (options = {}, request) =>
-        this.request(
+      all: (options = {}, request) =>
+        this.requestAllPages(
           "/seasons",
           seasonEntries(options),
           request,
-          paginated(isSeason),
-        ),
-      listPages: (options = {}, request) =>
-        iteratePages(options, (pageOptions) =>
-          this.request<PaginatedResponse<Season>>(
-            "/seasons",
-            seasonEntries(pageOptions),
-            request,
-            paginated(isSeason),
-          ),
+          isSeason,
         ),
       get: (id, request) =>
         this.request(`/seasons/${id}`, [], request, isSeason),
       events: (id, options = {}, request) =>
-        this.request<PaginatedResponse<Event>>(
+        this.requestAllPages(
           `/seasons/${id}/events`,
           seasonEventEntries(options),
           request,
-          paginated(isEvent),
-        ).then((response) =>
-          filterCancelledEvents(response, options.includeCancelled),
+          isEvent,
+        ).then((events) =>
+          filterCancelledEvents(events, options.includeCancelled),
         ),
     };
+  }
+
+  private async requestAllPages<T>(
+    path: string,
+    query: readonly QueryEntry[],
+    options: RequestOptions | undefined,
+    validateItem: Validator<T>,
+  ): Promise<T[]> {
+    const data: T[] = [];
+    const visitedPages = new Set<number>();
+    let page = 1;
+
+    while (!visitedPages.has(page)) {
+      visitedPages.add(page);
+      const response = await this.request(
+        path,
+        [["page", page], ["per_page", 250], ...query],
+        options,
+        paginated(validateItem),
+      );
+      data.push(...response.data);
+
+      const reportedCurrentPage = isUsablePage(response.meta.current_page)
+        ? response.meta.current_page
+        : page;
+      const currentPage = Math.max(page, reportedCurrentPage);
+      const lastPage = response.meta.last_page;
+      if (isUsablePage(lastPage) && currentPage >= lastPage) break;
+
+      const linkedPage = pageFromUrl(response.meta.next_page_url);
+      if (
+        linkedPage !== undefined &&
+        linkedPage > currentPage &&
+        (!isUsablePage(lastPage) || linkedPage <= lastPage)
+      ) {
+        page = linkedPage;
+        continue;
+      }
+
+      if (isUsablePage(lastPage) && currentPage < lastPage) {
+        page = currentPage + 1;
+        continue;
+      }
+      break;
+    }
+
+    return data;
   }
 
   private async request<T>(
@@ -683,7 +636,6 @@ export class Robot {
 
 function eventEntries(options: ListEventsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["id[]", options.ids],
     ["sku[]", options.skus],
     ["team[]", options.teams],
@@ -699,7 +651,6 @@ function eventEntries(options: ListEventsOptions): QueryEntry[] {
 
 function eventTeamEntries(options: ListEventTeamsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["number[]", options.numbers],
     ["registered", options.registered],
     ["grade[]", options.grades],
@@ -710,7 +661,6 @@ function eventTeamEntries(options: ListEventTeamsOptions): QueryEntry[] {
 
 function eventSkillEntries(options: ListEventSkillsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["team[]", options.teams],
     ["type[]", options.types],
   ];
@@ -718,7 +668,6 @@ function eventSkillEntries(options: ListEventSkillsOptions): QueryEntry[] {
 
 function eventAwardEntries(options: ListEventAwardsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["team[]", options.teams],
     ["winner[]", options.winners],
   ];
@@ -728,7 +677,6 @@ function divisionMatchEntries(
   options: ListDivisionMatchesOptions,
 ): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["team[]", options.teams],
     ["round[]", options.rounds],
     ["instance[]", options.instances],
@@ -740,7 +688,6 @@ function divisionRankingEntries(
   options: ListDivisionRankingsOptions,
 ): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["team[]", options.teams],
     ["rank[]", options.ranks],
   ];
@@ -748,7 +695,6 @@ function divisionRankingEntries(
 
 function teamEntries(options: ListTeamsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["id[]", options.ids],
     ["number[]", options.numbers],
     ["event[]", options.events],
@@ -762,7 +708,6 @@ function teamEntries(options: ListTeamsOptions): QueryEntry[] {
 
 function teamEventEntries(options: ListTeamEventsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["sku[]", options.skus],
     ["season[]", options.seasons],
     ["start", options.start],
@@ -773,7 +718,6 @@ function teamEventEntries(options: ListTeamEventsOptions): QueryEntry[] {
 
 function teamMatchEntries(options: ListTeamMatchesOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["event[]", options.events],
     ["season[]", options.seasons],
     ["round[]", options.rounds],
@@ -784,7 +728,6 @@ function teamMatchEntries(options: ListTeamMatchesOptions): QueryEntry[] {
 
 function teamRankingEntries(options: ListTeamRankingsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["event[]", options.events],
     ["rank[]", options.ranks],
     ["season[]", options.seasons],
@@ -793,7 +736,6 @@ function teamRankingEntries(options: ListTeamRankingsOptions): QueryEntry[] {
 
 function teamSkillEntries(options: ListTeamSkillsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["event[]", options.events],
     ["type[]", options.types],
     ["season[]", options.seasons],
@@ -802,7 +744,6 @@ function teamSkillEntries(options: ListTeamSkillsOptions): QueryEntry[] {
 
 function teamAwardEntries(options: ListTeamAwardsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["event[]", options.events],
     ["season[]", options.seasons],
   ];
@@ -810,7 +751,6 @@ function teamAwardEntries(options: ListTeamAwardsOptions): QueryEntry[] {
 
 function seasonEntries(options: ListSeasonsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["id[]", options.ids],
     ["program[]", options.programs],
     ["team[]", options.teams],
@@ -822,7 +762,6 @@ function seasonEntries(options: ListSeasonsOptions): QueryEntry[] {
 
 function seasonEventEntries(options: ListSeasonEventsOptions): QueryEntry[] {
   return [
-    ...paginationEntries(options),
     ["sku[]", options.skus],
     ["team[]", options.teams],
     ["start", options.start],
