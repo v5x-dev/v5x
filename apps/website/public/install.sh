@@ -3,7 +3,6 @@
 set -eu
 
 repo="v5x-dev/v5x"
-install_dir="${V5X_INSTALL_DIR:-${HOME:-}/.local/bin}"
 version="${V5X_VERSION:-}"
 
 fail() {
@@ -11,8 +10,15 @@ fail() {
   exit 1
 }
 
+if [ -n "${V5X_INSTALL_DIR:-}" ]; then
+  install_dir="$V5X_INSTALL_DIR"
+elif [ -n "${HOME:-}" ]; then
+  install_dir="${HOME}/.local/bin"
+else
+  fail "HOME or V5X_INSTALL_DIR must be set"
+fi
+
 command -v curl >/dev/null 2>&1 || fail "curl is required"
-[ -n "$install_dir" ] || fail "HOME or V5X_INSTALL_DIR must be set"
 
 case "$(uname -s)" in
   Linux) os="linux" ;;
