@@ -178,6 +178,60 @@ describe("WebSerialAdapter", () => {
     });
   });
 
+  test("replaces a closed port when its discovered USB identity changes", async () => {
+    let discovered = {
+      path: "/dev/ttyACM0",
+      vendorId: "2888",
+      productId: "0501",
+      serialNumber: "first",
+    };
+    const adapter = new WebSerialAdapter("darwin", async () => [discovered]);
+
+    const first = (await adapter.getPorts())[0]!;
+    discovered = {
+      path: "/dev/ttyACM0",
+      vendorId: "1234",
+      productId: "5678",
+      serialNumber: "second",
+    };
+    const second = (await adapter.getPorts())[0]!;
+
+    expect(second).not.toBe(first);
+    expect(second.getInfo()).toEqual({
+      path: "/dev/ttyACM0",
+      id: "second",
+      serialNumber: "second",
+      usbVendorId: 0x1234,
+      usbProductId: 0x5678,
+    });
+    await expect(
+      adapter.requestPort({
+        filters: [{ usbVendorId: 0x1234, usbProductId: 0x5678 }],
+      }),
+    ).resolves.toBe(second);
+  });
+
+  test("does not replace an open port when discovery reports a new identity", async () => {
+    let serialNumber = "first";
+    const adapter = new WebSerialAdapter("darwin", async () => [
+      {
+        path: "/dev/ttyACM0",
+        vendorId: "2888",
+        productId: "0501",
+        serialNumber,
+      },
+    ]);
+    const first = (await adapter.getPorts())[0]!;
+    await first.open({ baudRate: 115200 });
+
+    serialNumber = "second";
+    const second = (await adapter.getPorts())[0]!;
+
+    expect(second).toBe(first);
+    expect(second.getInfo().serialNumber).toBe("first");
+    await first.close();
+  });
+
   test("keeps USB identifiers unknown when macOS omits them", async () => {
     const adapter = new WebSerialAdapter("darwin", async () => [
       { path: "/dev/cu.usbmodem01" },
