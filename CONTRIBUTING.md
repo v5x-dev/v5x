@@ -27,10 +27,11 @@ bun run docs:check
 
 Unit tests must not require connected VEX hardware. Model serial ports, packet
 responses, timers, downloads, and process execution with deterministic fakes.
-Hardware validation belongs in a separate manual check; the default test suite
-has to stay runnable for every contributor and CI. Maintainers can use the
-optional V5 brain smoke checklist in `apps/docs/cli/hardware-smoke.mdx` before
-releases or risky serial and CLI changes.
+Hardware validation belongs in the separate opt-in harness; the default test
+suite has to stay runnable for every contributor and CI. Maintainers can run
+`v5x hardware-smoke` using the safety and cleanup instructions in
+`apps/docs/cli/hardware-smoke.mdx` before releases or risky serial and CLI
+changes.
 
 Changes that affect a published package must add an entry to the Unreleased
 section of `CHANGELOG.md` under `@v5x/cli`, `@v5x/serial`, `@v5x/web`, or the

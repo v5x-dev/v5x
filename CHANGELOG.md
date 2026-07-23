@@ -8,9 +8,19 @@ Unreleased section to a dated package-version heading.
 
 ### @v5x/cli
 
+- Add an opt-in, read-only-by-default hardware smoke harness for brain and
+  controller validation, with non-secret context reports, screenshot artifacts,
+  stable failure exits, and a separately gated temporary file round trip.
+
 ### @v5x/events
 
 ### @v5x/serial
+
+- Reject embedded NULs in outbound protocol text and unsafe, overlong, or
+  colliding dynamic INI keys before serial I/O.
+- Preserve supplied-connection open failures, distinguish busy and missing
+  ports while cleaning up candidates, and reject non-finite reconnect timeouts
+  without lifecycle changes.
 
 ### @v5x/web
 

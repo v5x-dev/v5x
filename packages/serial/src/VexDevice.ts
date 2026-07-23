@@ -15,7 +15,6 @@ import {
 import { sleepUntil } from "./VexFirmware.js";
 import {
   VexInvalidArgumentError,
-  VexIoError,
   VexNotConnectedError,
   VexSerialError,
   toVexSerialError,
@@ -329,8 +328,19 @@ export class V5SerialDevice extends VexSerialDevice {
         if (await this._lifecycleSuperseded(generation, conn)) {
           return this._staleLifecycleResult();
         }
-        if (opened.isErr() || opened.value !== "opened") {
-          return err(new VexIoError("failed to open the supplied connection"));
+        if (opened.isErr()) {
+          await this._closeFailedCandidate(conn);
+          return err(opened.error);
+        }
+        if (opened.value !== "opened") {
+          await this._closeFailedCandidate(conn);
+          return err(
+            new VexNotConnectedError(
+              opened.value === "busy"
+                ? "the supplied V5 serial port is busy"
+                : "the supplied connection did not select a V5 serial port",
+            ),
+          );
         }
       }
       const q = await conn.query1();
@@ -464,10 +474,14 @@ export class V5SerialDevice extends VexSerialDevice {
     if (this._disposed) {
       return new ResultAsync(Promise.resolve(this._staleLifecycleResult()));
     }
-    if (timeout < 0) {
+    if (!Number.isFinite(timeout) || timeout < 0) {
       return new ResultAsync(
         Promise.resolve(
-          err(new VexInvalidArgumentError("timeout must be non-negative")),
+          err(
+            new VexInvalidArgumentError(
+              "timeout must be a finite, non-negative number",
+            ),
+          ),
         ),
       );
     }
@@ -488,8 +502,12 @@ export class V5SerialDevice extends VexSerialDevice {
       return this._staleLifecycleResult();
     }
     if (this.isConnected) return ok(undefined);
-    if (timeout < 0) {
-      return err(new VexInvalidArgumentError("timeout must be non-negative"));
+    if (!Number.isFinite(timeout) || timeout < 0) {
+      return err(
+        new VexInvalidArgumentError(
+          "timeout must be a finite, non-negative number",
+        ),
+      );
     }
 
     const endTime = Date.now() + timeout;
@@ -653,6 +671,16 @@ export class V5SerialDevice extends VexSerialDevice {
 
   private _staleLifecycleResult(): Result<void, VexSerialError> {
     return err(new VexNotConnectedError("connection attempt was superseded"));
+  }
+
+  private async _closeFailedCandidate(
+    connection: V5SerialConnection,
+  ): Promise<void> {
+    try {
+      await connection.close();
+    } catch {
+      // Preserve the failure that prevented the candidate from opening.
+    }
   }
 
   private _commitConnection(

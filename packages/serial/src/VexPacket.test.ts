@@ -150,4 +150,33 @@ describe("fixed-width text fields", () => {
       "Key must be at most 31 UTF-8 bytes",
     );
   });
+
+  test.each([
+    ["Filename", () => initFileTransfer("safe\0ignored")],
+    [
+      "File type",
+      () =>
+        new InitFileTransferH2DPacket(
+          FileInitAction.READ,
+          FileDownloadTarget.FILE_TARGET_QSPI,
+          FileVendor.USER,
+          FileInitOption.NONE,
+          new Uint8Array(),
+          0,
+          "test.bin",
+          "b\0n",
+        ),
+    ],
+    ["Key", () => new ReadKeyValueH2DPacket("safe\0ignored")],
+    ["Value", () => new WriteKeyValueH2DPacket("safe", "kept\0ignored")],
+  ])("rejects an embedded NUL in a %s", (field, createPacket) => {
+    expect(createPacket).toThrow(`${field} must not contain NUL characters`);
+  });
+
+  test("continues to UTF-8 byte-check valid Unicode", () => {
+    expect(() => initFileTransfer("机器人.bin")).not.toThrow();
+    expect(() => initFileTransfer("机".repeat(9))).toThrow(
+      "Filename must be at most 24 UTF-8 bytes",
+    );
+  });
 });

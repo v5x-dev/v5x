@@ -18,8 +18,6 @@ import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
 import { DeviceBoundPacket, HostBoundPacket, Packet } from "./VexPacketBase.js";
 import { PacketEncoder, encodeFixedText } from "./VexPacketEncoder.js";
 
-const textEncoder = new TextEncoder();
-
 /** Encode `[vendor/first byte, options/second byte, 24-byte filename field]`. */
 function filePayload(a: number, b: number, fileName: string): Uint8Array {
   const payload = new Uint8Array(26);
@@ -340,7 +338,7 @@ export class WriteKeyValueH2DPacket extends DeviceBoundPacket {
 
   constructor(key: string, value: string) {
     const strk = encodeFixedText(key, "Key", 31);
-    const strv = textEncoder.encode(value);
+    const strv = encodeFixedText(value, "Value", 0x7fff);
     if (strk.byteLength + strv.byteLength + 20 > 0x7fff) {
       throw new RangeError("Key and value are too large for a protocol packet");
     }
