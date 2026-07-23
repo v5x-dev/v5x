@@ -118,6 +118,23 @@ export function reportProgress() {
   return report;
 }
 
+export async function withUploadProgress<T>(
+  upload: (progress: ReturnType<typeof reportProgress>) => Promise<T>,
+): Promise<T> {
+  const progress = reportProgress();
+  const outcome = await upload(progress).then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  try {
+    progress.finish();
+  } catch (error) {
+    if (outcome.ok) throw error;
+  }
+  if (!outcome.ok) throw outcome.error;
+  return outcome.value;
+}
+
 export async function uploadProgram(
   options: UploadOptions,
 ): Promise<WorkflowUploadJson> {
@@ -139,29 +156,29 @@ export async function uploadProgram(
   const bytes = await loadValidatedProgramArtifacts(validated);
 
   await withSelectedV5Device(options, async (device) => {
-    const progress = reportProgress();
-    const uploaded = await device.brain.uploadProgram(
-      config,
-      bytes.hot,
-      bytes.cold,
-      progress,
-    );
-    progress.finish();
-    if (uploaded.isErr()) {
-      throw new Error(
-        formatSerialFailure(
-          "the brain rejected the program upload",
-          uploaded.error,
-        ),
+    await withUploadProgress(async (progress) => {
+      const uploaded = await device.brain.uploadProgram(
+        config,
+        bytes.hot,
+        bytes.cold,
+        progress,
       );
-    }
-    if (!uploaded.value)
-      throw new Error("the brain rejected the program upload");
-    if (options.json !== true) {
-      console.log(
-        `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,
-      );
-    }
+      if (uploaded.isErr()) {
+        throw new Error(
+          formatSerialFailure(
+            "the brain rejected the program upload",
+            uploaded.error,
+          ),
+        );
+      }
+      if (!uploaded.value)
+        throw new Error("the brain rejected the program upload");
+      if (options.json !== true) {
+        console.log(
+          `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,
+        );
+      }
+    });
   });
   const result: WorkflowUploadJson = {
     command: options.command,

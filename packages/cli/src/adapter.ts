@@ -361,15 +361,20 @@ export class WebSerialAdapter extends WebSerialEventTarget implements Serial {
     }
 
     return ports.map(({ path, vendorId, productId, serialNumber }) => {
+      const info: SerialPortInfo = {
+        path,
+        id: serialNumber ?? path,
+        serialNumber,
+        usbVendorId: vendorId ? parseInt(vendorId, 16) : undefined,
+        usbProductId: productId ? parseInt(productId, 16) : undefined,
+      };
       let adapter = this.ports.get(path);
-      if (!adapter) {
-        adapter = new WebSerialPortAdapter(path, {
-          path,
-          id: serialNumber ?? path,
-          serialNumber,
-          usbVendorId: vendorId ? parseInt(vendorId, 16) : undefined,
-          usbProductId: productId ? parseInt(productId, 16) : undefined,
-        });
+      if (
+        !adapter ||
+        (adapter.readable === null &&
+          !serialPortInfoMatches(adapter.getInfo(), info))
+      ) {
+        adapter = new WebSerialPortAdapter(path, info);
         this.ports.set(path, adapter);
       }
       return adapter;
@@ -400,6 +405,19 @@ export class WebSerialAdapter extends WebSerialEventTarget implements Serial {
     if (port) return port;
     throw new Error("No port found matching filters");
   }
+}
+
+function serialPortInfoMatches(
+  current: SerialPortInfo,
+  discovered: SerialPortInfo,
+): boolean {
+  return (
+    current.path === discovered.path &&
+    current.id === discovered.id &&
+    current.serialNumber === discovered.serialNumber &&
+    current.usbVendorId === discovered.usbVendorId &&
+    current.usbProductId === discovered.usbProductId
+  );
 }
 
 export const serial = new WebSerialAdapter();
