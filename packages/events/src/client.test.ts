@@ -248,6 +248,74 @@ describe("Robot", () => {
     ]);
   });
 
+  test("fetches a contiguous page run concurrently and keeps page order", async () => {
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const { client, requests } = createDynamicClient(async ({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      inFlight++;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      // Later pages resolve first, so returning them in page order proves the
+      // results are reassembled by page rather than by completion.
+      await new Promise((resolve) => setTimeout(resolve, (6 - page) * 5));
+      inFlight--;
+      return Response.json({
+        data: [validEvent(page)],
+        meta: {
+          current_page: page,
+          last_page: 5,
+          next_page_url:
+            page < 5 ? `https://example.test/events?page=${page + 1}` : null,
+        },
+      });
+    });
+
+    await expect(client.events.search()).resolves.toEqual([
+      validEvent(1),
+      validEvent(2),
+      validEvent(3),
+      validEvent(4),
+      validEvent(5),
+    ]);
+    expect(requests).toHaveLength(5);
+    expect(peakInFlight).toBeGreaterThan(1);
+  });
+
+  test("honors maxPages while fetching a contiguous run concurrently", async () => {
+    const { client, requests } = createDynamicClient(({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      return Response.json({
+        data: [validEvent(page)],
+        meta: {
+          current_page: page,
+          last_page: 20,
+          next_page_url: `https://example.test/events?page=${page + 1}`,
+        },
+      });
+    });
+
+    await expect(client.events.search({}, { maxPages: 3 })).resolves.toEqual([
+      validEvent(1),
+      validEvent(2),
+      validEvent(3),
+    ]);
+    expect(requests).toHaveLength(3);
+  });
+
+  test("propagates a failure from a concurrently fetched page", async () => {
+    const { client } = createDynamicClient(({ url }) => {
+      const page = Number(url.searchParams.get("page"));
+      if (page === 3)
+        return Response.json({ message: "nope" }, { status: 500 });
+      return Response.json({
+        data: [validEvent(page)],
+        meta: { current_page: page, last_page: 4 },
+      });
+    });
+
+    await expect(client.events.search()).rejects.toThrow(VexEventsApiError);
+  });
+
   test("stops safely when pagination metadata cannot advance", async () => {
     const { client, requests } = createMockClient({
       data: [validEvent()],

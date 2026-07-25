@@ -26,8 +26,6 @@ export class PacketEncoder {
 
   static J2000_EPOCH = 946684800;
 
-  vexVersion = 0;
-
   crcgen = new CrcGenerator();
   allPacketsTable = new Map<
     number,
@@ -159,3 +157,9 @@ export class PacketEncoder {
     return (data[3]! & 0x80) === 0 ? 4 : 5;
   }
 }
+
+// Packet construction reads `Packet.ENCODER` directly, so populate it as soon
+// as this module is reachable. Without this, entry points that expose the
+// packet classes but never pull in the reply registry (`./packet-core.js`)
+// hand out constructors that throw on first use.
+PacketEncoder.getInstance();

@@ -29,7 +29,6 @@ const CRC16_TABLE = genTable16();
 const CRC32_TABLE = genTable32();
 
 export class CrcGenerator {
-  crc32Table: Uint32Array = CRC32_TABLE;
   static POLYNOMIAL_CRC32 = POLYNOMIAL_CRC32;
   static POLYNOMIAL_CRC16 = POLYNOMIAL_CRC16;
 

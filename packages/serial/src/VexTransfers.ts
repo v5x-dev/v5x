@@ -144,24 +144,33 @@ export function listProgram(
 
         const n = new Date();
         n.setTime(1000 * bin.timestamp);
-        const program: IProgramInfo = {
+        programList.push({
           name: programName,
           binfile: bin.filename,
           size: ini.size + bin.size,
           slot: -1,
           time: n,
           requestedSlot: -1,
-        };
+        });
+      }
 
-        const slotInfo = await conn.request(
-          new GetProgramSlotInfoH2DPacket(FileVendor.USER, program.binfile),
-          GetProgramSlotInfoReplyD2HPacket,
-        );
+      // Slot lookups do not depend on each other, so issue them together. The
+      // connection still serializes identical commands internally; this just
+      // removes the round trip between one reply and the next request.
+      const slotInfos = await Promise.all(
+        programList.map((program) =>
+          conn.request(
+            new GetProgramSlotInfoH2DPacket(FileVendor.USER, program.binfile),
+            GetProgramSlotInfoReplyD2HPacket,
+          ),
+        ),
+      );
+      for (let i = 0; i < programList.length; i++) {
+        const slotInfo = slotInfos[i]!;
         if (slotInfo.isOk()) {
-          program.slot = slotInfo.value.slot;
-          program.requestedSlot = slotInfo.value.requestedSlot;
+          programList[i]!.slot = slotInfo.value.slot;
+          programList[i]!.requestedSlot = slotInfo.value.requestedSlot;
         }
-        programList.push(program);
       }
       return ok(programList);
     })(),

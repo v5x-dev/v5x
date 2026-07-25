@@ -109,9 +109,23 @@ export interface VexSerialConnectionEvents {
 /** Default upper bound for a file downloaded from a connected device. */
 export const DEFAULT_MAX_FILE_DOWNLOAD_BYTES = 64 * 1024 * 1024;
 
+/**
+ * Default number of file-transfer chunks kept in flight. Transfer time is
+ * dominated by USB round-trip latency rather than link throughput, so allowing
+ * a few outstanding chunks cuts wall-clock time roughly proportionally.
+ */
+export const DEFAULT_TRANSFER_WINDOW_SIZE = 4;
+
 export interface VexSerialConnectionOptions {
   /** Maximum file size accepted from a caller or device before allocation. */
   maxFileDownloadBytes?: number;
+  /**
+   * How many file-transfer chunks may be outstanding at once. The brain
+   * answers chunk requests in the order it receives them, which is what lets
+   * replies be matched to requests positionally. Set this to 1 to restore
+   * strict lock-step transfers.
+   */
+  transferWindowSize?: number;
 }
 
 /**
@@ -123,6 +137,7 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
 
   serial: Serial;
   readonly maxFileDownloadBytes: number;
+  readonly transferWindowSize: number;
 
   private readonly pendingRequests = new PendingRequestDispatcher();
   private readonly transport: SerialTransport;
@@ -211,6 +226,15 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
       );
     }
     this.maxFileDownloadBytes = maxFileDownloadBytes;
+
+    const transferWindowSize =
+      options.transferWindowSize ?? DEFAULT_TRANSFER_WINDOW_SIZE;
+    if (!Number.isSafeInteger(transferWindowSize) || transferWindowSize <= 0) {
+      throw new VexInvalidArgumentError(
+        "transferWindowSize must be a positive safe integer",
+      );
+    }
+    this.transferWindowSize = transferWindowSize;
   }
 
   /** Report a recovered, non-fatal condition to connection listeners. */
@@ -256,11 +280,20 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     return new ResultAsync(this.transport.open(use, askUser));
   }
 
+  /**
+   * Write a request and resolve with its reply.
+   *
+   * Requests carrying the same command ID are serialized against each other by
+   * default, because reply matching is positional. Pass `pipelined` to opt out
+   * when the caller already owns that command for the duration and wants
+   * several requests outstanding at once; see {@link requestPipelined}.
+   */
   async writeDataAsync(
     rawData: DeviceBoundPacket | Uint8Array,
     timeout: number = 1000,
+    pipelined: boolean = false,
   ): Promise<HostBoundPacket | ArrayBuffer | AckType> {
-    if (rawData instanceof DeviceBoundPacket) {
+    if (rawData instanceof DeviceBoundPacket && !pipelined) {
       return this.pendingRequests.serialize(
         rawData.commandId,
         rawData.commandExtendedId,
@@ -313,20 +346,51 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     timeout: number = 1000,
   ): ResultAsync<T, VexSerialError> {
     return new ResultAsync(
-      (async () => {
-        const result = await this.writeDataAsync(packet, timeout);
-        if (result instanceof ReplyType) return ok(result);
-        if (result === AckType.NOT_CONNECTED) {
-          return err(new VexNotConnectedError());
-        }
+      this.interpretReply(
+        packet,
+        ReplyType,
+        this.writeDataAsync(packet, timeout),
+      ),
+    );
+  }
 
-        return err(
-          new VexProtocolError(
-            expectedReplyMessage(packet, ReplyType, result),
-            typeof result === "number" ? result : undefined,
-          ),
-        );
-      })(),
+  /**
+   * Write a request without waiting for the queue of identical commands to
+   * drain, so a caller can keep several in flight. The bytes are handed to the
+   * writer and the reply callback is enqueued before this returns, which is
+   * what keeps wire order and reply-matching order identical.
+   *
+   * Only safe for a caller that owns the command for the duration, such as a
+   * file transfer holding the transfer queue.
+   */
+  protected requestPipelined<T extends HostBoundPacket>(
+    packet: DeviceBoundPacket,
+    ReplyType: HostBoundPacketType<T>,
+    timeout: number,
+  ): Promise<Result<T, VexSerialError>> {
+    return this.interpretReply(
+      packet,
+      ReplyType,
+      this.writeDataAsync(packet, timeout, true),
+    );
+  }
+
+  private async interpretReply<T extends HostBoundPacket>(
+    packet: DeviceBoundPacket,
+    ReplyType: HostBoundPacketType<T>,
+    reply: Promise<HostBoundPacket | ArrayBuffer | AckType>,
+  ): Promise<Result<T, VexSerialError>> {
+    const result = await reply;
+    if (result instanceof ReplyType) return ok(result);
+    if (result === AckType.NOT_CONNECTED) {
+      return err(new VexNotConnectedError());
+    }
+
+    return err(
+      new VexProtocolError(
+        expectedReplyMessage(packet, ReplyType, result),
+        typeof result === "number" ? result : undefined,
+      ),
     );
   }
 
@@ -604,6 +668,10 @@ export class V5SerialConnection extends VexSerialConnection {
       let bufferOffset = 0;
       const fileBuf = new Uint8Array(fileSize);
 
+      // Reads stay lock-step. The device may answer with fewer bytes than were
+      // asked for, and every later read is addressed relative to where the
+      // previous one actually ended, so the next request cannot be formed
+      // until this reply lands.
       while (bufferOffset < fileSize) {
         const remainingSize = fileSize - bufferOffset;
         const chunkSize = Math.min(bufferChunkSize, remainingSize);
@@ -721,35 +789,54 @@ export class V5SerialConnection extends VexSerialConnection {
         if (p3Result.isErr()) throw p3Result.error;
       }
 
-      while (!lastBlock) {
-        let tmpbuf;
-        if (buf.byteLength - bufferOffset > bufferChunkSize) {
-          tmpbuf = buf.subarray(bufferOffset, bufferOffset + bufferChunkSize);
-        } else {
-          // last chunk
-          // word align length
-          const length = ((buf.byteLength - bufferOffset + 3) / 4) >>> 0;
-          tmpbuf = new Uint8Array(length * 4);
-          tmpbuf.set(buf.subarray(bufferOffset, buf.byteLength));
-          lastBlock = true;
+      // Chunks are written with several outstanding at once: each reply only
+      // acknowledges its own write, so the next chunk does not depend on it.
+      // Replies are awaited in send order, and the first failure stops the
+      // transfer before any further chunk is queued.
+      const inFlight: Array<
+        Promise<Result<WriteFileReplyD2HPacket, VexSerialError>>
+      > = [];
+      let acknowledgedBytes = 0;
+
+      while (!lastBlock || inFlight.length > 0) {
+        while (!lastBlock && inFlight.length < this.transferWindowSize) {
+          let tmpbuf;
+          if (buf.byteLength - bufferOffset > bufferChunkSize) {
+            tmpbuf = buf.subarray(bufferOffset, bufferOffset + bufferChunkSize);
+          } else {
+            // Last chunk: pad up to a word boundary.
+            const remaining = buf.byteLength - bufferOffset;
+            tmpbuf = new Uint8Array((remaining + 3) & ~3);
+            tmpbuf.set(buf.subarray(bufferOffset, buf.byteLength));
+            lastBlock = true;
+          }
+
+          inFlight.push(
+            this.requestPipelined(
+              new WriteFileH2DPacket(nextAddress, tmpbuf),
+              WriteFileReplyD2HPacket,
+              3000,
+            ),
+          );
+
+          // next chunk
+          bufferOffset += bufferChunkSize;
+          nextAddress += bufferChunkSize;
         }
 
-        const p2Result = await this.request(
-          new WriteFileH2DPacket(nextAddress, tmpbuf),
-          WriteFileReplyD2HPacket,
-          3000,
-        );
+        const p2Result = await inFlight.shift()!;
+        if (p2Result.isErr()) {
+          // Let the writes still outstanding settle before unwinding, so their
+          // replies cannot be matched against a later transfer's requests.
+          await Promise.allSettled(inFlight);
+          throw p2Result.error;
+        }
 
-        if (p2Result.isErr()) throw p2Result.error;
-
-        // next chunk
-        bufferOffset += bufferChunkSize;
-        nextAddress += bufferChunkSize;
-
-        progressCallback?.(
-          Math.min(bufferOffset, buf.byteLength),
+        acknowledgedBytes = Math.min(
+          acknowledgedBytes + bufferChunkSize,
           buf.byteLength,
         );
+        progressCallback?.(acknowledgedBytes, buf.byteLength);
       }
 
       result = ok(true);

@@ -8,12 +8,28 @@ export abstract class Packet {
   /** Raw bytes sent to or received from the device. */
   data: Uint8Array;
 
-  static ENCODER: PacketEncoder;
+  /**
+   * Assigned when `./VexPacketEncoder.js` is evaluated. Loading this module
+   * alone leaves it unset, so every read goes through {@link requireEncoder}
+   * rather than assuming the slot is populated.
+   */
+  static ENCODER: PacketEncoder | undefined;
 
   constructor(rawData: DataArray) {
     this.data =
       rawData instanceof ArrayBuffer ? new Uint8Array(rawData) : rawData;
   }
+}
+
+function requireEncoder(): PacketEncoder {
+  const encoder = Packet.ENCODER;
+  if (encoder === undefined) {
+    throw new Error(
+      "the packet encoder is not initialized; import @v5x/serial or " +
+        "@v5x/serial/packet-core before constructing packets",
+    );
+  }
+  return encoder;
 }
 
 export class DeviceBoundPacket extends Packet {
@@ -31,7 +47,7 @@ export class DeviceBoundPacket extends Packet {
   constructor(payload?: Uint8Array) {
     const { COMMAND_ID: cmd, COMMAND_EXTENDED_ID: ext } =
       new.target as typeof DeviceBoundPacket;
-    const encoder = Packet.ENCODER;
+    const encoder = requireEncoder();
     super(
       ext === undefined
         ? payload === undefined
@@ -54,8 +70,9 @@ export class HostBoundPacket extends Packet {
 
   constructor(data: DataArray) {
     super(data);
-    this.payloadSize = Packet.ENCODER.getPayloadSize(this.data);
-    this.ackIndex = Packet.ENCODER.getHostHeaderLength(this.data) + 1;
+    const encoder = requireEncoder();
+    this.payloadSize = encoder.getPayloadSize(this.data);
+    this.ackIndex = encoder.getHostHeaderLength(this.data) + 1;
     this.ack = this.data[this.ackIndex]!;
   }
 
