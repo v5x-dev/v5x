@@ -207,11 +207,18 @@ class V5WebClient implements V5Client {
       }
 
       if (result.isErr()) {
+        const cause = result.error;
         this.device = null;
         await this.disposeDevice(device);
         this.setState(
           "error",
-          new V5WebError("connect-failed", "V5 device connection failed."),
+          new V5WebError(
+            "connect-failed",
+            cause.message === ""
+              ? "V5 device connection failed."
+              : cause.message,
+            cause,
+          ),
           null,
         );
         return false;

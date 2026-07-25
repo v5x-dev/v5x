@@ -573,9 +573,10 @@ describe("createV5Client", () => {
   });
 
   test("failed connect reports the error from the result channel", async () => {
+    const connectError = new VexSerialError("io", "serial exploded");
     const client = createClient({
       autoRefresh: true,
-      connect: () => errAsync(new VexSerialError("io", "serial exploded")),
+      connect: () => errAsync(connectError),
       disconnect: async () => {},
       refresh: () => okAsync(true),
     });
@@ -586,6 +587,45 @@ describe("createV5Client", () => {
     expect(connected).toBe(false);
     expect(error).toBeInstanceOf(V5WebError);
     expect(error?.code).toBe("connect-failed");
+    expect(error?.message).toBe("serial exploded");
+    expect(error?.cause).toBe(connectError);
+  });
+
+  test("returned connect errors without a message keep the fallback text", async () => {
+    const connectError = new VexSerialError("io", "");
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => errAsync(connectError),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    });
+
+    expect(await client.connect()).toBe(false);
+    const error = client.getSnapshot().error;
+
+    expect(error?.code).toBe("connect-failed");
+    expect(error?.message).toBe("V5 device connection failed.");
+    expect(error?.cause).toBe(connectError);
+  });
+
+  test("thrown connect failures keep connect-error and retain the cause", async () => {
+    const thrown = new VexSerialError("io", "permission denied");
+    const client = createClient({
+      autoRefresh: true,
+      connect: () => {
+        throw thrown;
+      },
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    });
+
+    expect(await client.connect()).toBe(false);
+    const error = client.getSnapshot().error;
+
+    expect(error).toBeInstanceOf(V5WebError);
+    expect(error?.code).toBe("connect-error");
+    expect(error?.message).toBe("permission denied");
+    expect(error?.cause).toBe(thrown);
   });
 
   test("refresh result errors detach and dispose the stale device", async () => {
