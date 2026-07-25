@@ -668,6 +668,105 @@ test("upload progress advances with each acknowledged chunk", async () => {
   ]);
 });
 
+test("uploads keep several chunks in flight up to the transfer window", async () => {
+  const connection = new V5SerialConnection({} as Serial, {
+    transferWindowSize: 3,
+  });
+  let inFlight = 0;
+  let peakInFlight = 0;
+  connection.writeDataAsync = async (packet) => {
+    if (packet instanceof InitFileTransferH2DPacket) return initReply(2, 0);
+    if (!(packet instanceof WriteFileH2DPacket)) {
+      return protocolReply(ExitFileTransferReplyD2HPacket);
+    }
+    inFlight++;
+    peakInFlight = Math.max(peakInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    inFlight--;
+    return protocolReply(WriteFileReplyD2HPacket);
+  };
+
+  // Ten bytes at the two-byte chunk size the init reply advertises: five
+  // chunks, so the three-deep window is filled and refilled.
+  const result = await connection.uploadFileToDevice({
+    filename: "f.bin",
+    buf: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+    autoRun: false,
+  });
+
+  expect(result._unsafeUnwrap()).toBe(true);
+  expect(peakInFlight).toBe(3);
+});
+
+test("a transfer window of 1 keeps uploads strictly lock-step", async () => {
+  const connection = new V5SerialConnection({} as Serial, {
+    transferWindowSize: 1,
+  });
+  let inFlight = 0;
+  let peakInFlight = 0;
+  connection.writeDataAsync = async (packet) => {
+    if (packet instanceof InitFileTransferH2DPacket) return initReply(2, 0);
+    if (!(packet instanceof WriteFileH2DPacket)) {
+      return protocolReply(ExitFileTransferReplyD2HPacket);
+    }
+    inFlight++;
+    peakInFlight = Math.max(peakInFlight, inFlight);
+    await Promise.resolve();
+    inFlight--;
+    return protocolReply(WriteFileReplyD2HPacket);
+  };
+
+  const result = await connection.uploadFileToDevice({
+    filename: "f.bin",
+    buf: new Uint8Array([1, 2, 3, 4, 5, 6]),
+    downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+    autoRun: false,
+  });
+
+  expect(result._unsafeUnwrap()).toBe(true);
+  expect(peakInFlight).toBe(1);
+});
+
+test("a failed chunk waits for outstanding writes before unwinding", async () => {
+  const connection = new V5SerialConnection({} as Serial, {
+    transferWindowSize: 4,
+  });
+  let settledWrites = 0;
+  let writeNumber = 0;
+  connection.writeDataAsync = async (packet) => {
+    if (packet instanceof InitFileTransferH2DPacket) return initReply(2, 0);
+    if (!(packet instanceof WriteFileH2DPacket)) {
+      return protocolReply(ExitFileTransferReplyD2HPacket);
+    }
+    const failing = ++writeNumber === 1;
+    await new Promise((resolve) => setTimeout(resolve, failing ? 0 : 5));
+    settledWrites++;
+    return failing ? AckType.CDC2_NACK : protocolReply(WriteFileReplyD2HPacket);
+  };
+
+  const result = await connection.uploadFileToDevice({
+    filename: "f.bin",
+    buf: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+    downloadTarget: FileDownloadTarget.FILE_TARGET_QSPI,
+    autoRun: false,
+  });
+
+  expect(result.isErr()).toBe(true);
+  // The chunks queued behind the failure resolved rather than being abandoned
+  // with their replies still outstanding.
+  expect(settledWrites).toBe(writeNumber);
+});
+
+test("rejects a non-positive transfer window", () => {
+  expect(
+    () => new V5SerialConnection({} as Serial, { transferWindowSize: 0 }),
+  ).toThrow("transferWindowSize");
+  expect(
+    () => new V5SerialConnection({} as Serial, { transferWindowSize: 1.5 }),
+  ).toThrow("transferWindowSize");
+});
+
 test("removeFile fails when the exit reply is not acknowledged", async () => {
   const connection = new V5SerialConnection({} as Serial);
   connection.writeDataAsync = async (packet) => {

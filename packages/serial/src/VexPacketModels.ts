@@ -15,7 +15,7 @@ import {
   type SelectDashScreen,
 } from "./Vex.js";
 import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
-import { DeviceBoundPacket, HostBoundPacket, Packet } from "./VexPacketBase.js";
+import { DeviceBoundPacket, HostBoundPacket } from "./VexPacketBase.js";
 import { PacketEncoder, encodeFixedText } from "./VexPacketEncoder.js";
 
 /** Encode `[vendor/first byte, options/second byte, 24-byte filename field]`. */
@@ -103,7 +103,7 @@ export class InitFileTransferH2DPacket extends DeviceBoundPacket {
     view.setUint32(
       12,
       operation === FileInitAction.WRITE
-        ? Packet.ENCODER.crcgen.crc32(binary, 0)
+        ? PacketEncoder.getInstance().crcgen.crc32(binary, 0)
         : 0,
       true,
     );

@@ -21,6 +21,7 @@ import type {
   ListTeamsOptions,
   ListTeamSkillsOptions,
   Match,
+  PaginatedResponse,
   Program,
   Ranking,
   Season,
@@ -45,6 +46,13 @@ const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30_000;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
 const RETRY_AFTER_STATUSES = new Set([429, 503]);
+const PER_PAGE = 250;
+/**
+ * How many pages a list method fetches at once once the page count is known.
+ * Kept small so walking a large result set stays well clear of the API's rate
+ * limit, which costs a retry round trip and erases the gain.
+ */
+const PAGE_CONCURRENCY = 4;
 
 type QueryValue = DateInput | boolean | number | readonly (number | string)[];
 type QueryEntry = readonly [name: string, value: QueryValue | undefined];
@@ -190,6 +198,39 @@ export interface SeasonsResource {
     options?: ListSeasonEventsOptions,
     request?: RequestOptions,
   ): Promise<Event[]>;
+}
+
+/**
+ * Runs `map` over `items` with at most `limit` in flight, resolving to the
+ * results in input order. The first rejection propagates and no further items
+ * are started, matching the fail-fast behavior of a sequential walk.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  map: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  let failed = false;
+
+  const worker = async (): Promise<void> => {
+    while (!failed) {
+      const index = next++;
+      if (index >= items.length) return;
+      try {
+        results[index] = await map(items[index]!);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
 }
 
 function isUsablePage(value: number | undefined): value is number {
@@ -519,18 +560,17 @@ export class Robot {
     }
 
     const data: T[] = [];
-    const visitedPages = new Set<number>();
+    const visitedPages = new Set<number>([1]);
     let page = 1;
+    let response = await this.requestPage(
+      path,
+      query,
+      options,
+      validateItem,
+      1,
+    );
 
-    while (!visitedPages.has(page)) {
-      if (maxPages !== undefined && visitedPages.size >= maxPages) break;
-      visitedPages.add(page);
-      const response = await this.request(
-        path,
-        [["page", page], ["per_page", 250], ...query],
-        options,
-        paginated(validateItem),
-      );
+    for (let isFirstPage = true; ; isFirstPage = false) {
       data.push(...response.data);
 
       const reportedCurrentPage = isUsablePage(response.meta.current_page)
@@ -541,23 +581,75 @@ export class Robot {
       if (isUsablePage(lastPage) && currentPage >= lastPage) break;
 
       const linkedPage = pageFromUrl(response.meta.next_page_url);
+      let nextPage: number | undefined;
       if (
         linkedPage !== undefined &&
         linkedPage > currentPage &&
         (!isUsablePage(lastPage) || linkedPage <= lastPage)
       ) {
-        page = linkedPage;
-        continue;
+        nextPage = linkedPage;
+      } else if (isUsablePage(lastPage) && currentPage < lastPage) {
+        nextPage = currentPage + 1;
+      }
+      if (nextPage === undefined) break;
+
+      // When the first response reports a page count and links straight to the
+      // next page, the rest of the result set is a contiguous run of
+      // independent requests rather than a chain, so it can be fetched
+      // concurrently. A chain that skips pages stays a one-hop-at-a-time walk,
+      // because only the previous response reveals where it goes next.
+      if (
+        isFirstPage &&
+        isUsablePage(lastPage) &&
+        nextPage === currentPage + 1
+      ) {
+        const budget =
+          maxPages === undefined ? Infinity : maxPages - visitedPages.size;
+        const limit = Math.min(lastPage, nextPage + budget - 1);
+        const pages: number[] = [];
+        for (let next = nextPage; next <= limit; next++) pages.push(next);
+
+        const pageData = await mapWithConcurrency(
+          pages,
+          PAGE_CONCURRENCY,
+          (next) =>
+            this.requestPage(path, query, options, validateItem, next).then(
+              (page) => page.data,
+            ),
+        );
+        for (const items of pageData) data.push(...items);
+        break;
       }
 
-      if (isUsablePage(lastPage) && currentPage < lastPage) {
-        page = currentPage + 1;
-        continue;
-      }
-      break;
+      if (visitedPages.has(nextPage)) break;
+      if (maxPages !== undefined && visitedPages.size >= maxPages) break;
+      visitedPages.add(nextPage);
+      page = nextPage;
+      response = await this.requestPage(
+        path,
+        query,
+        options,
+        validateItem,
+        page,
+      );
     }
 
     return data;
+  }
+
+  private requestPage<T>(
+    path: string,
+    query: readonly QueryEntry[],
+    options: RequestOptions | undefined,
+    validateItem: Validator<T>,
+    page: number,
+  ): Promise<PaginatedResponse<T>> {
+    return this.request(
+      path,
+      [["page", page], ["per_page", PER_PAGE], ...query],
+      options,
+      paginated(validateItem),
+    );
   }
 
   private async request<T>(

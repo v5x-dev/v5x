@@ -44,9 +44,35 @@ function verifyRegistry(module: BuiltSerialModule, format: string): void {
   }
 }
 
+interface BuiltPacketCoreModule {
+  PacketEncoder: PacketEncoderConstructor;
+  HostBoundPacket: new (data: Uint8Array) => unknown;
+}
+
+/**
+ * The `packet-core` entry exposes the packet classes without the reply
+ * registry, so it has its own way to leave `Packet.ENCODER` unpopulated.
+ * Construct a packet to prove the encoder is wired up on this path too.
+ */
+function verifyPacketCore(module: BuiltPacketCoreModule, format: string): void {
+  try {
+    new module.HostBoundPacket(Uint8Array.of(170, 85, 0, 0, 0));
+  } catch (error) {
+    throw new Error(
+      `${format} packet-core bundle cannot construct a packet: ${String(error)}`,
+    );
+  }
+}
+
 const esm = (await import("../dist/index.js")) as BuiltSerialModule;
+const esmPacketCore =
+  (await import("../dist/packet-core.js")) as BuiltPacketCoreModule;
 const require = createRequire(import.meta.url);
 const cjs = require("../dist/index.cjs") as BuiltSerialModule;
+const cjsPacketCore =
+  require("../dist/packet-core.cjs") as BuiltPacketCoreModule;
 
 verifyRegistry(esm, "ESM");
 verifyRegistry(cjs, "CommonJS");
+verifyPacketCore(esmPacketCore, "ESM");
+verifyPacketCore(cjsPacketCore, "CommonJS");
