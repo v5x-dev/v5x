@@ -126,6 +126,29 @@ test("selected serial adapter honors filters without falling back", async () => 
   ).rejects.toThrow("No port found matching console");
 });
 
+test("selected serial adapter forwards connect and disconnect events", async () => {
+  const delegate = new FakeSerial([]);
+  const selected = selectSerialPort(delegate, "brain-a");
+  const seen: string[] = [];
+
+  // Auto-reconnect subscribes with addEventListener; the CLI-facing handler
+  // properties must observe the same events.
+  selected.addEventListener("connect", () => seen.push("listener:connect"));
+  selected.onconnect = () => seen.push("handler:connect");
+  selected.ondisconnect = () => seen.push("handler:disconnect");
+
+  delegate.dispatchEvent(new Event("connect"));
+  delegate.dispatchEvent(new Event("disconnect"));
+
+  // The base class registers its handler dispatcher in the constructor, so it
+  // precedes listeners the caller adds later.
+  expect(seen).toEqual([
+    "handler:connect",
+    "listener:connect",
+    "handler:disconnect",
+  ]);
+});
+
 test("disposes a device when connecting fails", async () => {
   let disposed = false;
   const device = {

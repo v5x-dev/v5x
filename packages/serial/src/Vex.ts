@@ -78,6 +78,30 @@ export type DataArray = ArrayBuffer | Uint8Array;
 
 export type MatchMode = "driver" | "autonomous" | "disabled";
 
+/** The subset of Web Serial port info that filters are matched against. */
+export interface UsbDeviceIdentity {
+  usbVendorId?: number | undefined;
+  usbProductId?: number | undefined;
+}
+
+/**
+ * Web Serial filter semantics: a port matches when any one filter matches, and
+ * a filter matches when every id it specifies equals the port's. A filter that
+ * specifies nothing matches every port.
+ */
+export function matchesUsbFilters(
+  info: UsbDeviceIdentity,
+  filters: readonly UsbDeviceIdentity[],
+): boolean {
+  return filters.some(
+    (filter) =>
+      (filter.usbVendorId === undefined ||
+        filter.usbVendorId === info.usbVendorId) &&
+      (filter.usbProductId === undefined ||
+        filter.usbProductId === info.usbProductId),
+  );
+}
+
 export enum FileVendor {
   // a.k.a vid
   USER = 1,

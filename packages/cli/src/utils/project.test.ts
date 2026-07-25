@@ -109,6 +109,22 @@ test("does not upload an unrelated binary from the project tree", async () => {
   expect(findProgramArtifact(project)).rejects.toThrow("pass --file");
 });
 
+test("discovers real Cargo layouts without walking the build cache", async () => {
+  const root = await temporaryDirectory();
+  const custom = join(root, "armv7a-vex-v5", "custom-profile");
+  const buildCache = join(root, "debug", "deps", "nested", "deep");
+
+  await mkdir(custom, { recursive: true });
+  await mkdir(buildCache, { recursive: true });
+  await writeFile(join(custom, "robot.bin"), "artifact");
+  // Written last, so it is the newest: a deep walk would select this instead.
+  await writeFile(join(buildCache, "robot.bin"), "build cache copy");
+
+  expect(await newestNamedBinary(root, "robot")).toBe(
+    join(custom, "robot.bin"),
+  );
+});
+
 test("stats large artifact candidate sets concurrently and resolves ties deterministically", async () => {
   const root = resolve("/synthetic/target");
   const relativePaths = Array.from(

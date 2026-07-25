@@ -1,4 +1,5 @@
 import type { SerialPort as BunSerialPortRaw } from "bun-serialport";
+import { matchesUsbFilters } from "@v5x/serial";
 import { readdir, realpath, readlink } from "node:fs/promises";
 import { join } from "node:path";
 import { platform } from "node:os";
@@ -70,7 +71,12 @@ const linuxDiscoveryOperations: LinuxDiscoveryOperations = {
 
 type SerialEventHandler = ((event: Event) => void) | null;
 
-class WebSerialEventTarget extends EventTarget {
+/**
+ * Base for the adapters, wiring the `onconnect`/`ondisconnect` handler
+ * properties Web Serial exposes to the underlying events so that assigning one
+ * actually subscribes.
+ */
+export class WebSerialEventTarget extends EventTarget {
   private connectHandler: SerialEventHandler = null;
   private disconnectHandler: SerialEventHandler = null;
 
@@ -392,16 +398,9 @@ export class WebSerialAdapter extends WebSerialEventTarget implements Serial {
       throw new Error("No port found");
     }
 
-    const port = ports.find((candidate) => {
-      const info = candidate.getInfo();
-      return filters.some(
-        (filter) =>
-          (filter.usbVendorId === undefined ||
-            filter.usbVendorId === info.usbVendorId) &&
-          (filter.usbProductId === undefined ||
-            filter.usbProductId === info.usbProductId),
-      );
-    });
+    const port = ports.find((candidate) =>
+      matchesUsbFilters(candidate.getInfo(), filters),
+    );
     if (port) return port;
     throw new Error("No port found matching filters");
   }

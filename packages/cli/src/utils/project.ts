@@ -169,10 +169,23 @@ export interface BinaryDiscoveryOperations {
   scan(root: string, name: string): AsyncIterable<string>;
 }
 
+/**
+ * Cargo writes binaries to `target/<profile>/` and `target/<triple>/<profile>/`,
+ * so only those two depths can hold a program artifact. Globbing `**` instead
+ * walks `deps/`, `build/`, `.fingerprint/`, and the incremental cache, which
+ * hold nearly every file in a warm target directory and none of the candidates.
+ */
+const CARGO_ARTIFACT_PREFIXES = ["*", "*/*"];
+
 const binaryDiscoveryOperations: BinaryDiscoveryOperations = {
   stat,
-  scan(root, name) {
-    return new Bun.Glob(`**/${name}.bin`).scan({ cwd: root, onlyFiles: true });
+  async *scan(root, name) {
+    for (const prefix of CARGO_ARTIFACT_PREFIXES) {
+      yield* new Bun.Glob(`${prefix}/${name}.bin`).scan({
+        cwd: root,
+        onlyFiles: true,
+      });
+    }
   },
 };
 
@@ -188,6 +201,13 @@ function newestCandidate(
     )[0]?.path;
 }
 
+/**
+ * Find the most recently modified `<name>.bin` under a Cargo target directory,
+ * preferring nothing: the newest candidate always wins so that a stale
+ * conventional artifact never shadows a fresh build in another profile.
+ * Discovery is bounded to the depths Cargo actually writes to; pass `--file`
+ * for an artifact stored somewhere else.
+ */
 export async function newestNamedBinary(
   root: string,
   name: string,

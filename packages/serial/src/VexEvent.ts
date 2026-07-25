@@ -41,11 +41,10 @@ export class VexEventEmitter<
     const listeners = this.handlerMap.get(eventName);
     if (listeners === undefined || listeners.length === 0) return;
 
-    if (listeners.length === 1) {
-      listeners[0]!(data);
-      return;
-    }
-
+    // Every listener runs before any failure is rethrown, whatever the
+    // listener count. A fast path that let a lone listener throw directly
+    // would make isolation depend on how many other listeners happened to be
+    // registered.
     const errors: unknown[] = [];
     for (const callback of [...listeners]) {
       try {

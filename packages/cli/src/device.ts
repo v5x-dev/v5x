@@ -1,6 +1,11 @@
-import { V5SerialDevice } from "@v5x/serial";
+import { matchesUsbFilters, V5SerialDevice } from "@v5x/serial";
 import { basename } from "node:path";
-import { serial, type Serial, type SerialPort } from "./adapter";
+import {
+  serial,
+  WebSerialEventTarget,
+  type Serial,
+  type SerialPort,
+} from "./adapter";
 import { requireOptionValue } from "./utils/guards";
 import { CliError, CLI_EXIT_CODE } from "./errors";
 
@@ -46,15 +51,23 @@ export function matchesPortSelector(
   return portIdentifiers(port).includes(selector);
 }
 
-class SelectedSerialAdapter extends EventTarget implements Serial {
-  onconnect: (event: Event) => void = () => {};
-  ondisconnect: (event: Event) => void = () => {};
+const FORWARDED_SERIAL_EVENTS = ["connect", "disconnect"] as const;
 
+class SelectedSerialAdapter extends WebSerialEventTarget implements Serial {
   constructor(
     private readonly delegate: Serial,
     private readonly selector: string,
   ) {
     super();
+    // Auto-reconnect waits on the Serial-level `connect` event, so an adapter
+    // that only narrowed getPorts() would leave a `--port` device waiting
+    // forever after a replug. The listeners live as long as this adapter,
+    // which the CLI creates once per command.
+    for (const type of FORWARDED_SERIAL_EVENTS) {
+      this.delegate.addEventListener(type, () => {
+        this.dispatchEvent(new Event(type));
+      });
+    }
   }
 
   async getPorts(): Promise<SerialPort[]> {
@@ -71,14 +84,7 @@ class SelectedSerialAdapter extends EventTarget implements Serial {
     const port = ports.find((candidate) => {
       if (candidate.readable !== null) return false;
       if (!filters?.length) return true;
-      const info = candidate.getInfo();
-      return filters.some(
-        (filter) =>
-          (filter.usbVendorId === undefined ||
-            filter.usbVendorId === info.usbVendorId) &&
-          (filter.usbProductId === undefined ||
-            filter.usbProductId === info.usbProductId),
-      );
+      return matchesUsbFilters(candidate.getInfo(), filters);
     });
     if (port) return port;
     throw new CliError(

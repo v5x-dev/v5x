@@ -5,6 +5,7 @@ import {
 } from "./VexError.js";
 import { err, ok, type Result } from "neverthrow";
 import { ReaderClosedError } from "./ReaderClosedError.js";
+import { matchesUsbFilters } from "./Vex.js";
 
 export type SerialTransportOpenResult = "opened" | "busy" | "no-port";
 
@@ -114,16 +115,7 @@ export class SerialTransport {
       filters = this.getFilters();
       serial = this.getSerial();
       ports = (await serial.getPorts())
-        .filter((port) => {
-          const info = port.getInfo();
-          return filters.some(
-            (filter) =>
-              (filter.usbVendorId === undefined ||
-                filter.usbVendorId === info.usbVendorId) &&
-              (filter.usbProductId === undefined ||
-                filter.usbProductId === info.usbProductId),
-          );
-        })
+        .filter((port) => matchesUsbFilters(port.getInfo(), filters))
         .filter((candidate) => candidate.readable === null);
     } catch (error) {
       return err(toVexSerialError(error, "io"));

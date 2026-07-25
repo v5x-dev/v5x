@@ -1,4 +1,5 @@
 import type { IPacketCallback } from "./Vex.js";
+import { TailQueue } from "./TailQueue.js";
 
 interface PendingPacketCallback extends IPacketCallback {
   active: boolean;
@@ -19,7 +20,7 @@ export class PendingRequestDispatcher {
     head: undefined,
     tail: undefined,
   };
-  private pendingCommandTails = new Map<string, Promise<void>>();
+  private pendingCommandTails = new Map<string, TailQueue>();
 
   get callbacks(): IPacketCallback[] {
     const callbacks: IPacketCallback[] = [];
@@ -50,19 +51,18 @@ export class PendingRequestDispatcher {
     operation: () => Promise<T>,
   ): Promise<T> {
     const key = this.key(commandId, commandExtendedId);
-    const previous = this.pendingCommandTails.get(key) ?? Promise.resolve();
-    let release = (): void => {};
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.pendingCommandTails.set(key, current);
+    let queue = this.pendingCommandTails.get(key);
+    if (queue === undefined) {
+      queue = new TailQueue();
+      this.pendingCommandTails.set(key, queue);
+    }
 
-    await previous;
     try {
-      return await operation();
+      return await queue.run(operation);
     } finally {
-      release();
-      if (this.pendingCommandTails.get(key) === current) {
+      // Later callers enqueue synchronously, so an inactive queue here has no
+      // successor waiting and can be dropped rather than retained per command.
+      if (!queue.isActive && this.pendingCommandTails.get(key) === queue) {
         this.pendingCommandTails.delete(key);
       }
     }

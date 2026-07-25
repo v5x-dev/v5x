@@ -25,8 +25,10 @@ export async function runPacketReader({
   let sliceIdx = 0;
   for (;;)
     try {
-      await readData(cache, 5);
+      // Reset before any await so that a read failure cannot make `finally`
+      // discard the previous iteration's already-consumed byte count twice.
       sliceIdx = 0;
+      await readData(cache, 5);
 
       while (!encoder.validateHeader(cache.bytes)) {
         const bytes = cache.bytes;

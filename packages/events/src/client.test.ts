@@ -522,6 +522,82 @@ describe("Robot", () => {
     ]);
   });
 
+  test("retries a 503 that advertises Retry-After", async () => {
+    let attempts = 0;
+    const mockFetch: Fetch = async () => {
+      if (attempts++ === 0) {
+        return Response.json(
+          { message: "Service Unavailable" },
+          { status: 503, headers: { "retry-after": "0" } },
+        );
+      }
+      return Response.json({
+        data: [validEvent(1)],
+        meta: { current_page: 1, last_page: 1 },
+      });
+    };
+    const client = new Robot({
+      token: "token",
+      fetch: mockFetch,
+      retry: { maxAttempts: 2 },
+    });
+
+    await expect(client.events.search()).resolves.toEqual([validEvent(1)]);
+    expect(attempts).toBe(2);
+  });
+
+  test("does not retry a status the API gives no Retry-After for", async () => {
+    let attempts = 0;
+    const mockFetch: Fetch = async () => {
+      attempts++;
+      return Response.json({ message: "Server Error" }, { status: 500 });
+    };
+    const client = new Robot({
+      token: "token",
+      fetch: mockFetch,
+      retry: { maxAttempts: 3 },
+    });
+
+    await expect(client.events.search()).rejects.toBeInstanceOf(
+      VexEventsApiError,
+    );
+    expect(attempts).toBe(1);
+  });
+
+  test("maxPages bounds an otherwise unbounded page walk", async () => {
+    const requests: URL[] = [];
+    const mockFetch: Fetch = async (input) => {
+      const url = toUrl(input);
+      requests.push(url);
+      const page = Number(url.searchParams.get("page"));
+      return Response.json({
+        data: [validEvent(page)],
+        meta: { current_page: page, last_page: 500 },
+      });
+    };
+    const client = new Robot({ token: "token", fetch: mockFetch });
+
+    await expect(client.events.search({}, { maxPages: 3 })).resolves.toEqual([
+      validEvent(1),
+      validEvent(2),
+      validEvent(3),
+    ]);
+    expect(requests).toHaveLength(3);
+  });
+
+  test.each([0, -1, 1.5, Number.NaN])(
+    "rejects invalid maxPages %p",
+    async (maxPages) => {
+      const { client } = createMockClient({
+        data: [],
+        meta: { current_page: 1, last_page: 1 },
+      });
+      await expect(
+        client.events.search({}, { maxPages }),
+      ).rejects.toBeInstanceOf(RangeError);
+    },
+  );
+
   test("honors abort signals while waiting to retry a page", async () => {
     const controller = new AbortController();
     let attempts = 0;

@@ -51,6 +51,13 @@ type QueryEntry = readonly [name: string, value: QueryValue | undefined];
 
 export interface RequestOptions {
   signal?: AbortSignal;
+  /**
+   * Upper bound on how many pages a list method fetches before returning what
+   * it has. List methods otherwise walk every page the API reports, which is
+   * an unbounded sequential fetch for a large result set. Must be a positive
+   * integer when provided.
+   */
+  maxPages?: number;
 }
 
 export type Fetch = (
@@ -80,9 +87,9 @@ export interface VexEventsClientOptions {
   /** Additional headers included with every request. */
   headers?: Readonly<Record<string, string>>;
   /**
-   * Opt in to retrying rate-limited (429) requests after the delay the API
-   * advertises through Retry-After. Requests still honor abort signals while
-   * waiting. Disabled when omitted.
+   * Opt in to retrying rate-limited (429) and unavailable (503) requests after
+   * the delay the API advertises through Retry-After. Requests still honor
+   * abort signals while waiting. Disabled when omitted.
    */
   retry?: RetryOptions;
 }
@@ -201,12 +208,19 @@ function pageFromUrl(value: string | null | undefined): number | undefined {
   }
 }
 
+/**
+ * The API exposes no cancellation flag, so the event name is the only
+ * available signal. This necessarily misses cancellations that are not
+ * spelled out in the name.
+ */
+const CANCELLED_EVENT_NAME = /cancelled|canceled/i;
+
 function filterCancelledEvents(
   events: Event[],
   includeCancelled: boolean | undefined,
 ): Event[] {
   if (includeCancelled !== false) return events;
-  return events.filter((event) => !/cancelled|canceled/i.test(event.name));
+  return events.filter((event) => !CANCELLED_EVENT_NAME.test(event.name));
 }
 
 function serializeDate(value: DateInput): string {
@@ -496,11 +510,20 @@ export class Robot {
     options: RequestOptions | undefined,
     validateItem: Validator<T>,
   ): Promise<T[]> {
+    const maxPages = options?.maxPages;
+    if (
+      maxPages !== undefined &&
+      (!Number.isInteger(maxPages) || maxPages <= 0)
+    ) {
+      throw new RangeError("maxPages must be a positive integer");
+    }
+
     const data: T[] = [];
     const visitedPages = new Set<number>();
     let page = 1;
 
     while (!visitedPages.has(page)) {
+      if (maxPages !== undefined && visitedPages.size >= maxPages) break;
       visitedPages.add(page);
       const response = await this.request(
         path,
@@ -560,7 +583,7 @@ export class Robot {
         if (
           attempt >= maxAttempts ||
           !(error instanceof VexEventsApiError) ||
-          error.status !== 429
+          !RETRY_AFTER_STATUSES.has(error.status)
         ) {
           throw error;
         }
