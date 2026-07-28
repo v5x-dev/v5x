@@ -1,7 +1,7 @@
 import { readdir, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import type { NativePortDescriptor } from "./backend.js";
-import { mapWithConcurrency } from "./concurrency.js";
+import { mapWithConcurrency } from "@v5x/internal/concurrency";
 
 export type UsbAttributes = Pick<
   NativePortDescriptor,

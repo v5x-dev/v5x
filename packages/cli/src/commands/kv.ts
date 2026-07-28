@@ -1,9 +1,10 @@
 import type { Sade } from "sade";
+import { withCommonOptions } from "../utils/common-options";
 import chalk from "chalk";
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import {
   formatSerialFailure,
-  printJson,
+  printOutput,
   renderTable,
   unwrapSerial,
 } from "../utils/output";
@@ -28,73 +29,68 @@ export function formatKvRows(rows: KvRow[]): string[][] {
 }
 
 export default function registerKvCommand(program: Sade) {
-  program
-    .command("kv", "list well-known system variables on a brain")
-    .option("--json", "print machine-readable JSON")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(async (options: { json?: boolean } & PortSelectionOptions) => {
-      await withSelectedV5Device(options, async (device) => {
-        const rows: KvRow[] = [];
-        for (const key of WELL_KNOWN_KEYS) {
-          const result = await device.brain.getValue(key);
-          rows.push(
-            result.isOk()
-              ? { key, value: result.value }
-              : {
-                  key,
-                  value: undefined,
-                  error: formatSerialFailure(
-                    `failed to get ${key}`,
-                    result.error,
-                  ),
-                },
-          );
-        }
+  withCommonOptions(
+    program.command("kv", "list well-known system variables on a brain"),
+    { port: true },
+  ).action(async (options: { json?: boolean } & PortSelectionOptions) => {
+    await withSelectedV5Device(options, async (device) => {
+      const rows: KvRow[] = [];
+      for (const key of WELL_KNOWN_KEYS) {
+        const result = await device.brain.getValue(key);
+        rows.push(
+          result.isOk()
+            ? { key, value: result.value }
+            : {
+                key,
+                value: undefined,
+                error: formatSerialFailure(
+                  `failed to get ${key}`,
+                  result.error,
+                ),
+              },
+        );
+      }
 
-        if (options.json === true) printJson(toKvJson(rows));
-        else console.log(renderTable(["key", "value"], formatKvRows(rows)));
-      });
+      printOutput(options.json, toKvJson(rows), () =>
+        renderTable(["key", "value"], formatKvRows(rows)),
+      );
     });
+  });
 
-  program
-    .command("kv get <key>", "get the value of a system variable on a brain")
-    .option("--json", "print machine-readable JSON")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(
-      async (
-        key: string,
-        options: { json?: boolean } & PortSelectionOptions,
-      ) => {
-        await withSelectedV5Device(options, async (device) => {
-          const value = unwrapSerial(
-            await device.brain.getValue(key),
-            `failed to get ${key}`,
-          );
-          if (options.json === true) printJson({ key, value: value ?? null });
-          else console.log(value);
-        });
-      },
-    );
+  withCommonOptions(
+    program.command(
+      "kv get <key>",
+      "get the value of a system variable on a brain",
+    ),
+    { port: true },
+  ).action(
+    async (key: string, options: { json?: boolean } & PortSelectionOptions) => {
+      await withSelectedV5Device(options, async (device) => {
+        const value = unwrapSerial(
+          await device.brain.getValue(key),
+          `failed to get ${key}`,
+        );
+        printOutput(options.json, { key, value: value ?? null }, () => value);
+      });
+    },
+  );
 
-  program
-    .command("kv set <key> <value>", "set a system variable on a brain")
-    .option("--json", "print machine-readable JSON")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(
-      async (
-        key,
-        value,
-        options: { json?: boolean } & PortSelectionOptions,
-      ) => {
-        await withSelectedV5Device(options, async (device) => {
-          unwrapSerial(
-            await device.brain.setValue(key, value),
-            `failed to set ${key} to ${value}`,
-          );
-          if (options.json === true)
-            printJson({ command: "kv set", key, value, set: true });
-          else console.log(`set ${key} to ${value}`);
-        });
-      },
-    );
+  withCommonOptions(
+    program.command("kv set <key> <value>", "set a system variable on a brain"),
+    { port: true },
+  ).action(
+    async (key, value, options: { json?: boolean } & PortSelectionOptions) => {
+      await withSelectedV5Device(options, async (device) => {
+        unwrapSerial(
+          await device.brain.setValue(key, value),
+          `failed to set ${key} to ${value}`,
+        );
+        printOutput(
+          options.json,
+          { command: "kv set", key, value, set: true },
+          () => `set ${key} to ${value}`,
+        );
+      });
+    },
+  );
 }

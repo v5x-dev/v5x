@@ -1,8 +1,9 @@
 import type { IProgramInfo, SlotNumber } from "@v5x/serial";
 import type { Sade } from "sade";
+import { withCommonOptions } from "../utils/common-options";
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import {
-  printJson,
+  printOutput,
   renderTable,
   unwrapSerial,
   utcTimestamp,
@@ -42,62 +43,58 @@ export function toProgramJson(programs: IProgramInfo[]) {
 }
 
 export default function registerProgramsCommand(program: Sade) {
-  program
-    .command("programs", "list programs on the V5 brain")
-    .option("--json", "print machine-readable JSON")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(async (options: { json?: boolean } & PortSelectionOptions) => {
-      await withSelectedV5Device(options, async (device) => {
-        const programs = unwrapSerial(
-          await device.brain.listProgram(),
-          "failed to list programs",
-        );
-        if (options.json === true) printJson(toProgramJson(programs));
-        else
-          console.log(
-            renderTable(
-              ["slot", "requested", "name", "size", "timestamp", "file"],
-              formatProgramRows(programs),
-            ),
-          );
-      });
+  withCommonOptions(
+    program.command("programs", "list programs on the V5 brain"),
+    { port: true },
+  ).action(async (options: { json?: boolean } & PortSelectionOptions) => {
+    await withSelectedV5Device(options, async (device) => {
+      const programs = unwrapSerial(
+        await device.brain.listProgram(),
+        "failed to list programs",
+      );
+      printOutput(options.json, toProgramJson(programs), () =>
+        renderTable(
+          ["slot", "requested", "name", "size", "timestamp", "file"],
+          formatProgramRows(programs),
+        ),
+      );
     });
+  });
 
-  program
-    .command("start <slot>", "start a program slot on the V5 brain")
-    .option("--json", "print machine-readable JSON")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(
-      async (
-        slot: string,
-        options: { json?: boolean } & PortSelectionOptions,
-      ) => {
-        const slotNumber = parseSlotArgument(slot);
-        await withSelectedV5Device(options, async (device) => {
-          unwrapSerial(
-            await device.brain.runProgram(slotNumber),
-            `failed to start slot ${slot}`,
-          );
-          if (options.json === true)
-            printJson({ command: "start", slot: slotNumber, started: true });
-          else console.log(`started slot ${slot}`);
-        });
-      },
-    );
-
-  program
-    .command("stop", "stop the running program on the V5 brain")
-    .option("--json", "print machine-readable JSON")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(async (options: { json?: boolean } & PortSelectionOptions) => {
+  withCommonOptions(
+    program.command("start <slot>", "start a program slot on the V5 brain"),
+    { port: true },
+  ).action(
+    async (
+      slot: string,
+      options: { json?: boolean } & PortSelectionOptions,
+    ) => {
+      const slotNumber = parseSlotArgument(slot);
       await withSelectedV5Device(options, async (device) => {
         unwrapSerial(
-          await device.brain.stopProgram(),
-          "failed to stop program",
+          await device.brain.runProgram(slotNumber),
+          `failed to start slot ${slot}`,
         );
-        if (options.json === true)
-          printJson({ command: "stop", stopped: true });
-        else console.log("stopped program");
+        printOutput(
+          options.json,
+          { command: "start", slot: slotNumber, started: true },
+          () => `started slot ${slot}`,
+        );
       });
+    },
+  );
+
+  withCommonOptions(
+    program.command("stop", "stop the running program on the V5 brain"),
+    { port: true },
+  ).action(async (options: { json?: boolean } & PortSelectionOptions) => {
+    await withSelectedV5Device(options, async (device) => {
+      unwrapSerial(await device.brain.stopProgram(), "failed to stop program");
+      printOutput(
+        options.json,
+        { command: "stop", stopped: true },
+        () => "stopped program",
+      );
     });
+  });
 }

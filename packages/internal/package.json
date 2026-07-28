@@ -1,0 +1,23 @@
+{
+  "name": "@v5x/internal",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./concurrency": {
+      "types": "./dist/concurrency.d.ts",
+      "import": "./dist/concurrency.js"
+    }
+  },
+  "scripts": {
+    "build": "bun run clean && bun run build:dts && bun run build:esm",
+    "build:dts": "tsc -p tsconfig.build.json",
+    "build:esm": "bun build ./src/concurrency.ts --target browser --format esm --outdir ./dist",
+    "clean": "rm -rf dist",
+    "lint": "oxlint src --type-aware",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

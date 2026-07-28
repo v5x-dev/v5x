@@ -1,8 +1,9 @@
 import type { Sade } from "sade";
+import { withCommonOptions } from "../utils/common-options";
 import { deflateSync } from "node:zlib";
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { requireOptionValue } from "../utils/guards";
-import { printJson, unwrapSerial } from "../utils/output";
+import { printOutput, unwrapSerial } from "../utils/output";
 
 const WIDTH = 480;
 const HEIGHT = 272;
@@ -155,14 +156,14 @@ function printKittyRgb(bytes: Uint8Array): void {
 }
 
 export default function registerScreenshotCommand(program: Sade) {
-  program
-    .command("screenshot", "take a screen capture of the brain", {
+  withCommonOptions(
+    program.command("screenshot", "take a screen capture of the brain", {
       alias: "sc",
-    })
+    }),
+    { port: true },
+  )
     .option("-o, --output", "write the screenshot to a file")
     .option("--format", "file format for --output: png or ppm", "png")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .option("--json", "print machine-readable JSON")
     .action(
       async (
         options: {
@@ -193,9 +194,11 @@ export default function registerScreenshotCommand(program: Sade) {
               ? encodeScreenshotPng(frame)
               : encodeScreenshotPpm(frame);
           await Bun.write(output, data);
-          if (options.json === true)
-            printJson(toScreenshotJson(output, format, data.length));
-          else console.log(`wrote ${output}`);
+          printOutput(
+            options.json,
+            toScreenshotJson(output, format, data.length),
+            () => `wrote ${output}`,
+          );
         });
       },
     );

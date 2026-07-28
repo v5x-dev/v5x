@@ -28,9 +28,10 @@
     "test": "bun test",
     "benchmark:screenshot": "bun ./benchmarks/screenshot.ts",
     "demo:terminal": "bun ./scripts/render-terminal-demo.ts",
-    "prepack": "bun run --cwd ../serial build && bun run --cwd ../node build && bun run build"
+    "prepack": "bun run --cwd ../internal build && bun run --cwd ../serial build && bun run --cwd ../node build && bun run build"
   },
   "devDependencies": {
+    "@v5x/internal": "*",
     "@types/bun": "latest"
   },
   "dependencies": {

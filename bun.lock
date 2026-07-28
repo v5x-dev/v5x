@@ -77,11 +77,19 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "@v5x/internal": "*",
       },
     },
     "packages/events": {
       "name": "@v5x/events",
       "version": "0.2.0",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@v5x/internal": "*",
+      },
+    },
+    "packages/internal": {
+      "name": "@v5x/internal",
       "devDependencies": {
         "@types/bun": "latest",
       },
@@ -95,6 +103,7 @@
       "devDependencies": {
         "@types/bun": "latest",
         "@types/dom-serial": "^1.0.2",
+        "@v5x/internal": "*",
         "bun-serialport": "^0.1.1",
       },
       "peerDependencies": {
@@ -881,6 +890,8 @@
     "@v5x/events": ["@v5x/events@workspace:packages/events"],
 
     "@v5x/examples": ["@v5x/examples@workspace:apps/examples"],
+
+    "@v5x/internal": ["@v5x/internal@workspace:packages/internal"],
 
     "@v5x/node": ["@v5x/node@workspace:packages/node"],
 

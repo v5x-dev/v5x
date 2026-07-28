@@ -1,14 +1,21 @@
 import type { Sade } from "sade";
+import { withCommonOptions } from "../utils/common-options";
 import {
   uploadProgramFromCommand,
   type UploadCommandOptions,
 } from "../utils/upload";
 
 export default function registerRunCommand(program: Sade) {
-  program
-    .command("run [path]", "build, upload, and run a program on a V5 brain", {
-      alias: "r",
-    })
+  withCommonOptions(
+    program.command(
+      "run [path]",
+      "build, upload, and run a program on a V5 brain",
+      {
+        alias: "r",
+      },
+    ),
+    { port: true },
+  )
     .option("-s, --slot", "program slot", "1")
     .option("-n, --name", "program name shown on the brain")
     .option("-d, --description", "program description")
@@ -16,8 +23,6 @@ export default function registerRunCommand(program: Sade) {
     .option("-f, --file", "upload an existing .bin artifact")
     .option("--no-build", "skip building the project")
     .option("-t, --terminal", "stream the program's output after starting it")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .option("--json", "print machine-readable JSON")
     .action((path: string | undefined, options: UploadCommandOptions) =>
       uploadProgramFromCommand(path, options, true),
     );

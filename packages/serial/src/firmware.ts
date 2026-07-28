@@ -1,0 +1,306 @@
+import {
+  FileDownloadTarget,
+  FileVendor,
+  type IFileWriteRequest,
+  USER_FLASH_USR_CODE_START,
+} from "./vex.js";
+import { type V5SerialConnection } from "./v5-serial-connection.js";
+import { sleep } from "./timing.js";
+import type { V5SerialDeviceState } from "./device-state.js";
+import {
+  VexFirmwareError,
+  VexNotConnectedError,
+  VexSerialError,
+  toVexSerialError,
+} from "./error.js";
+import { err, ok, Result, ResultAsync } from "neverthrow";
+import {
+  FactoryEnableH2DPacket,
+  FactoryEnableReplyD2HPacket,
+  FactoryStatusH2DPacket,
+  FactoryStatusReplyD2HPacket,
+} from "./packet-models.js";
+import { downloadFileFromInternet } from "./internet-download.js";
+
+/** Maximum number of bytes accepted when downloading the version catalog. */
+const MAX_CATALOG_BYTES = 4 * 1024;
+/** Maximum compressed size accepted when downloading a VEXos archive. */
+const MAX_VEXOS_BYTES = 64 * 1024 * 1024;
+/** Maximum size accepted for any single extracted firmware image. */
+const MAX_FIRMWARE_IMAGE_BYTES = 32 * 1024 * 1024;
+/** Maximum total size accepted across all extracted firmware images. */
+const MAX_AGGREGATE_IMAGE_BYTES = 48 * 1024 * 1024;
+
+export { downloadFileFromInternet };
+
+interface FirmwareImage {
+  name: string;
+  buf: Uint8Array;
+}
+
+type FirmwareProgressCallback = (
+  state: string,
+  current: number,
+  total: number,
+) => void;
+
+type FactoryImageLabel = "BOOT" | "ASSETS";
+
+interface FactoryImageFlashOptions {
+  image: FirmwareImage;
+  label: FactoryImageLabel;
+  downloadTarget: FileDownloadTarget;
+}
+
+async function flashFactoryImage(
+  conn: V5SerialConnection,
+  options: FactoryImageFlashOptions,
+  pcb: FirmwareProgressCallback,
+): Promise<Result<void, VexSerialError>> {
+  const { image, label, downloadTarget } = options;
+  pcb(`FACTORY ENB ${label}`, 0, 0);
+
+  const enableReply = await conn.request(
+    new FactoryEnableH2DPacket(),
+    FactoryEnableReplyD2HPacket,
+  );
+  if (enableReply.isErr()) return err(enableReply.error);
+
+  const writeRequest: IFileWriteRequest = {
+    filename: "null.bin",
+    vendor: FileVendor.USER,
+    loadAddress: USER_FLASH_USR_CODE_START,
+    buf: image.buf,
+    downloadTarget,
+    exttype: "bin",
+    autoRun: true, // need to set EXIT_RUN
+    linkedFile: undefined,
+  };
+
+  // The caller owns the connection-level transaction for the complete
+  // BOOT-and-ASSETS sequence. Re-acquiring it here would deadlock, so use the
+  // unlocked primitive just as multi-file program uploads do.
+  const upload = await conn.uploadFileToDeviceUnlocked(writeRequest, (c, t) => {
+    pcb(`UPLOAD ${label}`, c, t);
+  });
+  if (upload.isErr()) return err(upload.error);
+  if (!upload.value) {
+    return err(new VexFirmwareError(`${label} upload was rejected by device`));
+  }
+
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    const statusReply = await conn.request(
+      new FactoryStatusH2DPacket(),
+      FactoryStatusReplyD2HPacket,
+      10000,
+    );
+    if (statusReply.isErr()) return err(statusReply.error);
+
+    reportFactoryStatus(label, statusReply.value, pcb);
+
+    if (statusReply.value.status === 0 && statusReply.value.percent === 100) {
+      return ok(undefined);
+    }
+    await sleep(500);
+  }
+
+  return err(new VexFirmwareError(`${label} factory status timed out`));
+}
+
+function reportFactoryStatus(
+  label: FactoryImageLabel,
+  reply: FactoryStatusReplyD2HPacket,
+  pcb: FirmwareProgressCallback,
+): void {
+  switch (reply.status) {
+    case 2:
+      pcb(`ERASE ${label}`, reply.percent, 100);
+      break;
+    case 3:
+      pcb(`WRITE ${label}`, reply.percent, 100);
+      break;
+    case 4:
+      pcb(`VERIFY ${label}`, reply.percent, 100);
+      break;
+    case 8:
+      pcb(`FINISHING ${label}`, reply.percent, 100);
+      break;
+  }
+}
+
+// Internal helper: stays throwing. The public `uploadFirmware` boundary
+// converts thrown errors into the {@link VexSerialError} hierarchy.
+async function extractFirmwareImages(
+  usingVersion: string,
+  vexos: ArrayBuffer,
+): Promise<FirmwareImage[]> {
+  const { unzip } = await import("unzipit");
+  const { entries } = await unzip(vexos);
+
+  const expectedPaths = new Set([
+    `${usingVersion}/BOOT.bin`,
+    `${usingVersion}/assets.bin`,
+  ]);
+  const unexpected: string[] = [];
+  for (const name of Object.keys(entries)) {
+    if (!expectedPaths.has(name)) unexpected.push(name);
+  }
+  if (unexpected.length > 0) {
+    throw new VexFirmwareError(
+      `VEXos archive contains unexpected entries: ${unexpected.join(", ")}`,
+    );
+  }
+
+  const ordered: FirmwareImage[] = [];
+  let aggregate = 0;
+  for (const name of expectedPaths) {
+    const entry = entries[name];
+    if (entry === undefined) {
+      throw new VexFirmwareError(`VEXos archive is missing ${name}`);
+    }
+    if (entry.encrypted) {
+      throw new VexFirmwareError(`VEXos entry ${name} is encrypted`);
+    }
+    if (entry.size <= 0) {
+      throw new VexFirmwareError(`VEXos entry ${name} is empty`);
+    }
+    if (entry.size > MAX_FIRMWARE_IMAGE_BYTES) {
+      throw new VexFirmwareError(
+        `VEXos entry ${name} (${entry.size} bytes) exceeds per-entry limit ${MAX_FIRMWARE_IMAGE_BYTES}`,
+      );
+    }
+    aggregate += entry.size;
+    if (aggregate > MAX_AGGREGATE_IMAGE_BYTES) {
+      throw new VexFirmwareError(
+        `VEXos aggregate extracted size exceeds limit ${MAX_AGGREGATE_IMAGE_BYTES}`,
+      );
+    }
+    const buf = new Uint8Array(await entry.arrayBuffer());
+    if (buf.byteLength === 0) {
+      throw new VexFirmwareError(`VEXos entry ${name} is empty`);
+    }
+    if (buf.byteLength !== entry.size) {
+      throw new VexFirmwareError(
+        `VEXos entry ${name} size does not match its metadata (${buf.byteLength} vs ${entry.size})`,
+      );
+    }
+    ordered.push({ name, buf });
+  }
+
+  return ordered;
+}
+
+/**
+ * Upload a VEXos firmware archive to a connected brain. Network and
+ * archive validation failures are returned as {@link VexSerialError}
+ * values rather than thrown; a device that refuses a step or a missing
+ * connection surfaces as {@link VexFirmwareError} / {@link VexNotConnectedError}.
+ */
+export function uploadFirmware(
+  state: V5SerialDeviceState,
+  publicUrl = "https://content.vexrobotics.com/vexos/public/V5/",
+  usingVersion?: string,
+  progressCallback?: FirmwareProgressCallback,
+): ResultAsync<boolean, VexSerialError> {
+  return new ResultAsync(
+    runUploadFirmware(state, publicUrl, usingVersion, progressCallback),
+  );
+}
+
+async function runUploadFirmware(
+  state: V5SerialDeviceState,
+  publicUrl: string,
+  usingVersion: string | undefined,
+  progressCallback?: FirmwareProgressCallback,
+): Promise<Result<boolean, VexSerialError>> {
+  const device = state._instance;
+  const conn = device.connection;
+  if (conn == null || !conn.isConnected) {
+    return err(new VexNotConnectedError());
+  }
+
+  const pcb = progressCallback ?? (() => {});
+  let version = usingVersion;
+
+  if (version === undefined) {
+    pcb("FETCH CATALOG", 0, 1);
+    const catalog = await downloadFileFromInternet(publicUrl + "catalog.txt", {
+      maxBytes: MAX_CATALOG_BYTES,
+    });
+    if (catalog.isErr()) return err(catalog.error);
+    version = new TextDecoder().decode(catalog.value).trim();
+    pcb("FETCH CATALOG", 1, 1);
+  }
+
+  if (!/^[A-Za-z0-9._-]+$/.test(version)) {
+    return err(new VexFirmwareError(`invalid VEXos version: ${version}`));
+  }
+
+  pcb("FETCH VEXOS", 0, 1);
+  const vexosResult = await downloadFileFromInternet(
+    publicUrl + version + ".vexos",
+    { maxBytes: MAX_VEXOS_BYTES },
+  );
+  if (vexosResult.isErr()) return err(vexosResult.error);
+  const vexos = vexosResult.value;
+  if (vexos.byteLength === 0) {
+    return err(new VexFirmwareError("VEXos archive is empty"));
+  }
+  pcb("FETCH VEXOS", 1, 1);
+  pcb("UNZIP VEXOS", 0, 1);
+
+  let images: FirmwareImage[];
+  try {
+    images = await extractFirmwareImages(version, vexos);
+  } catch (e) {
+    if (e instanceof VexSerialError) return err(e);
+    return err(toVexSerialError(e, "firmware"));
+  }
+  pcb("UNZIP VEXOS", 1, 1);
+
+  return state.withRefreshPaused(async () => {
+    try {
+      return await conn.withFileTransfer(async () => {
+        const boot = images.find((image) => image.name.endsWith("BOOT.bin"));
+        if (boot === undefined) {
+          return err(new VexFirmwareError("VEXos archive is missing BOOT.bin"));
+        }
+        const assertImage = images.find((image) =>
+          image.name.endsWith("assets.bin"),
+        );
+        if (assertImage === undefined) {
+          return err(
+            new VexFirmwareError("VEXos archive is missing assets.bin"),
+          );
+        }
+
+        const bootFlash = await flashFactoryImage(
+          conn,
+          {
+            image: boot,
+            label: "BOOT",
+            downloadTarget: FileDownloadTarget.FILE_TARGET_B1,
+          },
+          pcb,
+        );
+        if (bootFlash.isErr()) return err(bootFlash.error);
+
+        const assetsFlash = await flashFactoryImage(
+          conn,
+          {
+            image: assertImage,
+            label: "ASSETS",
+            downloadTarget: FileDownloadTarget.FILE_TARGET_A1,
+          },
+          pcb,
+        );
+        if (assetsFlash.isErr()) return err(assetsFlash.error);
+
+        return ok(true);
+      });
+    } catch (e) {
+      return err(toVexSerialError(e, "firmware"));
+    }
+  });
+}

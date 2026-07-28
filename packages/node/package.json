@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
     "test": "bun test",
-    "prepack": "bun run --cwd ../serial build && bun run build",
+    "prepack": "bun run --cwd ../internal build && bun run --cwd ../serial build && bun run build",
     "clean": "rm -rf dist"
   },
   "repository": {
@@ -62,6 +62,7 @@
     }
   },
   "devDependencies": {
+    "@v5x/internal": "*",
     "@types/bun": "latest",
     "@types/dom-serial": "^1.0.2",
     "bun-serialport": "^0.1.1"

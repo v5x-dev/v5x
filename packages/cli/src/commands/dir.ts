@@ -1,10 +1,11 @@
 import type { Sade } from "sade";
+import { withCommonOptions } from "../utils/common-options";
 import type { FileVendor, IFileHandle, VexSerialError } from "@v5x/serial";
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { VENDOR_PREFIXES, VENDORS } from "../utils/brainPath";
 import {
   formatSerialFailure,
-  printJson,
+  printOutput,
   renderTable,
   utcTimestamp,
 } from "../utils/output";
@@ -93,31 +94,29 @@ export function toDirectoryJson(files: FileRow[], errors: VendorListFailure[]) {
 }
 
 export default function registerDirCommand(program: Sade) {
-  program
-    .command("dir", "list files on flash", { alias: "ls" })
-    .option("--json", "print machine-readable JSON")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
-    .action(async (options: { json?: boolean } & PortSelectionOptions) => {
-      await withSelectedV5Device(options, async (device) => {
-        const files: (FileRow & IFileHandle)[] = [];
-        const errors: VendorListFailure[] = [];
-        for (const vendor of VENDORS) {
-          const result = await device.brain.listFiles(vendor);
-          if (result.isOk())
-            files.push(...result.value.map((file) => ({ ...file, vendor })));
-          else errors.push(formatVendorListFailure(vendor, result.error));
-        }
-        if (options.json === true) printJson(toDirectoryJson(files, errors));
-        else {
-          for (const error of errors)
-            process.stderr.write(`warning: ${error.message}\n`);
-          console.log(
-            renderTable(
-              ["name", "size", "load address", "timestamp", "crc32"],
-              formatFileRows(files),
-            ),
-          );
-        }
-      });
+  withCommonOptions(
+    program.command("dir", "list files on flash", { alias: "ls" }),
+    { port: true },
+  ).action(async (options: { json?: boolean } & PortSelectionOptions) => {
+    await withSelectedV5Device(options, async (device) => {
+      const files: (FileRow & IFileHandle)[] = [];
+      const errors: VendorListFailure[] = [];
+      for (const vendor of VENDORS) {
+        const result = await device.brain.listFiles(vendor);
+        if (result.isOk())
+          files.push(...result.value.map((file) => ({ ...file, vendor })));
+        else errors.push(formatVendorListFailure(vendor, result.error));
+      }
+      if (options.json !== true) {
+        for (const error of errors)
+          process.stderr.write(`warning: ${error.message}\n`);
+      }
+      printOutput(options.json, toDirectoryJson(files, errors), () =>
+        renderTable(
+          ["name", "size", "load address", "timestamp", "crc32"],
+          formatFileRows(files),
+        ),
+      );
     });
+  });
 }

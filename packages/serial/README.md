@@ -62,7 +62,7 @@ Linux and macOS. Windows requires a different CLI serial backend.
 - `PacketEncoder`, `DeviceBoundPacket`, and `HostBoundPacket` for low-level
   protocol work.
 - `ProgramIniConfig` for creating VEX program metadata.
-- Protocol enums and types from `Vex.ts`.
+- Protocol enums and types from `vex.ts`.
 
 ## Result-returning async APIs
 

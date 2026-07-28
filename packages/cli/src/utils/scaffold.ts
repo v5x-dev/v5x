@@ -10,7 +10,7 @@ import {
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { unzipSync } from "fflate";
 import { hasErrorCode, isRecord, requireOptionValue } from "./guards";
-import { mapWithConcurrency } from "./concurrency";
+import { mapWithConcurrency } from "@v5x/internal/concurrency";
 
 export type ProjectToolchain = "pros" | "vexide";
 
