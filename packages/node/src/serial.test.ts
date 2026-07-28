@@ -80,6 +80,33 @@ describe("NodeSerial", () => {
     await first.close();
   });
 
+  test("does not replace a port while its backend open is in progress", async () => {
+    let serialNumber = "first";
+    const backend = createFakeBackend(async () => [
+      {
+        path: "/dev/ttyACM0",
+        vendorId: "2888",
+        productId: "0501",
+        serialNumber,
+      },
+    ]);
+    let finishOpen: (() => void) | undefined;
+    backend.openGate = new Promise<void>((resolve) => {
+      finishOpen = resolve;
+    });
+    const serial = new NodeSerial({ backend });
+    const first = (await serial.getPorts())[0]!;
+
+    const opening = first.open({ baudRate: 115200 });
+    serialNumber = "second";
+    const second = (await serial.getPorts())[0]!;
+
+    expect(second).toBe(first);
+    finishOpen?.();
+    await opening;
+    await first.close();
+  });
+
   test("keeps USB identifiers unknown when the platform omits them", async () => {
     const serial = new NodeSerial({
       backend: createFakeBackend(async () => [{ path: "/dev/cu.usbmodem01" }]),

@@ -78,22 +78,27 @@ export class FakeNativePort implements NativePort {
 
 export interface FakeBackend extends SerialBackend {
   readonly opened: FakeNativePort[];
+  /** Blocks `open()` until resolved, to model a slow native open. */
+  openGate: Promise<void> | undefined;
 }
 
 export function createFakeBackend(
   list: () => Promise<NativePortDescriptor[]>,
-  platforms?: readonly NodeJS.Platform[],
+  platforms?: readonly string[],
 ): FakeBackend {
   const opened: FakeNativePort[] = [];
-  return {
+  const backend: FakeBackend = {
     name: "fake",
     platforms,
     opened,
+    openGate: undefined,
     list,
     async open(options: NativeOpenOptions): Promise<NativePort> {
+      await backend.openGate;
       const port = new FakeNativePort(options);
       opened.push(port);
       return port;
     },
   };
+  return backend;
 }

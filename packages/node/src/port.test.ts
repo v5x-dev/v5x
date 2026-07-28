@@ -55,6 +55,57 @@ describe("NodeSerialPort", () => {
     await port.close();
   });
 
+  test("rejects concurrent opens before the backend finishes opening", async () => {
+    const { backend, port } = await openedPort("/dev/cu.concurrent-open");
+
+    const opening = port.open({ baudRate: 115200 });
+    await expect(port.open({ baudRate: 115200 })).rejects.toThrow(
+      "Port is opening",
+    );
+    await opening;
+
+    expect(backend.opened).toHaveLength(1);
+    await port.close();
+  });
+
+  test("joins concurrent closes and blocks reopening until native close finishes", async () => {
+    const { backend, port } = await openedPort("/dev/cu.concurrent-close");
+    await port.open({ baudRate: 115200 });
+    const nativePort = backend.opened.at(-1)!;
+    let finishClose: (() => void) | undefined;
+    nativePort.closeGate = new Promise<void>((resolve) => {
+      finishClose = resolve;
+    });
+    const closeError = new Error("native close failed");
+    nativePort.closeError = closeError;
+
+    const firstClose = port.close();
+    const secondClose = port.close();
+    await expect(port.open({ baudRate: 115200 })).rejects.toThrow(
+      "Port is closing",
+    );
+
+    const captureRejection = async (
+      operation: Promise<void>,
+    ): Promise<unknown> => {
+      try {
+        await operation;
+        return undefined;
+      } catch (error) {
+        return error;
+      }
+    };
+    const firstCloseError = captureRejection(firstClose);
+    const secondCloseError = captureRejection(secondClose);
+    finishClose?.();
+    expect(await firstCloseError).toBe(closeError);
+    expect(await secondCloseError).toBe(closeError);
+
+    await port.open({ baudRate: 115200 });
+    expect(backend.opened).toHaveLength(2);
+    await port.close();
+  });
+
   test("native close rejection still clears adapter state", async () => {
     const { backend, port } = await openedPort("/dev/cu.error");
     await port.open({ baudRate: 115200 });
@@ -212,5 +263,21 @@ describe("NodeSerialPort", () => {
     expect(port.readable).toBeNull();
     expect(port.writable).toBeNull();
     expect(nativePort.listenerCount("data")).toBe(0);
+  });
+
+  test("does not pause forever when a backend omits resume", async () => {
+    const { backend, port } = await openedPort("/dev/cu.incomplete-pause");
+    await port.open({ baudRate: 115200 });
+    const nativePort = backend.opened.at(-1)!;
+    nativePort.resume = undefined;
+    const reader = port.readable!.getReader();
+
+    nativePort.emit("data", new Uint8Array([1]));
+    expect(nativePort.pauses).toBe(0);
+    nativePort.emit("data", new Uint8Array([2]));
+
+    await expect(reader.read()).rejects.toThrow("readable-stream capacity");
+    await Bun.sleep(0);
+    expect(port.readable).toBeNull();
   });
 });

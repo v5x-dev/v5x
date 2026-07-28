@@ -52,7 +52,6 @@ describe("bun-serialport backend", () => {
       linuxDiscovery: {
         readdir: async () => ["ttyACM0"],
         realpath: async () => "/sys/devices/usb1",
-        readlink: async () => "/sys/bus/usb",
         readUsbAttributes: async () => ({
           vendorId: "2888",
           productId: "0501",

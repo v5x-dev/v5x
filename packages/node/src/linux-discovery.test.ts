@@ -81,7 +81,6 @@ describe("Linux discovery", () => {
         const index = Number(path.match(/ttyACM(\d+)/)?.[1] ?? 0);
         return `/sys/devices/usb-${index % 10}`;
       },
-      readlink: async () => "/sys/bus/usb",
       readUsbAttributes: async () => {
         attributeReads++;
         await Bun.sleep(1);
@@ -100,13 +99,43 @@ describe("Linux discovery", () => {
     );
   });
 
+  test("reads USB identity from ancestors even when the tty device is not in the USB subsystem", async () => {
+    const ports = await listLinuxPorts({
+      readdir: async () => ["ttyACM0"],
+      realpath: async () => "/sys/devices/pci/usb1/1-1/1-1:1.0/tty/ttyACM0",
+      readUsbAttributes: async () => ({
+        vendorId: "2888",
+        productId: "0501",
+        serialNumber: "vex-1",
+      }),
+    });
+
+    expect(ports).toEqual([
+      {
+        path: "/dev/ttyACM0",
+        vendorId: "2888",
+        productId: "0501",
+        serialNumber: "vex-1",
+      },
+    ]);
+  });
+
   test("leaves non-USB ttys without USB identifiers", async () => {
     const ports = await listLinuxPorts({
       readdir: async () => ["ttyS0"],
       realpath: async () => "/sys/devices/platform/serial8250",
-      readlink: async () => "/sys/bus/platform",
+      readUsbAttributes: async () => ({}),
+    });
+
+    expect(ports).toEqual([{ path: "/dev/ttyS0" }]);
+  });
+
+  test("keeps a tty when reading its optional USB attributes fails", async () => {
+    const ports = await listLinuxPorts({
+      readdir: async () => ["ttyS0"],
+      realpath: async () => "/sys/devices/platform/serial8250",
       readUsbAttributes: async () => {
-        throw new Error("should not read USB attributes for a platform tty");
+        throw new Error("EACCES");
       },
     });
 
@@ -119,7 +148,6 @@ describe("Linux discovery", () => {
         throw new Error("ENOENT");
       },
       realpath: async () => "",
-      readlink: async () => "",
       readUsbAttributes: async () => ({}),
     });
 

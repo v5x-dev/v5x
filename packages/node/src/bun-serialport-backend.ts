@@ -16,7 +16,7 @@ export const BUN_SERIALPORT_PLATFORMS = ["darwin", "linux"] as const;
 
 export interface BunSerialportBackendOptions {
   /** Defaults to the host platform. */
-  platform?: NodeJS.Platform;
+  platform?: string;
   /** Overrides the sysfs reads used to enumerate ports on Linux. */
   linuxDiscovery?: LinuxDiscoveryOperations;
 }

@@ -15,7 +15,7 @@ export interface NodeSerialOptions {
   /** Defaults to the `bun-serialport` backend. */
   backend?: SerialBackend;
   /** Defaults to the host platform; only used to validate backend support. */
-  platform?: NodeJS.Platform;
+  platform?: string;
 }
 
 /**
@@ -26,7 +26,7 @@ export interface NodeSerialOptions {
 export class NodeSerial extends SerialEventTarget implements Serial {
   private readonly ports = new Map<string, NodeSerialPort>();
   private readonly backend: SerialBackend;
-  private readonly platform: NodeJS.Platform;
+  private readonly platform: string;
 
   constructor(options: NodeSerialOptions = {}) {
     super();
@@ -45,8 +45,7 @@ export class NodeSerial extends SerialEventTarget implements Serial {
     const discovered = await this.backend.list();
     const activePaths = new Set(discovered.map((port) => port.path));
     for (const [path, port] of this.ports) {
-      if (!activePaths.has(path) && port.readable === null)
-        this.ports.delete(path);
+      if (!activePaths.has(path) && port.isClosed) this.ports.delete(path);
     }
 
     return discovered.map(({ path, vendorId, productId, serialNumber }) => {
@@ -60,7 +59,7 @@ export class NodeSerial extends SerialEventTarget implements Serial {
       let port = this.ports.get(path);
       if (
         !port ||
-        (port.readable === null && !serialPortInfoMatches(port.getInfo(), info))
+        (port.isClosed && !serialPortInfoMatches(port.getInfo(), info))
       ) {
         port = new NodeSerialPort(this.backend, path, info);
         this.ports.set(path, port);

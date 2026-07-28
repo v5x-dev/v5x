@@ -48,7 +48,7 @@ export interface SerialBackend {
    * `NodeSerial` refuses to enumerate ports on any other platform so the
    * failure names the backend instead of surfacing as a native error.
    */
-  readonly platforms?: readonly NodeJS.Platform[];
+  readonly platforms?: readonly string[];
   list(): Promise<NativePortDescriptor[]>;
   /** Opens the port. The returned port must already be open. */
   open(options: NativeOpenOptions): Promise<NativePort>;

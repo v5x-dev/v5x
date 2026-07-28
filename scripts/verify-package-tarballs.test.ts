@@ -258,6 +258,7 @@ test("the release and quality workflows include the node transport", async () =>
     "bun add ./v5x-serial-*.tgz ./v5x-node-*.tgz ./v5x-cli-*.tgz",
   );
   expect(quality).toContain('import("@v5x/node")');
+  expect(quality).toContain('type SerialBackend } from \\"@v5x/node\\"');
 });
 
 test("the release and quality workflows validate documentation", async () => {

@@ -1,4 +1,4 @@
-import { readdir, readFile, readlink, realpath } from "node:fs/promises";
+import { readdir, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import type { NativePortDescriptor } from "./backend.js";
 import { mapWithConcurrency } from "./concurrency.js";
@@ -17,14 +17,12 @@ export const LINUX_DISCOVERY_CONCURRENCY = 8;
 export interface LinuxDiscoveryOperations {
   readdir(path: string): Promise<string[]>;
   realpath(path: string): Promise<string>;
-  readlink(path: string): Promise<string>;
   readUsbAttributes(device: string): Promise<UsbAttributes>;
 }
 
 export const linuxDiscoveryOperations: LinuxDiscoveryOperations = {
   readdir,
   realpath,
-  readlink,
   readUsbAttributes: readLinuxUsbDeviceAttributes,
 };
 
@@ -76,19 +74,17 @@ export async function listLinuxPorts(
         const device = await operations.realpath(
           `/sys/class/tty/${name}/device`,
         );
-        const subsystem = await operations
-          .readlink(join(device, "subsystem"))
-          .catch(() => "");
         const info: NativePortDescriptor = { path: `/dev/${name}` };
 
-        if (subsystem.includes("usb")) {
-          let attributes = usbAttributes.get(device);
-          if (attributes === undefined) {
-            attributes = operations.readUsbAttributes(device);
-            usbAttributes.set(device, attributes);
-          }
-          Object.assign(info, await attributes);
+        // A USB serial port's immediate sysfs device commonly belongs to the
+        // tty subsystem. Its USB identity is exposed by an ancestor, which is
+        // why checking only `device/subsystem` misses ttyACM and ttyUSB ports.
+        let attributes = usbAttributes.get(device);
+        if (attributes === undefined) {
+          attributes = operations.readUsbAttributes(device).catch(() => ({}));
+          usbAttributes.set(device, attributes);
         }
+        Object.assign(info, await attributes);
         return info;
       } catch {
         // Not a real device or no permission.
