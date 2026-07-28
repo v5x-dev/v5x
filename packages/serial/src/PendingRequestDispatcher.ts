@@ -101,11 +101,32 @@ export class PendingRequestDispatcher {
   }
 
   drain(): IPacketCallback[] {
-    const callbacks = this.callbacks;
-    for (const callback of callbacks) clearTimeout(callback.timeout);
+    const callbacks: IPacketCallback[] = [];
+    for (const queue of this.pendingCallbacks.values()) {
+      this.drainQueue(queue, callbacks);
+    }
+    this.drainQueue(this.rawCallbacks, callbacks);
     this.pendingCallbacks.clear();
     this.rawCallbacks = { head: undefined, tail: undefined };
     return callbacks;
+  }
+
+  private drainQueue(
+    queue: PendingPacketQueue,
+    callbacks: IPacketCallback[],
+  ): void {
+    let callback = queue.head;
+    while (callback !== undefined) {
+      const next = callback.next;
+      clearTimeout(callback.timeout);
+      callback.active = false;
+      callback.previous = undefined;
+      callback.next = undefined;
+      callbacks.push(callback);
+      callback = next;
+    }
+    queue.head = undefined;
+    queue.tail = undefined;
   }
 
   private key(

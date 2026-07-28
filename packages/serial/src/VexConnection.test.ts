@@ -1836,6 +1836,29 @@ describe("lifecycle hardening", () => {
       "port.close",
     ]);
   });
+
+  test("close does not read indefinitely after reader cancellation fails", async () => {
+    let readCalls = 0;
+    let released = false;
+    const connection = new V5SerialConnection({} as Serial);
+    connection.reader = {
+      cancel: async () => {
+        throw new Error("cancel failed");
+      },
+      read: () => {
+        readCalls++;
+        return new Promise(() => {});
+      },
+      releaseLock: () => {
+        released = true;
+      },
+    } as unknown as ReadableStreamDefaultReader<unknown>;
+
+    await connection.close();
+
+    expect(readCalls).toBe(0);
+    expect(released).toBe(true);
+  });
 });
 
 describe("removeFile and removeAllFiles go through the transaction queue", () => {

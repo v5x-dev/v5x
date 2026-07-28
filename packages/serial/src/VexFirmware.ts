@@ -35,8 +35,22 @@ const MAX_AGGREGATE_IMAGE_BYTES = 48 * 1024 * 1024;
 export interface DownloadFileFromInternetOptions {
   /** Maximum total bytes to read, or positive infinity for no size limit. */
   maxBytes?: number;
-  /** Finite request timeout in milliseconds. Zero requests an immediate deadline. */
+  /**
+   * Maximum milliseconds to wait for response headers or the next body chunk.
+   * The timer resets whenever download progress is made. Zero requests an
+   * immediate deadline.
+   */
   timeout?: number;
+}
+
+class DownloadTimeoutError extends Error {
+  constructor(
+    readonly timeout: number,
+    readonly phase: "response" | "body",
+  ) {
+    super(`download timed out after ${timeout}ms`);
+    this.name = "DownloadTimeoutError";
+  }
 }
 
 /**
@@ -73,12 +87,23 @@ async function runDownload(
   timeout: number,
 ): Promise<Result<ArrayBuffer, VexSerialError>> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
   try {
     let response: Response;
     try {
-      response = await fetch(link, { signal: controller.signal });
+      response = await withDownloadTimeout(
+        fetch(link, { signal: controller.signal }),
+        timeout,
+        controller,
+        "response",
+      );
     } catch (e) {
+      if (e instanceof DownloadTimeoutError) {
+        return err(
+          new VexDownloadError(
+            `download timed out after ${e.timeout}ms waiting for a response from ${link}`,
+          ),
+        );
+      }
       return err(
         new VexDownloadError(
           `failed to download ${link} (${e instanceof Error ? e.message : String(e)})`,
@@ -120,7 +145,32 @@ async function runDownload(
     const buffer = new DownloadBuffer(initialCapacity, maxBytes);
     try {
       for (;;) {
-        const { value, done } = await reader.read();
+        let chunk: Awaited<ReturnType<typeof reader.read>>;
+        try {
+          chunk = await withDownloadTimeout(
+            reader.read(),
+            timeout,
+            controller,
+            "body",
+          );
+        } catch (e) {
+          if (e instanceof DownloadTimeoutError) {
+            void reader.cancel(e).catch(() => {
+              // Aborting the fetch may already have errored the body.
+            });
+            return err(
+              new VexDownloadError(
+                `download timed out after ${e.timeout}ms waiting for data from ${link}`,
+              ),
+            );
+          }
+          return err(
+            new VexDownloadError(
+              `failed to download ${link} (${e instanceof Error ? e.message : String(e)})`,
+            ),
+          );
+        }
+        const { value, done } = chunk;
         if (done) break;
         if (value === undefined) continue;
         if (!buffer.append(value)) {
@@ -146,8 +196,33 @@ async function runDownload(
 
     return ok(buffer.finish());
   } finally {
-    clearTimeout(timer);
+    controller.abort();
   }
+}
+
+function withDownloadTimeout<T>(
+  operation: Promise<T>,
+  timeout: number,
+  controller: AbortController,
+  phase: "response" | "body",
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const error = new DownloadTimeoutError(timeout, phase);
+      controller.abort(error);
+      reject(error);
+    }, timeout);
+    void operation.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 /**
