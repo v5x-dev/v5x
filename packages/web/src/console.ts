@@ -159,18 +159,36 @@ class V5WebConsole implements V5Console {
     }
 
     const terminal = opened.value;
+    let terminalError: V5WebError | null = null;
 
     const onText = (chunk: string): void => this.append(chunk);
+    const onError = (error: VexSerialError): void => {
+      if (this.terminal !== terminal) return;
+      terminalError = normalizeV5WebError(
+        "connect-error",
+        error,
+        "Reading V5 program output failed.",
+      );
+      this.error = terminalError;
+      this.publish();
+    };
     const onClosed = (): void => {
       if (this.terminal !== terminal) return;
-      void this.stop();
+      this.detach?.();
+      this.detach = null;
+      this.terminal = null;
+      this.status = terminalError === null ? "idle" : "error";
+      this.publish();
+      void terminal.close();
     };
     terminal.on("text", onText);
+    terminal.on("error", onError);
     terminal.on("closed", onClosed);
 
     this.terminal = terminal;
     this.detach = () => {
       terminal.remove("text", onText);
+      terminal.remove("error", onError);
       terminal.remove("closed", onClosed);
     };
     this.status = "streaming";

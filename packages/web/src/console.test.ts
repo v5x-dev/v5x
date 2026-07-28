@@ -18,6 +18,7 @@ function serialError(message: string): VexSerialError {
 /** A serial terminal stand-in whose output the test drives directly. */
 class FakeTerminal {
   private readonly textListeners = new Set<(value: string) => void>();
+  private readonly errorListeners = new Set<(value: VexSerialError) => void>();
   private readonly closedListeners = new Set<() => void>();
   readonly written: string[] = [];
   closed = 0;
@@ -25,11 +26,21 @@ class FakeTerminal {
 
   on(event: string, listener: (value: string) => void): void {
     if (event === "text") this.textListeners.add(listener);
+    if (event === "error") {
+      this.errorListeners.add(
+        listener as unknown as (value: VexSerialError) => void,
+      );
+    }
     if (event === "closed") this.closedListeners.add(listener as () => void);
   }
 
   remove(event: string, listener: (value: string) => void): void {
     if (event === "text") this.textListeners.delete(listener);
+    if (event === "error") {
+      this.errorListeners.delete(
+        listener as unknown as (value: VexSerialError) => void,
+      );
+    }
     if (event === "closed") this.closedListeners.delete(listener as () => void);
   }
 
@@ -50,8 +61,17 @@ class FakeTerminal {
     for (const listener of this.closedListeners) listener();
   }
 
+  failSession(error: VexSerialError): void {
+    for (const listener of this.errorListeners) listener(error);
+    this.endSession();
+  }
+
   get listenerCount(): number {
-    return this.textListeners.size + this.closedListeners.size;
+    return (
+      this.textListeners.size +
+      this.errorListeners.size +
+      this.closedListeners.size
+    );
   }
 
   asTerminal(): V5UserProgramTerminal {
@@ -208,6 +228,24 @@ describe("console store", () => {
     await Bun.sleep(0);
 
     expect(console.getSnapshot().streaming).toBe(false);
+  });
+
+  test("a session failure preserves the serial error that closed it", async () => {
+    const terminal = new FakeTerminal();
+    const console = createV5Console(() => deviceWith(terminal));
+    await console.start();
+
+    terminal.failSession(serialError("device stopped responding"));
+    await Bun.sleep(0);
+
+    expect(console.getSnapshot()).toMatchObject({
+      status: "error",
+      streaming: false,
+    });
+    expect(console.getSnapshot().error?.message).toBe(
+      "device stopped responding",
+    );
+    expect(terminal.listenerCount).toBe(0);
   });
 
   test("clearing empties the buffer without stopping the stream", async () => {

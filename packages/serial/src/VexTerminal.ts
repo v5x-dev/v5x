@@ -62,6 +62,7 @@ export class V5UserProgramTerminal extends VexEventTarget<V5TerminalEvents> {
   private readonly connection: V5SerialConnection;
   private readonly decoder = new TextDecoder("utf-8");
   private polling: Promise<void> | undefined;
+  private closing: Promise<void> | undefined;
   private running = false;
   private wakeIdleWait: (() => void) | undefined;
 
@@ -100,19 +101,22 @@ export class V5UserProgramTerminal extends VexEventTarget<V5TerminalEvents> {
    * a caller that cannot tell whether a session started may call it again.
    */
   start(): void {
-    if (this.running) return;
+    if (this.running || this.closing !== undefined) return;
     this.running = true;
     this.polling = this.poll();
   }
 
   /** Stop polling and wait for the in-flight read to settle. */
-  async close(): Promise<void> {
-    if (!this.running) return;
+  close(): Promise<void> {
+    if (this.closing !== undefined) return this.closing;
+    if (!this.running) return Promise.resolve();
+
     this.running = false;
     this.wakeIdleWait?.();
     const polling = this.polling;
-    this.polling = undefined;
-    await polling;
+    const closing = this.finishClose(polling);
+    this.closing = closing;
+    return closing;
   }
 
   /**
@@ -132,8 +136,8 @@ export class V5UserProgramTerminal extends VexEventTarget<V5TerminalEvents> {
 
     while (this.running) {
       if (!this.connection.isConnected) {
-        this.stopWith(new VexNotConnectedError());
-        return;
+        this.emitSafely("error", new VexNotConnectedError());
+        break;
       }
 
       const read = await this.connection.readUserFifo(
@@ -146,9 +150,7 @@ export class V5UserProgramTerminal extends VexEventTarget<V5TerminalEvents> {
         consecutiveErrors++;
         this.emitSafely("error", read.error);
         if (consecutiveErrors >= this.maxConsecutiveErrors) {
-          this.running = false;
-          this.emitSafely("closed", undefined);
-          return;
+          break;
         }
         await this.waitIdle();
         continue;
@@ -165,13 +167,19 @@ export class V5UserProgramTerminal extends VexEventTarget<V5TerminalEvents> {
       this.emitSafely("text", this.decoder.decode(bytes, { stream: true }));
     }
 
+    this.running = false;
+    const trailingText = this.decoder.decode();
+    if (trailingText !== "") this.emitSafely("text", trailingText);
     this.emitSafely("closed", undefined);
   }
 
-  private stopWith(error: VexSerialError): void {
-    this.running = false;
-    this.emitSafely("error", error);
-    this.emitSafely("closed", undefined);
+  private async finishClose(polling: Promise<void> | undefined): Promise<void> {
+    try {
+      await polling;
+    } finally {
+      if (this.polling === polling) this.polling = undefined;
+      this.closing = undefined;
+    }
   }
 
   /** Sleep until the next poll, or until {@link close} interrupts the wait. */

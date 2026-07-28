@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { errAsync, okAsync, ResultAsync } from "neverthrow";
+import { err, errAsync, ok, okAsync, ResultAsync } from "neverthrow";
 import { AckType, UserFifoChannel, USER_FIFO_MAX_WRITE_SIZE } from "./Vex";
 import { V5SerialConnection } from "./VexConnection";
 import { V5UserProgramTerminal, openUserProgramTerminal } from "./VexTerminal";
@@ -185,12 +185,22 @@ class ScriptedConnection {
   readonly reads: Array<Uint8Array | VexSerialError> = [];
   readonly writes: Array<{ channel: UserFifoChannel; text: string }> = [];
   readCount = 0;
+  readBarrier: Promise<void> | undefined;
 
   readUserFifo(
     channel: UserFifoChannel,
   ): ResultAsync<Uint8Array, VexSerialError> {
     this.readCount++;
     const next = this.reads.shift();
+    if (this.readBarrier !== undefined) {
+      return new ResultAsync(
+        this.readBarrier.then(() =>
+          next instanceof VexSerialError
+            ? err(next)
+            : ok(next ?? new Uint8Array()),
+        ),
+      );
+    }
     if (next === undefined) return okAsync(new Uint8Array());
     if (next instanceof VexSerialError) return errAsync(next);
     expect(channel).toBe(UserFifoChannel.STDOUT);
@@ -250,6 +260,22 @@ describe("terminal sessions", () => {
     await terminal.close();
 
     expect(emitted.join("")).toBe("é");
+  });
+
+  test("closing flushes an incomplete UTF-8 sequence", async () => {
+    const fake = new ScriptedConnection();
+    fake.reads.push(Uint8Array.of(0xc3));
+    const terminal = new V5UserProgramTerminal(fake.asConnection(), {
+      idlePollIntervalMs: 10_000,
+    });
+    let text = "";
+    terminal.on("text", (value) => (text += value));
+
+    terminal.start();
+    await settle(() => fake.readCount >= 2);
+    await terminal.close();
+
+    expect(text).toBe("\ufffd");
   });
 
   test("an empty channel does not emit an empty chunk", async () => {
@@ -357,6 +383,27 @@ describe("terminal sessions", () => {
     await terminal.close();
 
     expect(closed).toBe(1);
+  });
+
+  test("start does not create another poll while close is in flight", async () => {
+    const fake = new ScriptedConnection();
+    let releaseRead = (): void => {};
+    fake.readBarrier = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    const terminal = new V5UserProgramTerminal(fake.asConnection(), {
+      idlePollIntervalMs: 10_000,
+    });
+
+    terminal.start();
+    await settle(() => fake.readCount === 1);
+    const closing = terminal.close();
+    terminal.start();
+    releaseRead();
+    await closing;
+
+    expect(fake.readCount).toBe(1);
+    expect(terminal.isRunning).toBe(false);
   });
 
   test("starting an already-running session does not double-poll", async () => {
