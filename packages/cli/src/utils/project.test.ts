@@ -284,3 +284,16 @@ test("rejects a cold artifact emptied after validation", async () => {
     `program cold artifact is empty: ${cold}`,
   );
 });
+
+test("rejects an artifact changed to a different in-range size", async () => {
+  const path = await temporaryDirectory();
+  const hot = join(path, "program.bin");
+  await writeFile(hot, "original");
+  const validated = await validateProgramArtifacts({ hot });
+
+  await writeFile(hot, "changed");
+
+  await expect(loadValidatedProgramArtifacts(validated)).rejects.toThrow(
+    `program hot artifact ${hot} changed during upload (8 bytes at validation, 7 on read)`,
+  );
+});

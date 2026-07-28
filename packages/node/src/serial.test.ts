@@ -167,4 +167,55 @@ describe("NodeSerial", () => {
     expect(propertyCalls).toBe(1);
     expect(listenerCalls).toBe(2);
   });
+
+  test("emits serial-level events when discovered ports change", async () => {
+    let discovered = [{ path: "/dev/ttyACM0" }];
+    const serial = new NodeSerial({
+      backend: createFakeBackend(async () => discovered),
+      hotplugPollInterval: 1,
+    });
+    const events: string[] = [];
+    serial.addEventListener("connect", () => events.push("connect"));
+    serial.addEventListener("disconnect", () => events.push("disconnect"));
+
+    await serial.getPorts();
+    expect(events).toEqual([]);
+
+    discovered = [{ path: "/dev/ttyACM1" }];
+    await waitFor(() => events.length === 2);
+
+    expect(events).toEqual(["disconnect", "connect"]);
+    expect(
+      (await serial.getPorts()).map((port) => port.getInfo().path),
+    ).toEqual(["/dev/ttyACM1"]);
+  });
+
+  test("continues hotplug checks after a discovery failure", async () => {
+    let calls = 0;
+    const serial = new NodeSerial({
+      backend: createFakeBackend(async () => {
+        calls++;
+        if (calls === 2) throw new Error("temporary list failure");
+        return calls < 4 ? [] : [{ path: "/dev/ttyACM0" }];
+      }),
+      hotplugPollInterval: 1,
+    });
+    let connects = 0;
+    serial.addEventListener("connect", () => {
+      connects++;
+    });
+
+    await serial.getPorts();
+    await waitFor(() => connects === 1);
+
+    expect(calls).toBeGreaterThanOrEqual(4);
+  });
 });
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 500;
+  while (!condition()) {
+    if (Date.now() >= deadline) throw new Error("timed out waiting for event");
+    await Bun.sleep(1);
+  }
+}
