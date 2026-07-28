@@ -77,7 +77,7 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
-        "@v5x/internal": "workspace:*",
+        "@v5x/internal": "*",
       },
     },
     "packages/events": {
@@ -85,7 +85,7 @@
       "version": "0.2.0",
       "devDependencies": {
         "@types/bun": "latest",
-        "@v5x/internal": "workspace:*",
+        "@v5x/internal": "*",
       },
     },
     "packages/internal": {
@@ -103,7 +103,7 @@
       "devDependencies": {
         "@types/bun": "latest",
         "@types/dom-serial": "^1.0.2",
-        "@v5x/internal": "workspace:*",
+        "@v5x/internal": "*",
         "bun-serialport": "^0.1.1",
       },
       "peerDependencies": {
