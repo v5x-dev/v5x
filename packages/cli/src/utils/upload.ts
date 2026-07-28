@@ -1,6 +1,8 @@
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
+import { CliError, CLI_EXIT_CODE } from "../errors";
 import { requireOptionValue } from "./guards";
 import { formatSerialFailure, printJson } from "./output";
+import { runTerminalSession } from "./terminal";
 import {
   buildProject,
   createProgramConfig,
@@ -24,6 +26,7 @@ export interface UploadOptions extends PortSelectionOptions {
   artifact?: string;
   build: boolean;
   run: boolean;
+  terminal: boolean;
   command: WorkflowUploadJson["command"];
   json?: boolean;
 }
@@ -38,6 +41,7 @@ export interface UploadCommandOptions extends PortSelectionOptions {
   file?: string | boolean;
   build?: boolean;
   run?: boolean;
+  terminal?: boolean;
   json?: boolean;
 }
 
@@ -67,6 +71,34 @@ export function resolveBuildOption(
   return file === undefined;
 }
 
+/**
+ * Validate `--terminal` against the rest of the command.
+ *
+ * Watching output only means something for a program that was started, and the
+ * workflow JSON report cannot share standard output with a live stream, so
+ * both conflicts are rejected instead of silently ignoring the flag.
+ */
+export function resolveTerminalOption(
+  terminal: boolean | undefined,
+  run: boolean,
+  json: boolean | undefined,
+): boolean {
+  if (terminal !== true) return false;
+  if (!run) {
+    throw new CliError(
+      "--terminal needs a program to watch; drop --no-run",
+      CLI_EXIT_CODE.USAGE,
+    );
+  }
+  if (json === true) {
+    throw new CliError(
+      "--terminal cannot be combined with --json; use `v5x terminal --json`",
+      CLI_EXIT_CODE.USAGE,
+    );
+  }
+  return true;
+}
+
 export async function uploadProgramFromCommand(
   path: string | undefined,
   options: UploadCommandOptions,
@@ -76,6 +108,9 @@ export async function uploadProgramFromCommand(
   const description = requireOptionValue(options.description, "--description");
   const icon = requireOptionValue(options.icon, "--icon");
   const file = requireOptionValue(options.file, "--file");
+  // Watching output implies starting the program, so `v5x upload --terminal`
+  // does not also need `--run`.
+  const run = options.run ?? (options.terminal === true || runDefault);
 
   await uploadProgram({
     path: path ?? process.cwd(),
@@ -85,7 +120,8 @@ export async function uploadProgramFromCommand(
     icon: icon ?? "default.bmp",
     artifact: file,
     build: resolveBuildOption(options.build, file),
-    run: options.run ?? runDefault,
+    run,
+    terminal: resolveTerminalOption(options.terminal, run, options.json),
     port: options.port,
     command: runDefault ? "run" : "upload",
     json: options.json,
@@ -179,6 +215,9 @@ export async function uploadProgram(
         );
       }
     });
+    // The program is already running, so the terminal attaches to the same
+    // connection rather than reconnecting and missing the first output.
+    if (options.terminal) await runTerminalSession(device);
   });
   const result: WorkflowUploadJson = {
     command: options.command,

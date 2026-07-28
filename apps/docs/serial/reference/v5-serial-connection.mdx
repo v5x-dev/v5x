@@ -25,7 +25,11 @@ try {
 }
 ```
 
-Important methods include `getDeviceStatus`, `getRadioStatus`, `getSystemFlags`, `getSystemStatus`, `getMatchStatus`, file transfers, program transfers, `loadProgram`, `stopProgram`, `setMatchMode`, `mockTouch`, and `openScreen`.
+Important methods include `getDeviceStatus`, `getRadioStatus`, `getSystemFlags`, `getSystemStatus`, `getMatchStatus`, file transfers, program transfers, `loadProgram`, `stopProgram`, `setMatchMode`, `mockTouch`, `openScreen`, `readUserFifo`, and `writeUserFifo`.
+
+`readUserFifo` and `writeUserFifo` move bytes between the host and a running
+user program. See [Program output and input](/serial/guides/user-program-terminal)
+for the terminal session built on top of them.
 
 `writeDataAsync(packet, timeout)` uses a 1,000 ms timeout by default. File
 uploads and downloads are serialized per connection and use longer timeouts for

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { type V5Client, type V5Snapshot } from "../client.js";
+import { createV5Console } from "../console.js";
 import { V5WebError } from "../errors.js";
 import { createV5State } from "./state.js";
 
@@ -35,6 +36,8 @@ function createFakeClient(): V5Client & {
     connect: async () => true,
     disconnect: async () => {},
     refresh: async () => {},
+    // The console is a real store over an absent device: idle, never streaming.
+    console: createV5Console(() => null),
     setSnapshot(nextSnapshot) {
       snapshot = nextSnapshot;
       for (const listener of listeners) listener();

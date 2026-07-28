@@ -27,6 +27,7 @@
     "lint": "oxlint src --type-aware",
     "test": "bun test",
     "benchmark:screenshot": "bun ./benchmarks/screenshot.ts",
+    "demo:terminal": "bun ./scripts/render-terminal-demo.ts",
     "prepack": "bun run --cwd ../serial build && bun run build"
   },
   "devDependencies": {

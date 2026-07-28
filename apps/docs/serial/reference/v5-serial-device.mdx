@@ -36,5 +36,6 @@ const slowerDevice = new V5SerialDevice(navigator.serial, {
 | `refresh()`              | Refresh high-level device state.                     |
 | `setMatchMode(mode)`     | Update match mode and resolve after acknowledgement. |
 | `mockTouch(x, y, press)` | Send a brain touch event.                            |
+| `openTerminal(options?)` | Start streaming the running program's output.        |
 
 [View source](https://github.com/v5x-dev/v5x/blob/main/packages/serial/src/VexDevice.ts)

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { errAsync, okAsync, ResultAsync } from "neverthrow";
-import { VexFirmwareVersion, VexSerialError } from "@v5x/serial";
+import { errAsync, ok, okAsync, ResultAsync } from "neverthrow";
+import {
+  VexFirmwareVersion,
+  VexSerialError,
+  type V5UserProgramTerminal,
+} from "@v5x/serial";
 import {
   createV5ClientWithFactory,
   type V5ConnectionStatus,
@@ -9,6 +13,7 @@ import {
 import { V5WebError } from "./errors.js";
 
 interface FakeDevice {
+  openTerminal?: V5DeviceLike["openTerminal"];
   autoRefresh: boolean;
   autoReconnect?: boolean;
   state?: V5DeviceLike["state"];
@@ -1181,5 +1186,89 @@ describe("createV5Client", () => {
       connected: false,
       error: null,
     });
+  });
+});
+
+describe("client console", () => {
+  /** A terminal stand-in the console can stream from. */
+  function createFakeTerminal() {
+    const textListeners = new Set<(value: string) => void>();
+    let closes = 0;
+    const terminal = {
+      on(event: string, listener: (value: string) => void) {
+        if (event === "text") textListeners.add(listener);
+      },
+      remove(event: string, listener: (value: string) => void) {
+        if (event === "text") textListeners.delete(listener);
+      },
+      write: () => okAsync(0),
+      close: async () => {
+        closes++;
+      },
+    };
+    return {
+      terminal: terminal as unknown as V5UserProgramTerminal,
+      print: (text: string) => {
+        for (const listener of textListeners) listener(text);
+      },
+      get closes() {
+        return closes;
+      },
+    };
+  }
+
+  function connectedDeviceWithTerminal(terminal: V5UserProgramTerminal) {
+    return {
+      autoRefresh: false,
+      openTerminal: () => ok(terminal),
+      connect: () => okAsync(undefined),
+      disconnect: async () => {},
+      refresh: () => okAsync(true),
+    } satisfies FakeDevice;
+  }
+
+  test("streams the connected device's program output", async () => {
+    const fake = createFakeTerminal();
+    const client = createClient(connectedDeviceWithTerminal(fake.terminal));
+
+    await client.connect();
+    expect(await client.console.start()).toBe(true);
+    fake.print("hello\n");
+
+    expect(client.console.getSnapshot().text).toBe("hello\n");
+  });
+
+  test("refuses to start before a device is connected", async () => {
+    const fake = createFakeTerminal();
+    const client = createClient(connectedDeviceWithTerminal(fake.terminal));
+
+    expect(await client.console.start()).toBe(false);
+    expect(client.console.getSnapshot().status).toBe("error");
+  });
+
+  test("stops when the device is disconnected", async () => {
+    const fake = createFakeTerminal();
+    const client = createClient(connectedDeviceWithTerminal(fake.terminal));
+
+    await client.connect();
+    await client.console.start();
+    await client.disconnect();
+
+    expect(client.console.getSnapshot().streaming).toBe(false);
+    expect(fake.closes).toBe(1);
+  });
+
+  test("keeps the console store separate from the connection store", async () => {
+    const fake = createFakeTerminal();
+    const client = createClient(connectedDeviceWithTerminal(fake.terminal));
+    let connectionNotifications = 0;
+    client.subscribe(() => connectionNotifications++);
+
+    await client.connect();
+    await client.console.start();
+    const before = connectionNotifications;
+    fake.print("output\n");
+
+    expect(connectionNotifications).toBe(before);
   });
 });

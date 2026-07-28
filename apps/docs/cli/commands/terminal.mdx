@@ -1,0 +1,107 @@
+---
+title: "terminal"
+description: "Stream the running program's standard output."
+---
+
+```bash
+v5x terminal
+v5x terminal --timestamps
+v5x terminal --no-input
+v5x terminal --json
+```
+
+Alias: `v5x term`
+
+`terminal` attaches to the program already running on the brain and prints
+everything it writes to `stdout` and `stderr`. Press <kbd>ctrl-c</kbd> to
+detach; the program keeps running.
+
+<img
+  src="/assets/terminal/terminal.png"
+  alt="A terminal window showing v5x terminal streaming a vexide program's startup, odometry, and autonomous log lines"
+/>
+
+Only program output goes to standard output, so redirecting captures exactly
+what the program printed:
+
+```bash
+v5x terminal > run.log
+```
+
+## Sending input
+
+On an interactive terminal, keystrokes are forwarded to the program's standard
+input as you type. Piped input works too:
+
+```bash
+echo "calibrate" | v5x terminal --no-input
+```
+
+<ParamField path="--timestamps, -t" type="boolean">
+  Prefix each line with the time it reached the host. Lines are only printed
+  once the program terminates them with a newline, so a program that prints a
+  prompt without one will not show it until it does.
+</ParamField>
+
+<img
+  src="/assets/terminal/terminal-timestamps.png"
+  alt="The same program output with each line prefixed by a dimmed arrival timestamp"
+/>
+
+<ParamField path="--no-input" type="boolean">
+  Leave standard input alone. Use this when running under a supervisor that owns
+  the terminal.
+</ParamField>
+
+<ParamField path="--no-color" type="boolean">
+  Disable the colored timestamp prefix.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Print one JSON record per chunk of output, newline-delimited:
+  `{"time":"2026-07-27T10:11:12.130Z","stream":"stdout","text":"hello\n"}`.
+  The status banner is suppressed so the stream stays machine-readable.
+</ParamField>
+
+<img
+  src="/assets/terminal/terminal-json.png"
+  alt="Newline-delimited JSON records, each with a time, stream, and text field"
+/>
+
+<ParamField path="--port" type="string">
+  Serial port path or id. Defaults to `V5X_PORT`.
+</ParamField>
+
+## Upload, run, and watch in one step
+
+`upload` and `run` accept `--terminal`, which keeps the connection open and
+starts streaming as soon as the program starts. This avoids the gap where a
+separate `v5x terminal` invocation would miss the program's first output.
+
+```bash
+v5x run --terminal
+v5x upload --terminal --slot 3
+```
+
+<img
+  src="/assets/terminal/run-terminal.png"
+  alt="Upload progress for the ini and bin files, then the started program's output streaming in the same session"
+/>
+
+`--terminal` implies `--run` and cannot be combined with `--json`, because the
+workflow report and the live stream cannot share standard output. Use
+`v5x terminal --json` for a machine-readable stream.
+
+## How it works
+
+The brain buffers program output and hands it over when the host asks, so v5x
+polls that buffer over the same connection it uses for every other command.
+This works over a direct USB connection to the brain and over a controller
+connection. Output can therefore be delayed (never reordered) while a large
+file transfer holds the link.
+
+## Exit codes
+
+A session you quit exits `0`. A session the device ends — the brain stopped
+answering, or the cable was pulled — exits with the
+[device or I/O code](/cli/troubleshooting) for the underlying failure.

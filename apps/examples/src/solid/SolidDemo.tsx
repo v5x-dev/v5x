@@ -1,8 +1,15 @@
 /** @jsxImportSource solid-js */
-import { Show, createMemo, createSignal, onCleanup } from "solid-js";
+import {
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+} from "solid-js";
 import {
   V5Provider,
   createV5Connection,
+  createV5Console,
   createV5Snapshot,
 } from "@v5x/web/solid";
 import {
@@ -113,8 +120,52 @@ function Panel(props: { controls: FakeV5Controls }) {
         <Row term="Disconnects" detail={controls().stats.disconnects} />
       </dl>
 
+      <Console connected={snapshot().connected} />
+
       <p class="error-text">{snapshot().error?.message ?? ""}</p>
     </article>
+  );
+}
+
+function Console(props: { connected: boolean }) {
+  const console = createV5Console();
+  const [output, setOutput] = createSignal<HTMLPreElement>();
+
+  // Follow the tail on new output. `chunks` changes even when the buffer text
+  // is unchanged after trimming, so it is the reliable trigger.
+  createEffect(() => {
+    void console.snapshot().chunks;
+    const element = output();
+    if (element) element.scrollTop = element.scrollHeight;
+  });
+
+  return (
+    <section class="console">
+      <div class="actions">
+        <button
+          class="button"
+          type="button"
+          disabled={!props.connected || console.snapshot().streaming}
+          onClick={() => void console.start()}
+        >
+          Start console
+        </button>
+        <button
+          class="button"
+          type="button"
+          disabled={!console.snapshot().streaming}
+          onClick={() => void console.stop()}
+        >
+          Stop
+        </button>
+        <button class="button" type="button" onClick={() => console.clear()}>
+          Clear
+        </button>
+      </div>
+      <pre class="console-output" ref={setOutput}>
+        {console.snapshot().text || "(no program output yet)"}
+      </pre>
+    </section>
   );
 }
 

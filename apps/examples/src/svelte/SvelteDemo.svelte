@@ -18,6 +18,15 @@
     const { mode, stats } = environment.controls;
     return { mode, stats };
   });
+
+  let output = $state<HTMLPreElement>();
+
+  // Follow the tail on new output. `chunks` changes even when the buffer text
+  // is unchanged after trimming, so it is the reliable trigger.
+  $effect(() => {
+    void v5.console.chunks;
+    if (output) output.scrollTop = output.scrollHeight;
+  });
 </script>
 
 {#snippet row(term: string, detail: string | number)}
@@ -95,6 +104,32 @@
     {@render row("Refreshes", controls.stats.refreshes)}
     {@render row("Disconnects", controls.stats.disconnects)}
   </dl>
+
+  <section class="console">
+    <div class="actions">
+      <button
+        class="button"
+        type="button"
+        disabled={!v5.snapshot.connected || v5.console.streaming}
+        onclick={() => v5.startConsole()}
+      >
+        Start console
+      </button>
+      <button
+        class="button"
+        type="button"
+        disabled={!v5.console.streaming}
+        onclick={() => v5.stopConsole()}
+      >
+        Stop
+      </button>
+      <button class="button" type="button" onclick={() => v5.clearConsole()}>
+        Clear
+      </button>
+    </div>
+    <pre class="console-output" bind:this={output}>{v5.console.text ||
+        "(no program output yet)"}</pre>
+  </section>
 
   <p class="error-text">{v5.snapshot.error?.message ?? ""}</p>
 </article>

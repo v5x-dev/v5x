@@ -17,6 +17,7 @@ import programs from "./commands/programs";
 import rm from "./commands/rm";
 import run from "./commands/run";
 import screenshot from "./commands/screenshot";
+import terminal from "./commands/terminal";
 import upload from "./commands/upload";
 import {
   cliExitCode,
@@ -46,6 +47,7 @@ const commands = [
   rm,
   devices,
   screenshot,
+  terminal,
   install,
   kv,
 ];

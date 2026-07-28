@@ -73,6 +73,7 @@
               "cli/commands/cat",
               "cli/commands/rm",
               "cli/commands/screenshot",
+              "cli/commands/terminal",
               "cli/commands/kv"
             ]
           },
@@ -100,6 +101,7 @@
               "serial/guides/connect-and-disconnect",
               "serial/guides/inspect-device-state",
               "serial/guides/manage-programs",
+              "serial/guides/user-program-terminal",
               "serial/guides/manage-files",
               "serial/guides/screenshots-and-touch",
               "serial/guides/match-and-radio",
@@ -130,7 +132,7 @@
         "groups": [
           {
             "group": "Browser workflow",
-            "pages": ["web/overview", "web/errors"]
+            "pages": ["web/overview", "web/console", "web/errors"]
           },
           {
             "group": "Framework bindings",

@@ -21,6 +21,11 @@ import {
 } from "./VexError.js";
 import { err, ok, Result, ResultAsync } from "neverthrow";
 import { DeviceSnapshotRefresher } from "./DeviceSnapshotRefresher.js";
+import {
+  openUserProgramTerminal,
+  type V5TerminalOptions,
+  type V5UserProgramTerminal,
+} from "./VexTerminal.js";
 
 // Re-exports for backward compatibility with the previous VexDevice module.
 export {
@@ -788,5 +793,16 @@ export class V5SerialDevice extends VexSerialDevice {
    */
   refresh(): ResultAsync<boolean, VexSerialError> {
     return new ResultAsync(this.snapshots.refresh(this.connection));
+  }
+
+  /**
+   * Start streaming the running user program's standard output, and accept
+   * standard input for it. The caller owns the returned session and must
+   * `close()` it; disposing the device does not stop the poll loop on its own.
+   */
+  openTerminal(
+    options: V5TerminalOptions = {},
+  ): Result<V5UserProgramTerminal, VexSerialError> {
+    return openUserProgramTerminal(this.connection, options);
   }
 }

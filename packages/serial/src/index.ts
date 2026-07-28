@@ -7,3 +7,4 @@ export * from "./VexFirmwareVersion.js";
 export * from "./VexIniConfig.js";
 export * from "./VexPacket.js";
 export * from "./VexPacketView.js";
+export * from "./VexTerminal.js";

@@ -72,9 +72,14 @@ v5x dir
 v5x cat slot_1.ini
 v5x rm slot_1.bin
 v5x screenshot
+v5x terminal
 v5x kv get key
 v5x kv set key value
 ```
+
+`v5x terminal` streams the running program's standard output and forwards your
+keystrokes to its standard input. `v5x run --terminal` uploads, starts, and
+starts streaming without dropping the connection in between.
 
 Hardware commands accept `--port <path-or-id>` to target a specific serial
 device. Set `V5X_PORT` to use the same selector without repeating the flag.

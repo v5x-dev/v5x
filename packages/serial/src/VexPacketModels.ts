@@ -13,6 +13,8 @@ import {
   type MatchMode,
   type SlotNumber,
   type SelectDashScreen,
+  USER_FIFO_MAX_WRITE_SIZE,
+  type UserFifoChannel,
 } from "./Vex.js";
 import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
 import { DeviceBoundPacket, HostBoundPacket } from "./VexPacketBase.js";
@@ -287,6 +289,32 @@ export class ReadLogPageH2DPacket extends DeviceBoundPacket {
 export class GetRadioStatusH2DPacket extends DeviceBoundPacket {
   static COMMAND_ID = 86;
   static COMMAND_EXTENDED_ID = 38;
+}
+
+/**
+ * Read from, and optionally write to, a user-program FIFO buffer.
+ *
+ * A request with no `write` payload only drains the channel. The brain always
+ * answers with whatever it currently holds for that channel, so an empty reply
+ * means "nothing buffered", not a failure.
+ */
+export class UserFifoH2DPacket extends DeviceBoundPacket {
+  static COMMAND_ID = 86;
+  static COMMAND_EXTENDED_ID = 39;
+
+  constructor(channel: UserFifoChannel, write?: Uint8Array) {
+    const length = write?.byteLength ?? 0;
+    if (length > USER_FIFO_MAX_WRITE_SIZE) {
+      throw new RangeError(
+        `user FIFO writes must be at most ${USER_FIFO_MAX_WRITE_SIZE} bytes`,
+      );
+    }
+    const payload = new Uint8Array(2 + length);
+    payload[0] = channel;
+    payload[1] = length;
+    if (write !== undefined) payload.set(write, 2);
+    super(payload);
+  }
 }
 
 export class ScreenCaptureH2DPacket extends DeviceBoundPacket {
@@ -825,6 +853,29 @@ export class GetRadioStatusReplyD2HPacket extends HostBoundPacket {
     this.strength = view.nextInt16();
     this.channel = this.data[this.ackIndex + 6]!;
     this.timeslot = this.data[this.ackIndex + 7]!;
+  }
+}
+
+export class UserFifoReplyD2HPacket extends HostBoundPacket {
+  static COMMAND_ID = 86;
+  static COMMAND_EXTENDED_ID = 39;
+
+  channel: number;
+  /**
+   * Bytes drained from the channel, as a view over the reply. The brain may
+   * pad the tail with NULs, which {@link readUserFifo} strips before the bytes
+   * reach a caller.
+   */
+  buf: Uint8Array;
+
+  constructor(data: DataArray) {
+    super(data);
+    const view = PacketView.fromPacket(this);
+    this.channel = view.nextUint8();
+    // The payload size covers the extended id, the ack, the channel byte, the
+    // FIFO bytes, and the trailing CRC16.
+    const length = Math.max(0, this.payloadSize - 5);
+    this.buf = this.data.subarray(view.position, view.position + length);
   }
 }
 
