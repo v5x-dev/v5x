@@ -51,9 +51,7 @@ export default function registerKvCommand(program: Sade) {
         );
       }
 
-      printOutput(
-        options.json,
-        toKvJson(rows),
+      printOutput(options.json, toKvJson(rows), () =>
         renderTable(["key", "value"], formatKvRows(rows)),
       );
     });
@@ -72,7 +70,7 @@ export default function registerKvCommand(program: Sade) {
           await device.brain.getValue(key),
           `failed to get ${key}`,
         );
-        printOutput(options.json, { key, value: value ?? null }, value);
+        printOutput(options.json, { key, value: value ?? null }, () => value);
       });
     },
   );
@@ -90,7 +88,7 @@ export default function registerKvCommand(program: Sade) {
         printOutput(
           options.json,
           { command: "kv set", key, value, set: true },
-          `set ${key} to ${value}`,
+          () => `set ${key} to ${value}`,
         );
       });
     },

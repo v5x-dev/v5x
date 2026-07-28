@@ -21,7 +21,7 @@ export default function registerInitCommand(program: Sade) {
       printOutput(
         options.json,
         toWorkflowCreateJson("init", path, toolchain),
-        `created ${toolchain} project at ${path}`,
+        () => `created ${toolchain} project at ${path}`,
       );
     },
   );

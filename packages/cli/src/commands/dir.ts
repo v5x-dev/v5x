@@ -111,9 +111,7 @@ export default function registerDirCommand(program: Sade) {
         for (const error of errors)
           process.stderr.write(`warning: ${error.message}\n`);
       }
-      printOutput(
-        options.json,
-        toDirectoryJson(files, errors),
+      printOutput(options.json, toDirectoryJson(files, errors), () =>
         renderTable(
           ["name", "size", "load address", "timestamp", "crc32"],
           formatFileRows(files),

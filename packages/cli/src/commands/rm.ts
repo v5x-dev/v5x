@@ -18,7 +18,7 @@ export default function registerRmCommand(program: Sade) {
         printOutput(
           options.json,
           { command: "rm", file, erased: true },
-          `erased ${file}`,
+          () => `erased ${file}`,
         );
       });
     },

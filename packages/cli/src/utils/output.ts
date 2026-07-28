@@ -25,13 +25,17 @@ export function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
 }
 
+/**
+ * Print `jsonValue` as JSON under `--json`, otherwise print the rendered text.
+ * `text` is a thunk so table rendering only runs in the branch that needs it.
+ */
 export function printOutput(
   json: boolean | undefined,
   jsonValue: unknown,
-  text: unknown,
+  text: () => unknown,
 ): void {
   if (json === true) printJson(jsonValue);
-  else console.log(text);
+  else console.log(text());
 }
 
 export function unwrap<T, E>(result: Result<T, E>, message: string): T {

@@ -318,9 +318,7 @@ export default function registerHardwareSmokeCommand(program: Sade) {
             mutate: options.mutate === true,
             output,
           });
-          printOutput(
-            options.json,
-            report,
+          printOutput(options.json, report, () =>
             renderTable(["field", "value"], formatHardwareSmokeRows(report)),
           );
         });

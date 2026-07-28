@@ -238,9 +238,7 @@ export default function registerDoctorCommand(program: Sade) {
   ).action(async (options: { json?: boolean }) => {
     const report = await createDoctorReport();
     process.exitCode = doctorExitCode(report);
-    printOutput(
-      options.json,
-      report,
+    printOutput(options.json, report, () =>
       renderTable(
         ["status", "check", "value", "next action"],
         formatDoctorRows(report),

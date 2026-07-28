@@ -197,7 +197,7 @@ export default function registerScreenshotCommand(program: Sade) {
           printOutput(
             options.json,
             toScreenshotJson(output, format, data.length),
-            `wrote ${output}`,
+            () => `wrote ${output}`,
           );
         });
       },

@@ -69,9 +69,7 @@ export default function registerDevicesCommand(program: Sade) {
   ).action(async (options: { json?: boolean } & PortSelectionOptions) => {
     await withSelectedV5Device(options, async (device) => {
       const devices = device.devices;
-      printOutput(
-        options.json,
-        toDeviceJson(devices),
+      printOutput(options.json, toDeviceJson(devices), () =>
         renderTable(["port", "type", "version"], formatDeviceRows(devices)),
       );
     });

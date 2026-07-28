@@ -44,7 +44,7 @@ export default function registerNewCommand(program: Sade) {
       printOutput(
         options.json,
         toWorkflowCreateJson("new", path, toolchain),
-        `created ${toolchain} project at ${path}`,
+        () => `created ${toolchain} project at ${path}`,
       );
     },
   );

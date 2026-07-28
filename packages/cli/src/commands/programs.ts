@@ -52,9 +52,7 @@ export default function registerProgramsCommand(program: Sade) {
         await device.brain.listProgram(),
         "failed to list programs",
       );
-      printOutput(
-        options.json,
-        toProgramJson(programs),
+      printOutput(options.json, toProgramJson(programs), () =>
         renderTable(
           ["slot", "requested", "name", "size", "timestamp", "file"],
           formatProgramRows(programs),
@@ -80,7 +78,7 @@ export default function registerProgramsCommand(program: Sade) {
         printOutput(
           options.json,
           { command: "start", slot: slotNumber, started: true },
-          `started slot ${slot}`,
+          () => `started slot ${slot}`,
         );
       });
     },
@@ -95,7 +93,7 @@ export default function registerProgramsCommand(program: Sade) {
       printOutput(
         options.json,
         { command: "stop", stopped: true },
-        "stopped program",
+        () => "stopped program",
       );
     });
   });
