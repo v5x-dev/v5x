@@ -1,5 +1,17 @@
 # v5x repository guide
 
+## Project overview
+
+v5x is an independent TypeScript toolchain for developing on the VEX V5
+robotics platform. It talks directly to a V5 brain over USB and supports
+terminal, browser, and framework-based workflows. Users can build, upload, run,
+and inspect V5 programs, create their own V5 tooling on top of the serial and
+web libraries, and query VEX competition data through a typed API client.
+
+This Bun-managed monorepo contains the published CLI and libraries, their
+documentation and examples, and the website. v5x is not an official VEX
+Robotics product.
+
 ## Package layering
 
 Keep dependencies flowing in this direction:
