@@ -205,13 +205,6 @@ export class SerialTransport {
         await reader.cancel();
       } catch {
         // The stream may already be closed or errored.
-      }
-      try {
-        while (!(await reader.read()).done) {
-          // Drain remaining bytes before releasing the lock.
-        }
-      } catch {
-        // Cancellation may have left the reader in an errored state.
       } finally {
         try {
           reader.releaseLock();

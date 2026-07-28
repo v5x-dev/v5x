@@ -1271,6 +1271,67 @@ describe("downloadFileFromInternet streaming limits", () => {
     expect(result.isOk()).toBe(true);
   });
 
+  test("resets the timeout whenever a body chunk arrives", async () => {
+    let chunk = 0;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        await Bun.sleep(10);
+        controller.enqueue(Uint8Array.of(++chunk));
+        if (chunk === 4) controller.close();
+      },
+    });
+    globalThis.fetch = Object.assign(
+      async () => new Response(body, { status: 200 }),
+      { preconnect: originalFetch.preconnect },
+    ) as typeof fetch;
+
+    const result = await downloadFileFromInternet("https://example.test/slow", {
+      timeout: 25,
+    });
+
+    expect(new Uint8Array(result._unsafeUnwrap())).toEqual(
+      Uint8Array.of(1, 2, 3, 4),
+    );
+  });
+
+  test("reports a distinguishable timeout when body progress stalls", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise(() => {});
+      },
+    });
+    globalThis.fetch = Object.assign(
+      async () => new Response(body, { status: 200 }),
+      { preconnect: originalFetch.preconnect },
+    ) as typeof fetch;
+
+    const result = await downloadFileFromInternet(
+      "https://example.test/stalled",
+      { timeout: 5 },
+    );
+
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain(
+      "timed out after 5ms waiting for data",
+    );
+  });
+
+  test("reports a distinguishable timeout while waiting for headers", async () => {
+    globalThis.fetch = Object.assign(() => new Promise<Response>(() => {}), {
+      preconnect: originalFetch.preconnect,
+    }) as typeof fetch;
+
+    const result = await downloadFileFromInternet(
+      "https://example.test/unresponsive",
+      { timeout: 5 },
+    );
+
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().message).toContain(
+      "timed out after 5ms waiting for a response",
+    );
+  });
+
   test("rejects bodies that exceed the configured byte limit", async () => {
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
