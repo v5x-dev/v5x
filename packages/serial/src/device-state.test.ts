@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { okAsync } from "neverthrow";
-import { SmartDeviceType } from "./Vex";
-import { V5SerialConnection } from "./VexConnection";
-import { V5SerialDevice } from "./VexDevice";
-import { VexNotConnectedError } from "./VexError";
-import { FileControlReplyD2HPacket } from "./VexPacketModels";
+import { SmartDeviceType } from "./vex";
+import { V5SerialConnection } from "./connection";
+import { V5SerialDevice } from "./device";
+import { VexNotConnectedError } from "./error";
+import { FileControlReplyD2HPacket } from "./packet-models";
 import { protocolReply } from "./protocol.test-support";
 
 const serial = { getPorts: async () => [] } as unknown as Serial;

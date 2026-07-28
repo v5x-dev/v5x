@@ -1,5 +1,5 @@
-import { AckType, type DataArray } from "./Vex.js";
-import type { PacketEncoder } from "./VexPacketEncoder.js";
+import { AckType, type DataArray } from "./vex.js";
+import type { PacketEncoder } from "./packet-encoder.js";
 
 // The match-status reply acknowledges with 167 instead of CDC2_ACK.
 const MATCH_STATUS_ALT_ACK = 167;
@@ -9,7 +9,7 @@ export abstract class Packet {
   data: Uint8Array;
 
   /**
-   * Assigned when `./VexPacketEncoder.js` is evaluated. Loading this module
+   * Assigned when `./packet-encoder.js` is evaluated. Loading this module
    * alone leaves it unset, so every read goes through {@link requireEncoder}
    * rather than assuming the slot is populated.
    */

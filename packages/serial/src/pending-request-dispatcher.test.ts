@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { type IPacketCallback } from "./Vex";
-import { PendingRequestDispatcher } from "./PendingRequestDispatcher";
+import { type IPacketCallback } from "./vex";
+import { PendingRequestDispatcher } from "./pending-request-dispatcher";
 
 function callback(
   commandId: number | undefined,

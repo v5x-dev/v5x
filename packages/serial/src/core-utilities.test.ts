@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { CrcGenerator } from "./VexCRC";
-import { VexEventEmitter, VexEventTarget } from "./VexEvent";
-import { VexFirmwareVersion } from "./VexFirmwareVersion";
+import { CrcGenerator } from "./crc";
+import { VexEventEmitter, VexEventTarget } from "./event";
+import { VexFirmwareVersion } from "./firmware-version";
 
 describe("CrcGenerator", () => {
   const input = new TextEncoder().encode("123456789");

@@ -11,20 +11,20 @@ import {
   type IFileWriteRequest,
   FileDownloadTarget,
   RadioChannelType,
-} from "./Vex.js";
-import { type V5SerialConnection } from "./VexConnection.js";
-import { VexEventTarget } from "./VexEvent.js";
-import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
-import { type ProgramIniConfig } from "./VexIniConfig.js";
-import { VexNotConnectedError, VexSerialError } from "./VexError.js";
+} from "./vex.js";
+import { type V5SerialConnection } from "./connection.js";
+import { VexEventTarget } from "./event.js";
+import { VexFirmwareVersion } from "./firmware-version.js";
+import { type ProgramIniConfig } from "./ini-config.js";
+import { VexNotConnectedError, VexSerialError } from "./error.js";
 import { err, ok, ResultAsync } from "neverthrow";
 import {
   FileControlH2DPacket,
   FileControlReplyD2HPacket,
-} from "./VexPacketModels.js";
-import type { V5SerialDevice } from "./VexDevice.js";
-import * as firmware from "./VexFirmware.js";
-import * as transfers from "./VexTransfers.js";
+} from "./packet-models.js";
+import type { V5SerialDevice } from "./device.js";
+import * as firmware from "./firmware.js";
+import * as transfers from "./transfers.js";
 
 export interface VexSerialDeviceEvents {
   disconnected: undefined;

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ProgramIniConfig } from "./VexIniConfig";
+import { ProgramIniConfig } from "./ini-config";
 
 test("serializes every project and program property", () => {
   const config = new ProgramIniConfig();

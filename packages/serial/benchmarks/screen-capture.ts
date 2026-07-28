@@ -1,4 +1,4 @@
-import { convertScreenCapture } from "../src/VexScreenCapture";
+import { convertScreenCapture } from "../src/screen-capture";
 
 const framebuffer = new Uint8Array(512 * 272 * 4);
 for (let index = 0; index < framebuffer.length; index++) {

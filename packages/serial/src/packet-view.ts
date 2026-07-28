@@ -1,5 +1,5 @@
-import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
-import { type HostBoundPacket } from "./VexPacket.js";
+import { VexFirmwareVersion } from "./firmware-version.js";
+import { type HostBoundPacket } from "./packet.js";
 
 const textDecoder = new TextDecoder("UTF-8");
 

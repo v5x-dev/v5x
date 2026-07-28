@@ -1,7 +1,7 @@
-import type { IPacketCallback } from "./Vex.js";
-import { PacketEncoder } from "./VexPacket.js";
-import { ReceiveBuffer } from "./ReceiveBuffer.js";
-import { ReaderClosedError } from "./ReaderClosedError.js";
+import type { IPacketCallback } from "./vex.js";
+import { PacketEncoder } from "./packet.js";
+import { ReceiveBuffer } from "./receive-buffer.js";
+import { ReaderClosedError } from "./reader-closed-error.js";
 
 export interface PacketReaderOptions {
   readData: (cache: ReceiveBuffer, expectedSize: number) => Promise<void>;

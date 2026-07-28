@@ -1,15 +1,15 @@
 import { afterEach, expect, test } from "bun:test";
 import { zipSync } from "fflate";
 import { errAsync, ok, okAsync } from "neverthrow";
-import { V5SerialDevice } from "./VexDevice";
-import { V5SerialConnection } from "./VexConnection";
-import { VexFirmwareError, VexProtocolError } from "./VexError";
+import { V5SerialDevice } from "./device";
+import { V5SerialConnection } from "./connection";
+import { VexFirmwareError, VexProtocolError } from "./error";
 import {
   FactoryEnableH2DPacket,
   FactoryEnableReplyD2HPacket,
   FactoryStatusH2DPacket,
   FactoryStatusReplyD2HPacket,
-} from "./VexPacketModels";
+} from "./packet-models";
 import { protocolReply } from "./protocol.test-support";
 
 const serial = { getPorts: async () => [] } as unknown as Serial;

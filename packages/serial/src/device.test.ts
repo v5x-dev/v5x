@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { errAsync, ok, okAsync, ResultAsync } from "neverthrow";
-import { FileVendor, MatchMode, RadioChannelType } from "./Vex";
+import { FileVendor, MatchMode, RadioChannelType } from "./vex";
 import {
   V5Radio,
   V5SerialDevice,
@@ -8,15 +8,15 @@ import {
   sleep,
   sleepUntil,
   sleepUntilAsync,
-} from "./VexDevice";
-import { V5SerialConnection } from "./VexConnection";
+} from "./device";
+import { V5SerialConnection } from "./connection";
 import {
   VexInvalidArgumentError,
   VexIoError,
   VexNotConnectedError,
   VexProtocolError,
-} from "./VexError";
-import { type ProgramIniConfig } from "./VexIniConfig";
+} from "./error";
+import { type ProgramIniConfig } from "./ini-config";
 import {
   GetDeviceStatusReplyD2HPacket as GetDeviceStatusReplyD2HPacketClass,
   GetRadioStatusReplyD2HPacket as GetRadioStatusReplyD2HPacketClass,
@@ -24,8 +24,8 @@ import {
   GetSystemStatusReplyD2HPacket as GetSystemStatusReplyD2HPacketClass,
   LoadFileActionReplyD2HPacket,
   MatchModeReplyD2HPacket,
-} from "./VexPacket";
-import { VexFirmwareVersion } from "./VexFirmwareVersion";
+} from "./packet";
+import { VexFirmwareVersion } from "./firmware-version";
 
 const devices: V5SerialDevice[] = [];
 const serial = {

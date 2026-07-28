@@ -5,7 +5,7 @@ import {
   FileInitAction,
   FileInitOption,
   FileVendor,
-} from "./Vex";
+} from "./vex";
 import {
   EraseFileH2DPacket,
   ExitFileTransferReplyD2HPacket,
@@ -17,7 +17,7 @@ import {
   ReadKeyValueH2DPacket,
   WriteKeyValueH2DPacket,
   Query1ReplyD2HPacket,
-} from "./VexPacket";
+} from "./packet";
 
 const encoder = PacketEncoder.getInstance();
 

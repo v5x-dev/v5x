@@ -5,9 +5,9 @@ import {
   FileDownloadTarget,
   FileVendor,
   USER_FLASH_USR_CODE_START,
-} from "./Vex";
-import { V5SerialConnection } from "./VexConnection";
-import { convertScreenCapture } from "./VexScreenCapture";
+} from "./vex";
+import { V5SerialConnection } from "./connection";
+import { convertScreenCapture } from "./screen-capture";
 import {
   type HostBoundPacket,
   EraseFileH2DPacket,
@@ -29,12 +29,12 @@ import {
   SelectDashReplyD2HPacket,
   WriteFileH2DPacket,
   WriteFileReplyD2HPacket,
-} from "./VexPacket";
-import { ProgramIniConfig } from "./VexIniConfig";
+} from "./packet";
+import { ProgramIniConfig } from "./ini-config";
 import { deferred, protocolReply } from "./protocol.test-support";
-import { runPacketReader } from "./PacketReader";
-import { ReaderClosedError } from "./ReaderClosedError";
-import { VexSerialError } from "./VexError";
+import { runPacketReader } from "./packet-reader";
+import { ReaderClosedError } from "./reader-closed-error";
+import { VexSerialError } from "./error";
 
 function connectionWithWriter() {
   const connection = new V5SerialConnection({} as Serial);
@@ -1365,7 +1365,7 @@ describe("whole-program upload atomicity", () => {
       ) as ExitFileTransferReplyD2HPacket;
     };
 
-    const { ProgramIniConfig } = await import("./VexIniConfig");
+    const { ProgramIniConfig } = await import("./ini-config");
     const iniConfig = new ProgramIniConfig();
     iniConfig.baseName = "robot";
 

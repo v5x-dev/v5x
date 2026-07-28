@@ -1,5 +1,5 @@
-import { CrcGenerator } from "./VexCRC.js";
-import { HostBoundPacket, Packet } from "./VexPacketBase.js";
+import { CrcGenerator } from "./crc.js";
+import { HostBoundPacket, Packet } from "./packet-base.js";
 
 const textEncoder = new TextEncoder();
 const HEADER_TO_DEVICE = Uint8Array.of(201, 54, 184, 71);

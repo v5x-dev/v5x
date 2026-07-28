@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { AckType } from "./Vex";
-import { type HostBoundPacket } from "./VexPacket";
-import { PacketView } from "./VexPacketView";
+import { AckType } from "./vex";
+import { type HostBoundPacket } from "./packet";
+import { PacketView } from "./packet-view";
 
 describe("PacketView", () => {
   test("reads firmware versions relative to its byte offset", () => {

@@ -1,5 +1,5 @@
-import type { IPacketCallback } from "./Vex.js";
-import { TailQueue } from "./TailQueue.js";
+import type { IPacketCallback } from "./vex.js";
+import { TailQueue } from "./tail-queue.js";
 
 interface PendingPacketCallback extends IPacketCallback {
   active: boolean;

@@ -1,4 +1,4 @@
-import { type AckType } from "./Vex.js";
+import { type AckType } from "./vex.js";
 
 /**
  * Typed error hierarchy for the serial protocol package.

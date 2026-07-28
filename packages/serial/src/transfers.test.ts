@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { errAsync, ok, okAsync } from "neverthrow";
-import { FileDownloadTarget, FileVendor, type IFileWriteRequest } from "./Vex";
-import { V5SerialConnection } from "./VexConnection";
-import { V5SerialDevice } from "./VexDevice";
-import { VexProtocolError } from "./VexError";
+import { FileDownloadTarget, FileVendor, type IFileWriteRequest } from "./vex";
+import { V5SerialConnection } from "./connection";
+import { V5SerialDevice } from "./device";
+import { VexProtocolError } from "./error";
 import {
   EraseFileReplyD2HPacket,
   ExitFileTransferReplyD2HPacket,
@@ -13,8 +13,8 @@ import {
   GetProgramSlotInfoReplyD2HPacket,
   ReadKeyValueReplyD2HPacket,
   WriteKeyValueReplyD2HPacket,
-} from "./VexPacketModels";
-import { VexFirmwareVersion } from "./VexFirmwareVersion";
+} from "./packet-models";
+import { VexFirmwareVersion } from "./firmware-version";
 import { protocolReply } from "./protocol.test-support";
 
 const serial = { getPorts: async () => [] } as unknown as Serial;

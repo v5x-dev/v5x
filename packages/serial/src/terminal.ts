@@ -1,11 +1,11 @@
-import { UserFifoChannel } from "./Vex.js";
-import { type V5SerialConnection } from "./VexConnection.js";
-import { VexEventTarget } from "./VexEvent.js";
+import { UserFifoChannel } from "./vex.js";
+import { type V5SerialConnection } from "./connection.js";
+import { VexEventTarget } from "./event.js";
 import {
   VexInvalidArgumentError,
   VexNotConnectedError,
   type VexSerialError,
-} from "./VexError.js";
+} from "./error.js";
 import { err, ok, type Result, type ResultAsync } from "neverthrow";
 
 /** Delay between polls once the brain reports an empty channel. */

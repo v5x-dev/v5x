@@ -1,5 +1,5 @@
-import { type VexFirmwareVersion } from "./VexFirmwareVersion.js";
-import { type HostBoundPacket } from "./VexPacket.js";
+import { type VexFirmwareVersion } from "./firmware-version.js";
+import { type HostBoundPacket } from "./packet.js";
 
 export const USER_PROG_CHUNK_SIZE = 4096; // chunk size
 /**

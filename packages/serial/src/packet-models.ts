@@ -1,4 +1,4 @@
-import { PacketView } from "./VexPacketView.js";
+import { PacketView } from "./packet-view.js";
 import {
   type DataArray,
   type FileDownloadTarget,
@@ -15,10 +15,10 @@ import {
   type SelectDashScreen,
   USER_FIFO_MAX_WRITE_SIZE,
   type UserFifoChannel,
-} from "./Vex.js";
-import { VexFirmwareVersion } from "./VexFirmwareVersion.js";
-import { DeviceBoundPacket, HostBoundPacket } from "./VexPacketBase.js";
-import { PacketEncoder, encodeFixedText } from "./VexPacketEncoder.js";
+} from "./vex.js";
+import { VexFirmwareVersion } from "./firmware-version.js";
+import { DeviceBoundPacket, HostBoundPacket } from "./packet-base.js";
+import { PacketEncoder, encodeFixedText } from "./packet-encoder.js";
 
 /** Encode `[vendor/first byte, options/second byte, 24-byte filename field]`. */
 function filePayload(a: number, b: number, fileName: string): Uint8Array {

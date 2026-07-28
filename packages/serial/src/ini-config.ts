@@ -1,9 +1,9 @@
 // hey this code seemed really goofy to me, so I changed it,
-// see https://github.com/LemLib/v5-serial-protocol/blob/ef8df5019a5504b5b96fc887ef1587d9ecaa84ea/src/VexIniConfig.ts
+// see https://github.com/LemLib/v5-serial-protocol/blob/ef8df5019a5504b5b96fc887ef1587d9ecaa84ea/src/ini-config.ts
 // for unchanged code
 // -@meisZWFLZ
 
-import { type ZerobaseSlotNumber } from "./Vex.js";
+import { type ZerobaseSlotNumber } from "./vex.js";
 
 class BaseIniBuilder {
   protected str = "";

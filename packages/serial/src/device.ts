@@ -1,8 +1,8 @@
-import { type MatchMode, SerialDeviceType } from "./Vex.js";
+import { type MatchMode, SerialDeviceType } from "./vex.js";
 import {
   DEFAULT_MAX_FILE_DOWNLOAD_BYTES,
   V5SerialConnection,
-} from "./VexConnection.js";
+} from "./connection.js";
 import {
   V5Brain,
   V5Controller,
@@ -11,21 +11,21 @@ import {
   V5SmartDevice,
   VexSerialDevice,
   type VexSerialDeviceEvents,
-} from "./VexDeviceState.js";
-import { sleepUntil } from "./VexFirmware.js";
+} from "./device-state.js";
+import { sleepUntil } from "./firmware.js";
 import {
   VexInvalidArgumentError,
   VexNotConnectedError,
   VexSerialError,
   toVexSerialError,
-} from "./VexError.js";
+} from "./error.js";
 import { err, ok, Result, ResultAsync } from "neverthrow";
-import { DeviceSnapshotRefresher } from "./DeviceSnapshotRefresher.js";
+import { DeviceSnapshotRefresher } from "./device-snapshot-refresher.js";
 import {
   openUserProgramTerminal,
   type V5TerminalOptions,
   type V5UserProgramTerminal,
-} from "./VexTerminal.js";
+} from "./terminal.js";
 
 // Re-exports for backward compatibility with the previous VexDevice module.
 export {
@@ -38,14 +38,14 @@ export {
   V5SmartDevice,
   V5Radio,
   V5SerialDeviceState,
-} from "./VexDeviceState.js";
+} from "./device-state.js";
 export {
   sleep,
   sleepUntil,
   sleepUntilAsync,
   downloadFileFromInternet,
   uploadFirmware,
-} from "./VexFirmware.js";
+} from "./firmware.js";
 
 type RefreshTimer = ReturnType<typeof setInterval>;
 

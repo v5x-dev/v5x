@@ -6,15 +6,15 @@ import {
   type IFileWriteRequest,
   FileDownloadTarget,
   RadioChannelType,
-} from "./Vex.js";
-import { type ProgramIniConfig } from "./VexIniConfig.js";
-import type { V5SerialDeviceState } from "./VexDeviceState.js";
-import { sleep, sleepUntilAsync } from "./VexFirmware.js";
+} from "./vex.js";
+import { type ProgramIniConfig } from "./ini-config.js";
+import type { V5SerialDeviceState } from "./device-state.js";
+import { sleep, sleepUntilAsync } from "./firmware.js";
 import {
   VexNotConnectedError,
   VexProtocolError,
   VexSerialError,
-} from "./VexError.js";
+} from "./error.js";
 import { err, ok, Result, ResultAsync } from "neverthrow";
 import {
   GetDirectoryEntryH2DPacket,
@@ -27,7 +27,7 @@ import {
   ReadKeyValueReplyD2HPacket,
   WriteKeyValueH2DPacket,
   WriteKeyValueReplyD2HPacket,
-} from "./VexPacketModels.js";
+} from "./packet-models.js";
 
 export function getValue(
   state: V5SerialDeviceState,

@@ -1,19 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { err, errAsync, ok, okAsync, ResultAsync } from "neverthrow";
-import { AckType, UserFifoChannel, USER_FIFO_MAX_WRITE_SIZE } from "./Vex";
-import { V5SerialConnection } from "./VexConnection";
-import { V5UserProgramTerminal, openUserProgramTerminal } from "./VexTerminal";
+import { AckType, UserFifoChannel, USER_FIFO_MAX_WRITE_SIZE } from "./vex";
+import { V5SerialConnection } from "./connection";
+import { V5UserProgramTerminal, openUserProgramTerminal } from "./terminal";
 import {
   type DeviceBoundPacket,
   PacketEncoder,
   UserFifoH2DPacket,
   UserFifoReplyD2HPacket,
-} from "./VexPacket";
+} from "./packet";
 import {
   VexProtocolError,
   VexSerialError,
   type VexSerialErrorKind,
-} from "./VexError";
+} from "./error";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

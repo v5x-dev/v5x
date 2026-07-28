@@ -1,13 +1,13 @@
-import type { ISmartDeviceInfo, MatchMode } from "./Vex.js";
-import type { V5SerialConnection } from "./VexConnection.js";
-import type { V5SerialDeviceState } from "./VexDeviceState.js";
+import type { ISmartDeviceInfo, MatchMode } from "./vex.js";
+import type { V5SerialConnection } from "./connection.js";
+import type { V5SerialDeviceState } from "./device-state.js";
 import type {
   GetDeviceStatusReplyD2HPacket,
   GetRadioStatusReplyD2HPacket,
   GetSystemFlagsReplyD2HPacket,
   GetSystemStatusReplyD2HPacket,
-} from "./VexPacket.js";
-import type { VexSerialError } from "./VexError.js";
+} from "./packet.js";
+import type { VexSerialError } from "./error.js";
 import { ok, type Result } from "neverthrow";
 
 interface DeviceSnapshot {

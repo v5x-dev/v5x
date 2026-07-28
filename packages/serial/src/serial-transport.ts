@@ -1,11 +1,7 @@
-import {
-  VexIoError,
-  type VexSerialError,
-  toVexSerialError,
-} from "./VexError.js";
+import { VexIoError, type VexSerialError, toVexSerialError } from "./error.js";
 import { err, ok, type Result } from "neverthrow";
-import { ReaderClosedError } from "./ReaderClosedError.js";
-import { matchesUsbFilters } from "./Vex.js";
+import { ReaderClosedError } from "./reader-closed-error.js";
+import { matchesUsbFilters } from "./vex.js";
 
 export type SerialTransportOpenResult = "opened" | "busy" | "no-port";
 

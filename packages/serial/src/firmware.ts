@@ -3,9 +3,9 @@ import {
   FileVendor,
   type IFileWriteRequest,
   USER_FLASH_USR_CODE_START,
-} from "./Vex.js";
-import { type V5SerialConnection } from "./VexConnection.js";
-import type { V5SerialDeviceState } from "./VexDeviceState.js";
+} from "./vex.js";
+import { type V5SerialConnection } from "./connection.js";
+import type { V5SerialDeviceState } from "./device-state.js";
 import {
   VexDownloadError,
   VexFirmwareError,
@@ -13,15 +13,15 @@ import {
   VexNotConnectedError,
   VexSerialError,
   toVexSerialError,
-} from "./VexError.js";
+} from "./error.js";
 import { err, errAsync, ok, Result, ResultAsync } from "neverthrow";
 import {
   FactoryEnableH2DPacket,
   FactoryEnableReplyD2HPacket,
   FactoryStatusH2DPacket,
   FactoryStatusReplyD2HPacket,
-} from "./VexPacketModels.js";
-import { DownloadBuffer } from "./DownloadBuffer.js";
+} from "./packet-models.js";
+import { DownloadBuffer } from "./download-buffer.js";
 
 /** Maximum number of bytes accepted when downloading the version catalog. */
 const MAX_CATALOG_BYTES = 4 * 1024;

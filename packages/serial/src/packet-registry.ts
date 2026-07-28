@@ -1,4 +1,4 @@
-import { type HostBoundPacket } from "./VexPacketBase.js";
+import { type HostBoundPacket } from "./packet-base.js";
 import {
   EraseFileReplyD2HPacket,
   ExitFileTransferReplyD2HPacket,
@@ -35,7 +35,7 @@ import {
   UserFifoReplyD2HPacket,
   WriteFileReplyD2HPacket,
   WriteKeyValueReplyD2HPacket,
-} from "./VexPacketModels.js";
+} from "./packet-models.js";
 
 /** Default reply registry used by the complete serial entry point. */
 export const defaultReplyPacketTypes: readonly (typeof HostBoundPacket)[] = [

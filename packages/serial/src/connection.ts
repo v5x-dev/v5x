@@ -17,7 +17,7 @@ import {
   USER_PROG_CHUNK_SIZE,
   UserFifoChannel,
   type SelectDashScreen,
-} from "./Vex.js";
+} from "./vex.js";
 import {
   VexInvalidArgumentError,
   VexNotConnectedError,
@@ -25,9 +25,9 @@ import {
   VexSerialError,
   VexTransferError,
   toVexSerialError,
-} from "./VexError.js";
-import { VexEventTarget } from "./VexEvent.js";
-import { type ProgramIniConfig } from "./VexIniConfig.js";
+} from "./error.js";
+import { VexEventTarget } from "./event.js";
+import { type ProgramIniConfig } from "./ini-config.js";
 import { err, ok, Result, ResultAsync } from "neverthrow";
 import {
   MatchStatusReplyD2HPacket,
@@ -72,20 +72,20 @@ import {
   FileClearUpReplyD2HPacket,
   UserFifoH2DPacket,
   UserFifoReplyD2HPacket,
-} from "./VexPacket.js";
-import { type VexFirmwareVersion } from "./VexFirmwareVersion.js";
+} from "./packet.js";
+import { type VexFirmwareVersion } from "./firmware-version.js";
 import {
   convertScreenCapture,
   SCREEN_CAPTURE_FRAMEBUFFER_SIZE,
-} from "./VexScreenCapture.js";
-import { FileTransferQueue } from "./FileTransferQueue.js";
-import { PendingRequestDispatcher } from "./PendingRequestDispatcher.js";
-import { ReceiveBuffer } from "./ReceiveBuffer.js";
-import { runPacketReader } from "./PacketReader.js";
+} from "./screen-capture.js";
+import { FileTransferQueue } from "./file-transfer-queue.js";
+import { PendingRequestDispatcher } from "./pending-request-dispatcher.js";
+import { ReceiveBuffer } from "./receive-buffer.js";
+import { runPacketReader } from "./packet-reader.js";
 import {
   SerialTransport,
   type SerialTransportOpenResult,
-} from "./SerialTransport.js";
+} from "./serial-transport.js";
 
 type HostBoundPacketType<T extends HostBoundPacket> = {
   new (data: ArrayBuffer | Uint8Array): T;
