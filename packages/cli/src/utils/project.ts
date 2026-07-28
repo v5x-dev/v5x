@@ -357,6 +357,11 @@ async function loadProgramArtifact(
       `program ${role} artifact ${artifact.path} is ${bytes.byteLength} bytes; supported limit is ${PROGRAM_ARTIFACT_SIZE_LIMIT} bytes`,
     );
   }
+  if (bytes.byteLength !== artifact.size) {
+    throw new Error(
+      `program ${role} artifact ${artifact.path} changed during upload (${artifact.size} bytes at validation, ${bytes.byteLength} on read)`,
+    );
+  }
   return bytes;
 }
 

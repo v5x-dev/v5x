@@ -16,6 +16,8 @@ export interface NodeSerialOptions {
   backend?: SerialBackend;
   /** Defaults to the host platform; only used to validate backend support. */
   platform?: string;
+  /** Milliseconds between hotplug checks. Defaults to 250. */
+  hotplugPollInterval?: number;
 }
 
 /**
@@ -27,14 +29,38 @@ export class NodeSerial extends SerialEventTarget implements Serial {
   private readonly ports = new Map<string, NodeSerialPort>();
   private readonly backend: SerialBackend;
   private readonly platform: string;
+  private readonly hotplugPollInterval: number;
+  private activePaths: Set<string> | undefined;
+  private enumeration: Promise<SerialPort[]> | undefined;
+  private hotplugTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(options: NodeSerialOptions = {}) {
     super();
     this.backend = options.backend ?? createBunSerialportBackend();
     this.platform = options.platform ?? hostPlatform();
+    this.hotplugPollInterval = options.hotplugPollInterval ?? 250;
+    if (
+      !Number.isFinite(this.hotplugPollInterval) ||
+      this.hotplugPollInterval <= 0
+    ) {
+      throw new Error("hotplugPollInterval must be greater than zero");
+    }
   }
 
   async getPorts(): Promise<SerialPort[]> {
+    if (this.enumeration !== undefined) return this.enumeration;
+
+    const enumeration = this.enumeratePorts();
+    this.enumeration = enumeration;
+    try {
+      return await enumeration;
+    } finally {
+      if (this.enumeration === enumeration) this.enumeration = undefined;
+      if (this.activePaths !== undefined) this.scheduleHotplugCheck();
+    }
+  }
+
+  private async enumeratePorts(): Promise<SerialPort[]> {
     const supported = this.backend.platforms;
     if (supported !== undefined && !supported.includes(this.platform)) {
       throw new Error(
@@ -44,6 +70,7 @@ export class NodeSerial extends SerialEventTarget implements Serial {
 
     const discovered = await this.backend.list();
     const activePaths = new Set(discovered.map((port) => port.path));
+    this.dispatchHotplugEvents(activePaths);
     for (const [path, port] of this.ports) {
       if (!activePaths.has(path) && port.isClosed) this.ports.delete(path);
     }
@@ -66,6 +93,35 @@ export class NodeSerial extends SerialEventTarget implements Serial {
       }
       return port;
     });
+  }
+
+  private dispatchHotplugEvents(nextPaths: Set<string>): void {
+    const previousPaths = this.activePaths;
+    this.activePaths = nextPaths;
+    if (previousPaths === undefined) return;
+
+    for (const path of previousPaths) {
+      if (!nextPaths.has(path)) {
+        this.dispatchEvent(new Event("disconnect"));
+      }
+    }
+    for (const path of nextPaths) {
+      if (!previousPaths.has(path)) {
+        this.dispatchEvent(new Event("connect"));
+      }
+    }
+  }
+
+  private scheduleHotplugCheck(): void {
+    if (this.hotplugTimer !== undefined) return;
+
+    this.hotplugTimer = setTimeout(() => {
+      this.hotplugTimer = undefined;
+      void this.getPorts().catch(() => {
+        // A transient discovery failure must not stop future hotplug checks.
+      });
+    }, this.hotplugPollInterval);
+    this.hotplugTimer.unref?.();
   }
 
   /**

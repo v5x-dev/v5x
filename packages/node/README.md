@@ -57,7 +57,9 @@ these for its `--port` selector.
 Port objects are stable across enumerations: calling `getPorts()` twice returns
 the same object for a port you already opened, so its open state is preserved.
 A closed port is replaced when its discovered USB identity changes, and dropped
-once it disappears.
+once it disappears. After the first enumeration, the transport also monitors
+the backend for port changes and emits Web Serial-compatible `connect` and
+`disconnect` events. The monitor does not keep the host process alive.
 
 ## Backends
 
