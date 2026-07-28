@@ -544,6 +544,61 @@ describe("createV5Client", () => {
     expect(disposes).toBe(1);
   });
 
+  test("a superseded thrown connect failure does not clear a newer device", async () => {
+    const firstConnectDeferred = createDeferred<void>();
+    const connectError = new Error("connect threw");
+    let firstDisposes = 0;
+    let secondDisposes = 0;
+    const devices: FakeDevice[] = [
+      {
+        autoRefresh: true,
+        connect: () =>
+          ResultAsync.fromPromise(firstConnectDeferred.promise, () => {
+            throw connectError;
+          }),
+        disconnect: async () => {},
+        dispose: async () => {
+          firstDisposes++;
+        },
+        refresh: () => okAsync(true),
+      },
+      {
+        autoRefresh: true,
+        connect: () => okAsync(undefined),
+        disconnect: async () => {},
+        dispose: async () => {
+          secondDisposes++;
+        },
+        refresh: () => okAsync(true),
+      },
+    ];
+    let factoryCalls = 0;
+    const client = createV5ClientWithFactory({ serial }, () => {
+      const device = devices[factoryCalls++];
+      if (device === undefined) {
+        throw new Error("unexpected device factory call");
+      }
+      return device;
+    });
+
+    const firstConnect = client.connect();
+    await client.disconnect();
+    expect(await client.connect()).toBe(true);
+
+    firstConnectDeferred.reject(connectError);
+    expect(await firstConnect).toBe(false);
+    expect(client.getSnapshot()).toMatchObject({
+      status: "connected",
+      connected: true,
+      error: null,
+    });
+    expect(firstDisposes).toBe(1);
+
+    await client.disconnect();
+    expect(secondDisposes).toBe(1);
+    expect(client.getSnapshot().status).toBe("idle");
+  });
+
   test("connect while disconnecting does not clobber the disconnect lifecycle", async () => {
     const disconnectDeferred = createDeferred<void>();
     let connects = 0;
