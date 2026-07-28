@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { okAsync } from "neverthrow";
 import { SmartDeviceType } from "./vex";
-import { V5SerialConnection } from "./connection";
+import { V5SerialConnection } from "./v5-serial-connection";
 import { V5SerialDevice } from "./device";
 import { VexNotConnectedError } from "./error";
 import { FileControlReplyD2HPacket } from "./packet-models";

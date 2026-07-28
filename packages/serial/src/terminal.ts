@@ -1,5 +1,5 @@
 import { UserFifoChannel } from "./vex.js";
-import { type V5SerialConnection } from "./connection.js";
+import { type V5SerialConnection } from "./v5-serial-connection.js";
 import { VexEventTarget } from "./event.js";
 import {
   VexInvalidArgumentError,

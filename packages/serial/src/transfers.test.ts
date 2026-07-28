@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { errAsync, ok, okAsync } from "neverthrow";
 import { FileDownloadTarget, FileVendor, type IFileWriteRequest } from "./vex";
-import { V5SerialConnection } from "./connection";
+import { V5SerialConnection } from "./v5-serial-connection";
 import { V5SerialDevice } from "./device";
 import { VexProtocolError } from "./error";
 import {

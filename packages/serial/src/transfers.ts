@@ -9,7 +9,7 @@ import {
 } from "./vex.js";
 import { type ProgramIniConfig } from "./ini-config.js";
 import type { V5SerialDeviceState } from "./device-state.js";
-import { sleep, sleepUntilAsync } from "./firmware.js";
+import { sleep, sleepUntilAsync } from "./timing.js";
 import {
   VexNotConnectedError,
   VexProtocolError,

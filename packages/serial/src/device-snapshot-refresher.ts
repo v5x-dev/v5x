@@ -1,5 +1,5 @@
 import type { ISmartDeviceInfo, MatchMode } from "./vex.js";
-import type { V5SerialConnection } from "./connection.js";
+import type { V5SerialConnection } from "./v5-serial-connection.js";
 import type { V5SerialDeviceState } from "./device-state.js";
 import type {
   GetDeviceStatusReplyD2HPacket,

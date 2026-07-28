@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { err, errAsync, ok, okAsync, ResultAsync } from "neverthrow";
 import { AckType, UserFifoChannel, USER_FIFO_MAX_WRITE_SIZE } from "./vex";
-import { V5SerialConnection } from "./connection";
+import { V5SerialConnection } from "./v5-serial-connection";
 import { V5UserProgramTerminal, openUserProgramTerminal } from "./terminal";
 import {
   type DeviceBoundPacket,

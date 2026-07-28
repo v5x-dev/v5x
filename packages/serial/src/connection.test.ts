@@ -6,7 +6,7 @@ import {
   FileVendor,
   USER_FLASH_USR_CODE_START,
 } from "./vex";
-import { V5SerialConnection } from "./connection";
+import { V5SerialConnection } from "./v5-serial-connection";
 import { convertScreenCapture } from "./screen-capture";
 import {
   type HostBoundPacket,

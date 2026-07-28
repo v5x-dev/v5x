@@ -4,24 +4,23 @@ import {
   type IFileWriteRequest,
   USER_FLASH_USR_CODE_START,
 } from "./vex.js";
-import { type V5SerialConnection } from "./connection.js";
+import { type V5SerialConnection } from "./v5-serial-connection.js";
+import { sleep } from "./timing.js";
 import type { V5SerialDeviceState } from "./device-state.js";
 import {
-  VexDownloadError,
   VexFirmwareError,
-  VexInvalidArgumentError,
   VexNotConnectedError,
   VexSerialError,
   toVexSerialError,
 } from "./error.js";
-import { err, errAsync, ok, Result, ResultAsync } from "neverthrow";
+import { err, ok, Result, ResultAsync } from "neverthrow";
 import {
   FactoryEnableH2DPacket,
   FactoryEnableReplyD2HPacket,
   FactoryStatusH2DPacket,
   FactoryStatusReplyD2HPacket,
 } from "./packet-models.js";
-import { DownloadBuffer } from "./download-buffer.js";
+import { downloadFileFromInternet } from "./internet-download.js";
 
 /** Maximum number of bytes accepted when downloading the version catalog. */
 const MAX_CATALOG_BYTES = 4 * 1024;
@@ -32,296 +31,7 @@ const MAX_FIRMWARE_IMAGE_BYTES = 32 * 1024 * 1024;
 /** Maximum total size accepted across all extracted firmware images. */
 const MAX_AGGREGATE_IMAGE_BYTES = 48 * 1024 * 1024;
 
-export interface DownloadFileFromInternetOptions {
-  /** Maximum total bytes to read, or positive infinity for no size limit. */
-  maxBytes?: number;
-  /**
-   * Maximum milliseconds to wait for response headers or the next body chunk.
-   * The timer resets whenever download progress is made. Zero requests an
-   * immediate deadline.
-   */
-  timeout?: number;
-}
-
-class DownloadTimeoutError extends Error {
-  constructor(
-    readonly timeout: number,
-    readonly phase: "response" | "body",
-  ) {
-    super(`download timed out after ${timeout}ms`);
-    this.name = "DownloadTimeoutError";
-  }
-}
-
-/**
- * Download a remote resource while enforcing a maximum body size. The
- * declared `Content-Length` header is validated up front, and the body
- * is streamed so an oversized payload is rejected before it is fully
- * read into memory. Failures are returned as a {@link VexDownloadError}
- * (or {@link VexInvalidArgumentError} for bad options) instead of
- * thrown.
- */
-export function downloadFileFromInternet(
-  link: string,
-  options: DownloadFileFromInternetOptions = {},
-): ResultAsync<ArrayBuffer, VexSerialError> {
-  const { maxBytes = Number.POSITIVE_INFINITY, timeout = 30000 } = options;
-  if (
-    Number.isNaN(maxBytes) ||
-    maxBytes <= 0 ||
-    maxBytes === Number.NEGATIVE_INFINITY
-  ) {
-    return errAsync(new VexInvalidArgumentError("maxBytes must be positive"));
-  }
-  if (!Number.isFinite(timeout) || timeout < 0) {
-    return errAsync(
-      new VexInvalidArgumentError("timeout must be non-negative"),
-    );
-  }
-  return new ResultAsync(runDownload(link, maxBytes, timeout));
-}
-
-async function runDownload(
-  link: string,
-  maxBytes: number,
-  timeout: number,
-): Promise<Result<ArrayBuffer, VexSerialError>> {
-  const controller = new AbortController();
-  try {
-    let response: Response;
-    try {
-      response = await withDownloadTimeout(
-        fetch(link, { signal: controller.signal }),
-        timeout,
-        controller,
-        "response",
-      );
-    } catch (e) {
-      if (e instanceof DownloadTimeoutError) {
-        return err(
-          new VexDownloadError(
-            `download timed out after ${e.timeout}ms waiting for a response from ${link}`,
-          ),
-        );
-      }
-      return err(
-        new VexDownloadError(
-          `failed to download ${link} (${e instanceof Error ? e.message : String(e)})`,
-        ),
-      );
-    }
-    if (!response.ok) {
-      return err(
-        new VexDownloadError(`failed to download ${link} (${response.status})`),
-      );
-    }
-
-    const declaredLength = response.headers.get("content-length");
-    const declared =
-      declaredLength !== null && /^\d+$/.test(declaredLength.trim())
-        ? Number(declaredLength)
-        : undefined;
-    if (declared !== undefined && Number.isSafeInteger(declared)) {
-      if (declared > maxBytes) {
-        return err(
-          new VexDownloadError(
-            `declared content length ${declared} exceeds limit ${maxBytes} for ${link}`,
-          ),
-        );
-      }
-    }
-
-    if (response.body == null) {
-      return err(new VexDownloadError(`no response body for ${link}`));
-    }
-
-    const reader = response.body.getReader();
-    const initialCapacity =
-      declared !== undefined &&
-      Number.isSafeInteger(declared) &&
-      Number.isFinite(maxBytes)
-        ? declared
-        : 0;
-    const buffer = new DownloadBuffer(initialCapacity, maxBytes);
-    try {
-      for (;;) {
-        let chunk: Awaited<ReturnType<typeof reader.read>>;
-        try {
-          chunk = await withDownloadTimeout(
-            reader.read(),
-            timeout,
-            controller,
-            "body",
-          );
-        } catch (e) {
-          if (e instanceof DownloadTimeoutError) {
-            void reader.cancel(e).catch(() => {
-              // Aborting the fetch may already have errored the body.
-            });
-            return err(
-              new VexDownloadError(
-                `download timed out after ${e.timeout}ms waiting for data from ${link}`,
-              ),
-            );
-          }
-          return err(
-            new VexDownloadError(
-              `failed to download ${link} (${e instanceof Error ? e.message : String(e)})`,
-            ),
-          );
-        }
-        const { value, done } = chunk;
-        if (done) break;
-        if (value === undefined) continue;
-        if (!buffer.append(value)) {
-          try {
-            await reader.cancel();
-          } catch {
-            // The reader may already be in a terminal state.
-          }
-          return err(
-            new VexDownloadError(
-              `downloaded body exceeds limit ${maxBytes} for ${link}`,
-            ),
-          );
-        }
-      }
-    } finally {
-      try {
-        reader.releaseLock();
-      } catch {
-        // The reader may already be released by cancel().
-      }
-    }
-
-    return ok(buffer.finish());
-  } finally {
-    controller.abort();
-  }
-}
-
-function withDownloadTimeout<T>(
-  operation: Promise<T>,
-  timeout: number,
-  controller: AbortController,
-  phase: "response" | "body",
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      const error = new DownloadTimeoutError(timeout, phase);
-      controller.abort(error);
-      reject(error);
-    }, timeout);
-    void operation.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
-
-/**
- * Poll an async predicate until it returns true or the timeout elapses.
- * Argument errors are returned as {@link VexInvalidArgumentError}; a
- * throwing predicate surfaces its error through the {@link Result}
- * error channel.
- */
-export function sleepUntilAsync(
-  f: () => Promise<boolean>,
-  timeout: number,
-  interval = 20,
-): ResultAsync<boolean, VexSerialError> {
-  if (!Number.isFinite(timeout) || timeout < 0) {
-    return errAsync(
-      new VexInvalidArgumentError("timeout must be non-negative"),
-    );
-  }
-  if (!Number.isFinite(interval) || interval <= 0) {
-    return errAsync(new VexInvalidArgumentError("interval must be positive"));
-  }
-  return new ResultAsync(runSleepUntilAsync(f, timeout, interval));
-}
-
-async function runSleepUntilAsync(
-  f: () => Promise<boolean>,
-  timeout: number,
-  interval: number,
-): Promise<Result<boolean, VexSerialError>> {
-  const deadline = Date.now() + timeout;
-  while (Date.now() <= deadline) {
-    try {
-      if (await f()) return ok(true);
-    } catch (e) {
-      return err(toVexSerialError(e, "io"));
-    }
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) break;
-    await sleepInner(Math.min(interval, remaining));
-  }
-  return ok(false);
-}
-
-/**
- * Poll a synchronous predicate until it returns true or the timeout
- * elapses. The implementation uses a loop with `sleep` rather than
- * `setInterval` so the timer is cleared as soon as the predicate
- * resolves, and so predicate exceptions are surfaced without leaving a
- * pending interval behind.
- */
-export function sleepUntil(
-  f: () => boolean,
-  timeout: number,
-  interval = 20,
-): ResultAsync<boolean, VexSerialError> {
-  if (!Number.isFinite(timeout) || timeout < 0) {
-    return errAsync(
-      new VexInvalidArgumentError("timeout must be non-negative"),
-    );
-  }
-  if (!Number.isFinite(interval) || interval <= 0) {
-    return errAsync(new VexInvalidArgumentError("interval must be positive"));
-  }
-  return new ResultAsync(runSleepUntil(f, timeout, interval));
-}
-
-async function runSleepUntil(
-  f: () => boolean,
-  timeout: number,
-  interval: number,
-): Promise<Result<boolean, VexSerialError>> {
-  const deadline = Date.now() + timeout;
-  while (Date.now() <= deadline) {
-    try {
-      if (f()) return ok(true);
-    } catch (e) {
-      return err(toVexSerialError(e, "io"));
-    }
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) break;
-    await sleepInner(Math.min(interval, remaining));
-  }
-  return ok(false);
-}
-
-/**
- * Resolve after `ms` milliseconds. Returns a {@link VexInvalidArgumentError}
- * when `ms` is negative or non-finite.
- */
-export function sleep(ms: number): ResultAsync<void, VexSerialError> {
-  if (!Number.isFinite(ms) || ms < 0) {
-    return errAsync(new VexInvalidArgumentError("ms must be non-negative"));
-  }
-  return ResultAsync.fromSafePromise<void>(sleepInner(ms));
-}
-
-async function sleepInner(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+export { downloadFileFromInternet };
 
 interface FirmwareImage {
   name: string;
@@ -392,7 +102,7 @@ async function flashFactoryImage(
     if (statusReply.value.status === 0 && statusReply.value.percent === 100) {
       return ok(undefined);
     }
-    await sleepInner(500);
+    await sleep(500);
   }
 
   return err(new VexFirmwareError(`${label} factory status timed out`));

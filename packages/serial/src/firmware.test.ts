@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { zipSync } from "fflate";
 import { errAsync, ok, okAsync } from "neverthrow";
 import { V5SerialDevice } from "./device";
-import { V5SerialConnection } from "./connection";
+import { V5SerialConnection } from "./v5-serial-connection";
 import { VexFirmwareError, VexProtocolError } from "./error";
 import {
   FactoryEnableH2DPacket,

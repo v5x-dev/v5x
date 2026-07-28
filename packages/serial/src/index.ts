@@ -1,5 +1,6 @@
 export * from "./vex.js";
 export * from "./connection.js";
+export * from "./v5-serial-connection.js";
 export * from "./device.js";
 export * from "./error.js";
 export * from "./event.js";

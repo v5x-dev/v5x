@@ -9,7 +9,7 @@ import {
   sleepUntil,
   sleepUntilAsync,
 } from "./device";
-import { V5SerialConnection } from "./connection";
+import { V5SerialConnection } from "./v5-serial-connection";
 import {
   VexInvalidArgumentError,
   VexIoError,
