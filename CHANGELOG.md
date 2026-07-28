@@ -8,6 +8,11 @@ Unreleased section to a dated package-version heading.
 
 ### @v5x/cli
 
+- Add `v5x terminal`, which streams the running program's standard output and
+  forwards host input to it, with `--timestamps`, `--no-input`, `--no-color`,
+  and newline-delimited `--json` records.
+- Add `--terminal` to `upload` and `run`, which keeps the connection open and
+  starts streaming as the program starts so its first output is not missed.
 - Add an opt-in, read-only-by-default hardware smoke harness for brain and
   controller validation, with non-secret context reports, screenshot artifacts,
   stable failure exits, and a separately gated temporary file round trip.
@@ -16,6 +21,10 @@ Unreleased section to a dated package-version heading.
 
 ### @v5x/serial
 
+- Add user-program terminal support: `UserFifoH2DPacket` and
+  `UserFifoReplyD2HPacket` (command 86, extended 39), `readUserFifo` and
+  `writeUserFifo` on connections, and a `V5UserProgramTerminal` polling session
+  reachable through `V5SerialDevice.openTerminal()`.
 - Reject embedded NULs in outbound protocol text and unsafe, overlong, or
   colliding dynamic INI keys before serial I/O.
 - Preserve supplied-connection open failures, distinguish busy and missing
@@ -23,6 +32,10 @@ Unreleased section to a dated package-version heading.
   without lifecycle changes.
 
 ### @v5x/web
+
+- Add `client.console`, a separately subscribable store holding the running
+  program's output with a bounded buffer, plus `useV5Console` for React,
+  `createV5Console` for Solid, and console members on the Svelte state.
 
 ## Releases
 

@@ -1,6 +1,6 @@
 import { createV5ClientWithFactory, type V5Client } from "@v5x/web/testing";
 import { err, ok, ResultAsync, type Result } from "neverthrow";
-import { VexSerialError } from "@v5x/serial";
+import { VexSerialError, type V5UserProgramTerminal } from "@v5x/serial";
 
 export type FailureMode =
   | "none"
@@ -100,11 +100,71 @@ class FakeControls implements FakeV5Controls {
   }
 }
 
+/** Lines the fake user program "prints", cycled while a console is open. */
+const programOutput = [
+  "[auton] initialize()\n",
+  "[auton] imu calibrated in 2.1 s\n",
+  "[drive] left 127 right 127\n",
+  "[odom] x=12.4 y=-3.1 theta=88.7\n",
+  "[intake] ring detected, stowing\n",
+];
+
+/**
+ * A stand-in for the serial terminal session. It emits scripted program output
+ * on a timer so the console panels have something to render without hardware.
+ */
+class FakeTerminal {
+  #textListeners = new Set<(value: string) => void>();
+  #closedListeners = new Set<() => void>();
+  #timer: ReturnType<typeof setInterval> | undefined;
+  #line = 0;
+
+  constructor() {
+    this.#timer = setInterval(() => {
+      const text = programOutput[this.#line++ % programOutput.length]!;
+      for (const listener of this.#textListeners) listener(text);
+    }, 700);
+  }
+
+  on(event: string, listener: (value: string) => void): void {
+    if (event === "text") this.#textListeners.add(listener);
+    if (event === "closed") this.#closedListeners.add(listener as () => void);
+  }
+
+  remove(event: string, listener: (value: string) => void): void {
+    if (event === "text") this.#textListeners.delete(listener);
+    if (event === "closed") {
+      this.#closedListeners.delete(listener as () => void);
+    }
+  }
+
+  write(data: string | Uint8Array): ResultAsync<number, VexSerialError> {
+    const text =
+      typeof data === "string" ? data : new TextDecoder().decode(data);
+    for (const listener of this.#textListeners) listener(`[stdin] ${text}`);
+    return new ResultAsync(Promise.resolve(ok(text.length)));
+  }
+
+  async close(): Promise<void> {
+    clearInterval(this.#timer);
+    this.#timer = undefined;
+    this.#textListeners.clear();
+    this.#closedListeners.clear();
+  }
+}
+
 class FakeV5Device {
   autoRefresh = false;
   #connected = false;
 
   constructor(private readonly controls: FakeControls) {}
+
+  openTerminal(): Result<V5UserProgramTerminal, VexSerialError> {
+    if (!this.#connected) {
+      return err(new VexSerialError("not-connected", "Fake V5 is offline."));
+    }
+    return ok(new FakeTerminal() as unknown as V5UserProgramTerminal);
+  }
 
   connect(): ResultAsync<void, VexSerialError> {
     return new ResultAsync(this.#connect());

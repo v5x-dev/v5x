@@ -1,0 +1,112 @@
+---
+title: "Program output and input"
+description: "Stream a running user program's stdout and send it stdin."
+---
+
+A running user program's standard output is buffered on the brain until the
+host asks for it. `@v5x/serial` exposes that buffer as a terminal session that
+polls for output and emits it as it arrives.
+
+## Streaming output
+
+```ts
+import { V5SerialDevice } from "@v5x/serial";
+
+const device = new V5SerialDevice(navigator.serial);
+const connected = await device.connect();
+if (connected.isErr()) throw connected.error;
+
+const opened = device.openTerminal();
+if (opened.isErr()) throw opened.error;
+const terminal = opened.value;
+
+terminal.on("text", (text) => process.stdout.write(text));
+terminal.on("error", (error) => console.warn("read failed", error.kind));
+
+// later
+await terminal.close();
+```
+
+`openTerminal()` starts polling immediately and returns
+`Err(VexNotConnectedError)` when no connection is open. The session is yours to
+close; disposing the device does not stop the poll loop.
+
+### Events
+
+| Event    | Payload          | Meaning                                                      |
+| -------- | ---------------- | ------------------------------------------------------------ |
+| `data`   | `Uint8Array`     | Raw bytes drained from the program's output buffer.          |
+| `text`   | `string`         | The same bytes decoded as UTF-8.                             |
+| `error`  | `VexSerialError` | A read failed. Polling continues unless `closed` follows.    |
+| `closed` | `undefined`      | The session stopped, from `close()` or from repeated errors. |
+
+`text` decoding is incremental, so a multi-byte character split across two
+reads is emitted once, whole, with the read that completes it. Listen to `data`
+instead when the program prints something other than text.
+
+A listener that throws cannot stop the poll loop.
+
+## Sending input
+
+```ts
+const written = await terminal.write("calibrate\n");
+if (written.isErr()) throw written.error;
+```
+
+Writes longer than the 224-byte protocol limit are split across as many
+requests as needed. A failed chunk stops the write and reports the error rather
+than returning a short count.
+
+## Tuning the session
+
+```ts
+const opened = device.openTerminal({
+  idlePollIntervalMs: 25,
+  timeoutMs: 500,
+  maxConsecutiveErrors: 20,
+});
+```
+
+<ParamField path="idlePollIntervalMs" type="number" default="50">
+  Delay before polling again after the brain reports nothing buffered. A
+  non-empty read is followed immediately by another read, so a burst of output
+  drains at link speed rather than at this interval.
+</ParamField>
+
+<ParamField path="timeoutMs" type="number" default="500">
+  Reply timeout for each request.
+</ParamField>
+
+<ParamField path="maxConsecutiveErrors" type="number" default="20">
+  Consecutive failed reads tolerated before the session closes itself.
+  Occasional timeouts are normal while the brain is busy, so a single failure
+  never ends a terminal.
+</ParamField>
+
+## Reading the buffer directly
+
+`V5SerialConnection` exposes the underlying requests when polling is not what
+you want:
+
+```ts
+import { UserFifoChannel } from "@v5x/serial";
+
+const read = await connection.readUserFifo();
+if (read.isOk()) console.log(read.value); // Uint8Array, possibly empty
+
+await connection.writeUserFifo("go\n", UserFifoChannel.STDIN);
+```
+
+An empty array means the program has printed nothing since the last read; it is
+not a failure. Trailing NUL padding the brain adds to a reply is removed, while
+NULs a program printed inside its own output are kept.
+
+## What this shares with everything else
+
+Reads travel over the same connection as every other command and are serialized
+with them. A screenshot or a program upload running at the same time delays the
+terminal but never corrupts it, and output is never reordered. Because the
+transport is the system connection rather than a second USB endpoint, this
+works over a direct brain connection and over a controller.
+
+[View source](https://better-hub.com/v5x-dev/v5x/blob/main/packages/serial/src/VexTerminal.ts)

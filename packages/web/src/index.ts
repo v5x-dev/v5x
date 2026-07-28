@@ -16,4 +16,10 @@ export type {
   V5Store,
   V5Unsubscribe,
 } from "./client.js";
+export type {
+  V5Console,
+  V5ConsoleOptions,
+  V5ConsoleSnapshot,
+  V5ConsoleStatus,
+} from "./console.js";
 export type { WebSerialUnavailableReason } from "./support.js";

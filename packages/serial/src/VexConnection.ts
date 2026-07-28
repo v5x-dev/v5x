@@ -12,8 +12,10 @@ import {
   type MatchMode,
   SerialDeviceType,
   type SlotNumber,
+  USER_FIFO_MAX_WRITE_SIZE,
   USER_FLASH_USR_CODE_START,
   USER_PROG_CHUNK_SIZE,
+  UserFifoChannel,
   type SelectDashScreen,
 } from "./Vex.js";
 import {
@@ -68,6 +70,8 @@ import {
   EraseFileReplyD2HPacket,
   FileClearUpH2DPacket,
   FileClearUpReplyD2HPacket,
+  UserFifoH2DPacket,
+  UserFifoReplyD2HPacket,
 } from "./VexPacket.js";
 import { type VexFirmwareVersion } from "./VexFirmwareVersion.js";
 import {
@@ -115,6 +119,13 @@ export const DEFAULT_MAX_FILE_DOWNLOAD_BYTES = 64 * 1024 * 1024;
  * a few outstanding chunks cuts wall-clock time roughly proportionally.
  */
 export const DEFAULT_TRANSFER_WINDOW_SIZE = 4;
+
+/**
+ * Reply timeout for user-FIFO requests. A terminal issues these continuously,
+ * so the wait is short enough that a stalled reply is retried rather than
+ * holding up the poll loop for a full second.
+ */
+export const DEFAULT_USER_FIFO_TIMEOUT = 500;
 
 export interface VexSerialConnectionOptions {
   /** Maximum file size accepted from a caller or device before allocation. */
@@ -1008,6 +1019,72 @@ export class V5SerialConnection extends VexSerialConnection {
       SelectDashReplyD2HPacket,
     );
   }
+
+  /**
+   * Drain whatever the brain currently holds in a user-program FIFO channel.
+   *
+   * An empty array is the ordinary answer for a program that has printed
+   * nothing since the last read, not a failure. Trailing NUL padding the brain
+   * adds to the reply is removed, so the returned bytes are exactly the ones
+   * the program wrote.
+   */
+  readUserFifo(
+    channel: UserFifoChannel = UserFifoChannel.STDOUT,
+    timeout: number = DEFAULT_USER_FIFO_TIMEOUT,
+  ): ResultAsync<Uint8Array, VexSerialError> {
+    return this.request(
+      new UserFifoH2DPacket(channel),
+      UserFifoReplyD2HPacket,
+      timeout,
+    ).map((reply) => trimTrailingNuls(reply.buf));
+  }
+
+  /**
+   * Push bytes into a user-program FIFO channel, splitting them across as many
+   * requests as the per-packet limit requires. Resolves with the number of
+   * bytes the brain accepted; a failed chunk stops the write and reports the
+   * error, so a partial write is visible as an `Err` rather than a short count.
+   */
+  writeUserFifo(
+    data: Uint8Array | string,
+    channel: UserFifoChannel = UserFifoChannel.STDIN,
+    timeout: number = DEFAULT_USER_FIFO_TIMEOUT,
+  ): ResultAsync<number, VexSerialError> {
+    const bytes =
+      typeof data === "string" ? new TextEncoder().encode(data) : data;
+    return new ResultAsync(this._writeUserFifo(bytes, channel, timeout));
+  }
+
+  private async _writeUserFifo(
+    bytes: Uint8Array,
+    channel: UserFifoChannel,
+    timeout: number,
+  ): Promise<Result<number, VexSerialError>> {
+    for (
+      let offset = 0;
+      offset < bytes.byteLength;
+      offset += USER_FIFO_MAX_WRITE_SIZE
+    ) {
+      const chunk = bytes.subarray(offset, offset + USER_FIFO_MAX_WRITE_SIZE);
+      const reply = await this.request(
+        new UserFifoH2DPacket(channel, chunk),
+        UserFifoReplyD2HPacket,
+        timeout,
+      );
+      if (reply.isErr()) return err(reply.error);
+    }
+    return ok(bytes.byteLength);
+  }
+}
+
+/**
+ * The brain pads a FIFO reply out to a word boundary with NULs. A user program
+ * that prints an interior NUL keeps it; only the padded tail is dropped.
+ */
+function trimTrailingNuls(bytes: Uint8Array): Uint8Array {
+  let end = bytes.byteLength;
+  while (end > 0 && bytes[end - 1] === 0) end--;
+  return bytes.slice(0, end);
 }
 
 function getTransferChunkSize(windowSize: number): number {

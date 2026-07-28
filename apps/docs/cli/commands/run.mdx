@@ -15,3 +15,13 @@ Alias: `v5x r`
 v5x run --slot 1
 v5x run ./robot --slot 4 --name "Autonomous"
 ```
+
+Add `-t, --terminal` to keep the connection open and stream the program's
+output as soon as it starts, so nothing it prints at startup is missed:
+
+```bash
+v5x run --terminal
+```
+
+See [terminal](/cli/commands/terminal) for the streaming options and how to
+send input back to the program.

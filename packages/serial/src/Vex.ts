@@ -2,6 +2,11 @@ import { type VexFirmwareVersion } from "./VexFirmwareVersion.js";
 import { type HostBoundPacket } from "./VexPacket.js";
 
 export const USER_PROG_CHUNK_SIZE = 4096; // chunk size
+/**
+ * Largest payload the brain accepts in one user-FIFO write. Longer writes have
+ * to be split across several requests.
+ */
+export const USER_FIFO_MAX_WRITE_SIZE = 224;
 export const USER_FLASH_START = 0x03000000; // start address of memory
 export const USER_FLASH_SYS_CODE_START = 0x03400000; // start address of system code
 export const USER_FLASH_USR_CODE_START = 0x03800000; // start address of user code
@@ -155,6 +160,19 @@ export enum FileExitAction {
 export enum RadioChannelType {
   PIT = 0,
   DOWNLOAD = 1,
+}
+
+/**
+ * FIFO buffers the brain exposes to the host for the running user program.
+ * The brain owns both buffers, so the host reads standard output from
+ * {@link STDOUT} and pushes standard input into {@link STDIN}; each channel is
+ * one-directional from the host's point of view.
+ */
+export enum UserFifoChannel {
+  /** Bytes the user program has written to `stdout`/`stderr`. */
+  STDOUT = 1,
+  /** Bytes the host wants the user program to read from `stdin`. */
+  STDIN = 2,
 }
 
 export type SlotNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;

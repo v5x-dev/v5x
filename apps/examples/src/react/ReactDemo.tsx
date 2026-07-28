@@ -1,5 +1,17 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { V5Provider, useV5Connection, useV5Snapshot } from "@v5x/web/react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import {
+  V5Provider,
+  useV5Connection,
+  useV5Console,
+  useV5Snapshot,
+} from "@v5x/web/react";
 import {
   createFakeV5Environment,
   failureModes,
@@ -104,8 +116,55 @@ function Panel({ controls }: { controls: FakeV5Controls }) {
         <Row term="Disconnects" detail={stats.disconnects} />
       </dl>
 
+      <Console connected={snapshot.connected} />
+
       <p className="error-text">{snapshot.error?.message ?? ""}</p>
     </article>
+  );
+}
+
+function Console({ connected }: { connected: boolean }) {
+  const console = useV5Console();
+  const output = useRef<HTMLPreElement>(null);
+
+  // Follow the tail on new output. `chunks` changes even when the buffer text
+  // is unchanged after trimming, so it is the reliable trigger.
+  useEffect(() => {
+    const element = output.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [console.chunks]);
+
+  return (
+    <section className="console">
+      <div className="actions">
+        <button
+          className="button"
+          type="button"
+          disabled={!connected || console.streaming}
+          onClick={() => void console.start()}
+        >
+          Start console
+        </button>
+        <button
+          className="button"
+          type="button"
+          disabled={!console.streaming}
+          onClick={() => void console.stop()}
+        >
+          Stop
+        </button>
+        <button
+          className="button"
+          type="button"
+          onClick={() => console.clear()}
+        >
+          Clear
+        </button>
+      </div>
+      <pre className="console-output" ref={output}>
+        {console.text || "(no program output yet)"}
+      </pre>
+    </section>
   );
 }
 

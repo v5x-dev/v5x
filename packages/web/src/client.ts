@@ -21,6 +21,12 @@ import {
   type V5Store,
   type V5Unsubscribe,
 } from "./store.js";
+import {
+  createV5Console,
+  type V5Console,
+  type V5ConsoleDeviceSource,
+  type V5ConsoleOptions,
+} from "./console.js";
 
 export type V5ConnectionStatus =
   | "unsupported"
@@ -66,6 +72,8 @@ export interface V5ClientOptions {
    * a positive finite number.
    */
   refreshIntervalMs?: number;
+  /** Buffer size and terminal settings for {@link V5Client.console}. */
+  console?: V5ConsoleOptions;
 }
 
 export interface V5Client extends V5Store<V5Snapshot> {
@@ -74,9 +82,15 @@ export interface V5Client extends V5Store<V5Snapshot> {
   connect(): Promise<boolean>;
   disconnect(): Promise<void>;
   refresh(): Promise<void>;
+  /**
+   * Live standard output of the running user program. This is a separate store
+   * so that a console redraw does not re-render everything bound to the
+   * connection snapshot. It stops whenever the device detaches.
+   */
+  readonly console: V5Console;
 }
 
-export interface V5DeviceLike {
+export interface V5DeviceLike extends V5ConsoleDeviceSource {
   autoRefresh: boolean;
   autoReconnect?: boolean;
   state?: V5ReadableDeviceState;
@@ -125,6 +139,7 @@ class V5WebClient implements V5Client {
   private generation = 0;
   private detachDeviceListeners: (() => void) | null = null;
   private snapshot: V5Snapshot;
+  readonly console: V5Console;
 
   constructor(options: V5ClientOptions, createDevice: V5DeviceFactory) {
     if (
@@ -143,6 +158,7 @@ class V5WebClient implements V5Client {
     this.createDevice = createDevice;
     this.status = this.supported ? "idle" : "unsupported";
     this.snapshot = this.createSnapshot();
+    this.console = createV5Console(() => this.device, options.console);
   }
 
   getSnapshot(): V5Snapshot {
@@ -371,6 +387,9 @@ class V5WebClient implements V5Client {
     this.detachDeviceListeners?.();
     this.detachDeviceListeners = null;
     this.stopRefreshTimer();
+    // The console polls through the device that is going away, so it has to
+    // stop here rather than keep failing against a closed connection.
+    void this.console.stop();
     return device;
   }
 
@@ -468,4 +487,10 @@ export function createV5ClientWithFactory(
   return new V5WebClient(options, createDevice);
 }
 
+export type {
+  V5Console,
+  V5ConsoleOptions,
+  V5ConsoleSnapshot,
+  V5ConsoleStatus,
+} from "./console.js";
 export type { V5DeviceSnapshot, V5Store, V5Unsubscribe };

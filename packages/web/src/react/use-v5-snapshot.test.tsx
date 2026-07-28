@@ -4,6 +4,7 @@ import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import * as clientModule from "../client.js";
 import { type V5Client, type V5Snapshot } from "../client.js";
+import { createV5Console } from "../console.js";
 import { V5WebError } from "../errors.js";
 import { V5Provider, useV5Client } from "./provider.js";
 import { useV5Snapshot } from "./use-v5-snapshot.js";
@@ -51,6 +52,8 @@ function createFakeClient(): V5Client & {
     connect: async () => true,
     disconnect: async () => {},
     refresh: async () => {},
+    // The console is a real store over an absent device: idle, never streaming.
+    console: createV5Console(() => null),
     listenerCount: () => listeners.size,
     setSnapshot(nextSnapshot) {
       snapshot = nextSnapshot;

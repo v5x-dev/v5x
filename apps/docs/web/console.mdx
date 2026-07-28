@@ -1,0 +1,140 @@
+---
+title: "Program console"
+description: "Render the running program's output in the browser."
+---
+
+Every client exposes `client.console`, a store holding the running user
+program's standard output. It is a separate store from the connection snapshot,
+so a console that redraws on every line does not re-render everything bound to
+connection state.
+
+```ts
+import { createV5Client } from "@v5x/web";
+
+const client = createV5Client();
+await client.connect();
+
+client.console.subscribe(() => {
+  document.querySelector("pre")!.textContent =
+    client.console.getSnapshot().text;
+});
+
+await client.console.start();
+```
+
+## Snapshot
+
+| Field       | Type                               | Meaning                                            |
+| ----------- | ---------------------------------- | -------------------------------------------------- |
+| `status`    | `"idle" \| "streaming" \| "error"` | Console lifecycle state.                           |
+| `streaming` | `boolean`                          | True while output is being polled.                 |
+| `text`      | `string`                           | Everything printed since `start()`, buffer-capped. |
+| `chunks`    | `number`                           | Count of chunks appended so far.                   |
+| `truncated` | `boolean`                          | True once output has been dropped from the front.  |
+| `error`     | `V5WebError \| null`               | Why the last `start()` or `send()` failed.         |
+
+`text` is a plain string so it can be rendered straight into a `<pre>`. Use
+`chunks` as the change key when scrolling to the tail: after trimming, `text`
+can be unchanged even though new output arrived.
+
+## Actions
+
+- `start()` — begin streaming. Resolves `false` and publishes an `error`
+  snapshot when no device is connected.
+- `stop()` — stop streaming and keep the buffered text.
+- `clear()` — empty the buffer without interrupting a running stream.
+- `send(text)` — write a line to the program's standard input. Resolves
+  `false` when nothing is streaming or the write is refused.
+
+The console stops whenever the device detaches, including a disconnect, a lost
+link, or a refresh failure, so it never keeps polling a closed connection.
+
+## Buffer size
+
+Output is capped so a long-running program cannot grow the page's memory
+without bound. When the cap is exceeded, the oldest output is dropped a line at
+a time, and `truncated` becomes true.
+
+```ts
+const client = createV5Client({
+  console: { maxCharacters: 20_000, terminal: { idlePollIntervalMs: 100 } },
+});
+```
+
+`terminal` is forwarded to the underlying
+[serial terminal session](/serial/guides/user-program-terminal).
+
+## React
+
+```tsx
+import { useEffect, useRef } from "react";
+import { useV5Console, useV5Snapshot } from "@v5x/web/react";
+
+export function ProgramConsole() {
+  const { connected } = useV5Snapshot();
+  const console = useV5Console();
+  const output = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    const element = output.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [console.chunks]);
+
+  return (
+    <section>
+      <button
+        disabled={!connected || console.streaming}
+        onClick={console.start}
+      >
+        Start
+      </button>
+      <button disabled={!console.streaming} onClick={console.stop}>
+        Stop
+      </button>
+      <button onClick={console.clear}>Clear</button>
+      <pre ref={output}>{console.text}</pre>
+    </section>
+  );
+}
+```
+
+`useV5Console()` returns the snapshot fields spread together with the actions.
+
+## Svelte
+
+```svelte
+<script lang="ts">
+  import { createV5State } from "@v5x/web/svelte";
+
+  const v5 = createV5State();
+</script>
+
+<button
+  disabled={!v5.snapshot.connected || v5.console.streaming}
+  onclick={() => v5.startConsole()}
+>
+  Start
+</button>
+<button onclick={() => v5.clearConsole()}>Clear</button>
+<pre>{v5.console.text}</pre>
+```
+
+`v5.console` has its own subscription, so reading it does not make a component
+re-run on every connection snapshot.
+
+## Solid
+
+```tsx
+import { createV5Console } from "@v5x/web/solid";
+
+export function ProgramConsole() {
+  const console = createV5Console();
+
+  return (
+    <section>
+      <button onClick={() => void console.start()}>Start</button>
+      <pre>{console.snapshot().text}</pre>
+    </section>
+  );
+}
+```

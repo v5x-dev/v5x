@@ -3,6 +3,7 @@ import {
   reportProgress,
   resolveBuildOption,
   resolveSlotOption,
+  resolveTerminalOption,
   uploadProgramFromCommand,
   withUploadProgress,
   type UploadCommandOptions,
@@ -43,6 +44,29 @@ describe("resolveBuildOption", () => {
 
   test("still skips the build when --no-build is explicitly passed", () => {
     expect(resolveBuildOption(false, undefined)).toBe(false);
+  });
+});
+
+describe("resolveTerminalOption", () => {
+  test("is off unless --terminal is passed", () => {
+    expect(resolveTerminalOption(undefined, true, undefined)).toBe(false);
+    expect(resolveTerminalOption(false, true, undefined)).toBe(false);
+  });
+
+  test("is on for a program that will be started", () => {
+    expect(resolveTerminalOption(true, true, undefined)).toBe(true);
+  });
+
+  test("rejects watching a program that will not be started", () => {
+    expect(() => resolveTerminalOption(true, false, undefined)).toThrow(
+      "--terminal needs a program to watch",
+    );
+  });
+
+  test("rejects sharing standard output with the JSON report", () => {
+    expect(() => resolveTerminalOption(true, true, true)).toThrow(
+      "cannot be combined with --json",
+    );
   });
 });
 

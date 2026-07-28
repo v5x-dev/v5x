@@ -198,6 +198,27 @@ select {
   text-align: right;
 }
 
+.console {
+  display: grid;
+  gap: 8px;
+}
+
+.console-output {
+  height: 132px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow-y: auto;
+  border: 1px solid #d8e0d6;
+  border-radius: 8px;
+  background: #12160f;
+  color: #d7e3cf;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .error-text {
   min-height: 20px;
   margin: 0;

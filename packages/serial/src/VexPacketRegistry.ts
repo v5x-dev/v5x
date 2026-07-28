@@ -32,6 +32,7 @@ import {
   SelectDashReplyD2HPacket,
   SendDashTouchReplyD2HPacket,
   SystemVersionReplyD2HPacket,
+  UserFifoReplyD2HPacket,
   WriteFileReplyD2HPacket,
   WriteKeyValueReplyD2HPacket,
 } from "./VexPacketModels.js";
@@ -63,6 +64,7 @@ export const defaultReplyPacketTypes: readonly (typeof HostBoundPacket)[] = [
   GetLogCountReplyD2HPacket,
   ReadLogPageReplyD2HPacket,
   GetRadioStatusReplyD2HPacket,
+  UserFifoReplyD2HPacket,
   ScreenCaptureReplyD2HPacket,
   SendDashTouchReplyD2HPacket,
   SelectDashReplyD2HPacket,
