@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { errAsync, okAsync } from "neverthrow";
 import { V5SerialDevice, VexSerialError } from "@v5x/serial";
-import type { Serial, SerialPort, SerialPortInfo } from "./adapter";
+import type { Serial, SerialPort, SerialPortInfo } from "@v5x/node";
 import {
   connectV5Device,
   matchesPortSelector,

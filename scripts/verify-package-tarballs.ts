@@ -2,7 +2,12 @@ import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
-type PackageName = "@v5x/serial" | "@v5x/cli" | "@v5x/web" | "@v5x/events";
+type PackageName =
+  | "@v5x/serial"
+  | "@v5x/cli"
+  | "@v5x/node"
+  | "@v5x/web"
+  | "@v5x/events";
 
 interface SourceMap {
   sources: string[];
@@ -35,6 +40,7 @@ function isPackageName(value: unknown): value is PackageName {
   return (
     value === "@v5x/serial" ||
     value === "@v5x/cli" ||
+    value === "@v5x/node" ||
     value === "@v5x/web" ||
     value === "@v5x/events"
   );
@@ -123,10 +129,36 @@ function verifyExport(
   }
 }
 
+function verifyReleasedDependency(
+  manifest: Record<string, unknown>,
+  packageName: PackageName,
+  dependencyName: string,
+  expectedVersion?: string,
+): void {
+  const dependencies = manifest.dependencies;
+  const version = isRecord(dependencies)
+    ? dependencies[dependencyName]
+    : undefined;
+  if (
+    typeof version !== "string" ||
+    version.startsWith("workspace:") ||
+    (expectedVersion !== undefined && version !== expectedVersion)
+  ) {
+    throw new Error(
+      `${packageName} must depend on ${dependencyName} at the expected released version`,
+    );
+  }
+}
+
+export interface ExpectedDependencyVersions {
+  serial?: string;
+  node?: string;
+}
+
 export function verifyManifest(
   packageName: PackageName,
   parsed: Record<string, unknown>,
-  expectedSerialVersion?: string,
+  expected: ExpectedDependencyVersions = {},
 ): void {
   if (packageName === "@v5x/serial") {
     const exports = parsed.exports;
@@ -160,6 +192,33 @@ export function verifyManifest(
     ) {
       throw new Error(
         "CLI platform, runtime, or executable metadata are invalid",
+      );
+    }
+  } else if (packageName === "@v5x/node") {
+    if (
+      parsed.name !== "@v5x/node" ||
+      parsed.type !== "module" ||
+      parsed.main !== "./dist/index.js" ||
+      parsed.module !== "./dist/index.js" ||
+      parsed.types !== "./dist/index.d.ts" ||
+      parsed.sideEffects !== true
+    ) {
+      throw new Error("node package metadata is invalid");
+    }
+
+    verifyExport(
+      parsed,
+      packageName,
+      ".",
+      "./dist/index.d.ts",
+      "./dist/index.js",
+    );
+
+    const peers = parsed.peerDependenciesMeta;
+    const bunSerialport = isRecord(peers) ? peers["bun-serialport"] : undefined;
+    if (!isRecord(bunSerialport) || bunSerialport.optional !== true) {
+      throw new Error(
+        "@v5x/node must keep bun-serialport an optional peer dependency",
       );
     }
   } else if (packageName === "@v5x/web") {
@@ -230,27 +289,27 @@ export function verifyManifest(
     );
   }
 
-  if (packageName === "@v5x/cli" || packageName === "@v5x/web") {
-    const dependencies = parsed.dependencies;
-    const serialVersion = isRecord(dependencies)
-      ? dependencies["@v5x/serial"]
-      : undefined;
-    if (
-      typeof serialVersion !== "string" ||
-      serialVersion.startsWith("workspace:") ||
-      (expectedSerialVersion !== undefined &&
-        serialVersion !== expectedSerialVersion)
-    ) {
-      throw new Error(
-        `${packageName} must depend on @v5x/serial at the expected released version`,
-      );
-    }
+  if (
+    packageName === "@v5x/cli" ||
+    packageName === "@v5x/node" ||
+    packageName === "@v5x/web"
+  ) {
+    verifyReleasedDependency(
+      parsed,
+      packageName,
+      "@v5x/serial",
+      expected.serial,
+    );
+  }
+
+  if (packageName === "@v5x/cli") {
+    verifyReleasedDependency(parsed, packageName, "@v5x/node", expected.node);
   }
 }
 
 export async function verifyArchive(
   archive: string,
-  expectedSerialVersion?: string,
+  expected: ExpectedDependencyVersions = {},
 ): Promise<PackageName> {
   const archiveName = basename(archive);
   const directory = await mkdtemp(join(tmpdir(), "v5x-package-"));
@@ -262,7 +321,7 @@ export async function verifyArchive(
     const { name: packageName, manifest } = await readPackageIdentity(
       join(packageRoot, "package.json"),
     );
-    verifyManifest(packageName, manifest, expectedSerialVersion);
+    verifyManifest(packageName, manifest, expected);
     const allowedRoots = new Set(["LICENSE", "README.md", "package.json"]);
     const unexpected = files.filter(
       (file) => !file.startsWith("dist/") && !allowedRoots.has(file),
@@ -320,6 +379,19 @@ function getRequiredFiles(packageName: PackageName): string[] {
     return ["dist/index.js"];
   }
 
+  if (packageName === "@v5x/node") {
+    return [
+      "dist/backend.d.ts",
+      "dist/bun-serialport-backend.d.ts",
+      "dist/index.js",
+      "dist/index.d.ts",
+      "dist/linux-discovery.d.ts",
+      "dist/port.d.ts",
+      "dist/serial.d.ts",
+      "dist/types.d.ts",
+    ];
+  }
+
   if (packageName === "@v5x/events") {
     return [
       "dist/client.d.ts",
@@ -365,7 +437,7 @@ function getRequiredMaps(packageName: PackageName): string[] {
     return ["dist/index.js.map"];
   }
 
-  if (packageName === "@v5x/events") {
+  if (packageName === "@v5x/events" || packageName === "@v5x/node") {
     return ["dist/index.js.map"];
   }
 
@@ -382,38 +454,54 @@ function getPackedSizeBudget(packageName: PackageName): {
   bytes: number;
   label: string;
 } {
-  if (packageName === "@v5x/web" || packageName === "@v5x/events") {
+  if (
+    packageName === "@v5x/web" ||
+    packageName === "@v5x/events" ||
+    packageName === "@v5x/node"
+  ) {
     return { bytes: 1_000_000, label: "1 MB" };
   }
 
   return { bytes: 2_000_000, label: "2 MB" };
 }
 
-function parseArguments(args: string[]): {
+const VERSION_FLAGS = {
+  "--serial-version": "serial",
+  "--node-version": "node",
+} as const satisfies Record<string, keyof ExpectedDependencyVersions>;
+
+export function parseArguments(args: string[]): {
   archives: string[];
-  expectedSerialVersion?: string;
+  expected: ExpectedDependencyVersions;
 } {
-  const [first, second, ...archives] = args;
-  if (first !== "--serial-version") return { archives: args };
-  if (second === undefined || second.startsWith("-")) {
-    throw new Error("--serial-version requires a concrete version");
+  const expected: ExpectedDependencyVersions = {};
+  let index = 0;
+
+  while (index < args.length) {
+    const flag = args[index];
+    if (flag === undefined || !(flag in VERSION_FLAGS)) break;
+
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("-")) {
+      throw new Error(`${flag} requires a concrete version`);
+    }
+    expected[VERSION_FLAGS[flag as keyof typeof VERSION_FLAGS]] = value;
+    index += 2;
   }
 
-  return { archives, expectedSerialVersion: second };
+  return { archives: args.slice(index), expected };
 }
 
 if (import.meta.main) {
-  const { archives, expectedSerialVersion } = parseArguments(
-    process.argv.slice(2),
-  );
+  const { archives, expected } = parseArguments(process.argv.slice(2));
   if (archives.length === 0) {
     throw new Error(
-      "Pass one or more @v5x/serial, @v5x/cli, @v5x/web, or @v5x/events tarballs to this script",
+      "Pass one or more @v5x/serial, @v5x/node, @v5x/cli, @v5x/web, or @v5x/events tarballs to this script",
     );
   }
   const verifiedPackages = new Set<PackageName>();
   for (const archive of archives) {
-    const packageName = await verifyArchive(archive, expectedSerialVersion);
+    const packageName = await verifyArchive(archive, expected);
     if (verifiedPackages.has(packageName)) {
       throw new Error(`Received duplicate tarball for ${packageName}`);
     }

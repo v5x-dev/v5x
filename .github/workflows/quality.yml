@@ -48,6 +48,8 @@ jobs:
           smoke_dir="$(mktemp -d)"
           cd packages/serial
           bun pm pack --destination "$smoke_dir"
+          cd ../node
+          bun pm pack --destination "$smoke_dir"
           cd ../cli
           bun pm pack --destination "$smoke_dir"
           cd ../web
@@ -58,13 +60,17 @@ jobs:
           bun scripts/verify-package-tarballs.ts "$smoke_dir"/*.tgz
           cd "$smoke_dir"
           bun init -y
-          bun add ./v5x-serial-*.tgz
-          bun add ./v5x-cli-*.tgz
+          # @v5x/node is not on npm until its first release, so the CLI's
+          # dependency on it has to resolve to the local tarball.
+          bun -e 'const packageJson = await Bun.file("package.json").json(); packageJson.overrides = { "@v5x/node": process.argv[1], "@v5x/serial": process.argv[2] }; await Bun.write("package.json", JSON.stringify(packageJson, null, 2));' ./v5x-node-*.tgz ./v5x-serial-*.tgz
+          bun add ./v5x-serial-*.tgz ./v5x-node-*.tgz ./v5x-cli-*.tgz
           bun add ./v5x-events-*.tgz
           bun add ./v5x-web-*.tgz react@19.2.7 @types/react@19.2.7 svelte@5.46.0 solid-js@1.9.10
           bun -e 'import("@v5x/serial").then((module) => { if (typeof module.V5SerialDevice !== "function") throw new Error("missing V5SerialDevice export"); })'
           node -e 'const module = require("@v5x/serial"); if (typeof module.V5SerialDevice !== "function") throw new Error("missing CommonJS export")'
           bun -e 'const module = await import("@v5x/events"); if (typeof module.Robot !== "function") throw new Error("missing @v5x/events Robot export");'
+          bun -e 'const module = await import("@v5x/node"); if (typeof module.createNodeSerial !== "function" || typeof module.createBunSerialportBackend !== "function") throw new Error("missing @v5x/node exports"); if (!(module.serial instanceof module.NodeSerial)) throw new Error("missing @v5x/node serial instance");'
+          node -e 'import("@v5x/node").then((module) => { if (typeof module.createNodeSerial !== "function") throw new Error("missing @v5x/node export under Node.js"); })'
           bun -e 'const module = await import("@v5x/web"); if (typeof module.createV5Client !== "function") throw new Error("missing @v5x/web createV5Client export");'
           bun -e 'const root = await import("@v5x/web"); const module = await import("@v5x/web/testing"); if (typeof module.createV5ClientWithFactory !== "function") throw new Error("missing @v5x/web/testing createV5ClientWithFactory export"); if (!(new module.V5WebError("connect-error", "test") instanceof root.V5WebError)) throw new Error("testing entrypoint duplicated V5WebError");'
           bun -e 'const root = await import("@v5x/web"); const module = await import("@v5x/web/react"); if (typeof module.V5Provider !== "function" || typeof module.useV5Snapshot !== "function") throw new Error("missing @v5x/web/react exports"); if (!(new module.V5WebError("connect-error", "test") instanceof root.V5WebError)) throw new Error("React entrypoint duplicated V5WebError");'

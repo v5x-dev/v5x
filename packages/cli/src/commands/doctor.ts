@@ -1,7 +1,7 @@
 import type { Sade } from "sade";
 import { platform } from "node:os";
 import pkg from "../../package.json" with { type: "json" };
-import { serial, type Serial } from "../adapter";
+import { serial, type Serial } from "@v5x/node";
 import { printJson, renderTable } from "../utils/output";
 
 export type DoctorStatus = "ok" | "warn" | "error";

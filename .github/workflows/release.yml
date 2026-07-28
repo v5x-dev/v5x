@@ -11,6 +11,7 @@ on:
     tags:
       - "@v5x/cli@*"
       - "@v5x/events@*"
+      - "@v5x/node@*"
       - "@v5x/serial@*"
       - "@v5x/web@*"
 
@@ -79,6 +80,10 @@ jobs:
               package_dir="packages/events"
               tarball_glob="v5x-events-*.tgz"
               ;;
+            @v5x/node)
+              package_dir="packages/node"
+              tarball_glob="v5x-node-*.tgz"
+              ;;
             @v5x/serial)
               package_dir="packages/serial"
               tarball_glob="v5x-serial-*.tgz"
@@ -95,6 +100,7 @@ jobs:
 
           package_json_version="$(bun -e 'const packageJson = await Bun.file(process.argv[1]).json(); console.log(packageJson.version);' "$package_dir/package.json")"
           serial_version="$(bun -e 'const packageJson = await Bun.file(process.argv[1]).json(); console.log(packageJson.version);' packages/serial/package.json)"
+          node_version="$(bun -e 'const packageJson = await Bun.file(process.argv[1]).json(); console.log(packageJson.version);' packages/node/package.json)"
           if [ "$package_json_version" != "$version" ]; then
             echo "$package_name tag version $version does not match $package_dir/package.json version $package_json_version" >&2
             exit 1
@@ -107,6 +113,7 @@ jobs:
             echo "tarball_glob=$tarball_glob"
             echo "version=$version"
             echo "serial_version=$serial_version"
+            echo "node_version=$node_version"
           } >> "$GITHUB_OUTPUT"
       - name: Check changelog entry
         run: |
@@ -156,13 +163,23 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun audit
       - name: Check serial release dependency
-        if: ${{ steps.release.outputs.package_name == '@v5x/cli' || steps.release.outputs.package_name == '@v5x/web' }}
+        if: ${{ steps.release.outputs.package_name == '@v5x/cli' || steps.release.outputs.package_name == '@v5x/node' || steps.release.outputs.package_name == '@v5x/web' }}
         run: |
           set -euo pipefail
           serial_version="${{ steps.release.outputs.serial_version }}"
           published_serial_version="$(npm view "@v5x/serial@${serial_version}" version)"
           if [ "$published_serial_version" != "$serial_version" ]; then
             echo "@v5x/serial@${serial_version} must be published before releasing ${{ steps.release.outputs.package_name }}" >&2
+            exit 1
+          fi
+      - name: Check node release dependency
+        if: ${{ steps.release.outputs.package_name == '@v5x/cli' }}
+        run: |
+          set -euo pipefail
+          node_version="${{ steps.release.outputs.node_version }}"
+          published_node_version="$(npm view "@v5x/node@${node_version}" version)"
+          if [ "$published_node_version" != "$node_version" ]; then
+            echo "@v5x/node@${node_version} must be published before releasing ${{ steps.release.outputs.package_name }}" >&2
             exit 1
           fi
       - name: Pack and verify package
@@ -178,7 +195,7 @@ jobs:
             echo "Expected exactly one packed tarball in $release_dir" >&2
             exit 1
           fi
-          bun scripts/verify-package-tarballs.ts --serial-version "${{ steps.release.outputs.serial_version }}" "${tarballs[0]}"
+          bun scripts/verify-package-tarballs.ts --serial-version "${{ steps.release.outputs.serial_version }}" --node-version "${{ steps.release.outputs.node_version }}" "${tarballs[0]}"
           echo "tarball=${tarballs[0]}" >> "$GITHUB_OUTPUT"
       - name: Check npm publication
         id: npm
@@ -232,6 +249,7 @@ jobs:
         run: |
           set -euo pipefail
           bun run --cwd packages/serial build
+          bun run --cwd packages/node build
           mkdir -p artifacts
 
           for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
