@@ -1,0 +1,127 @@
+---
+title: "Node and Bun transport"
+description: "Run @v5x/serial outside the browser with a Web Serial compatible transport and pluggable native backends."
+---
+
+`@v5x/serial` talks to a V5 brain through the Web Serial API. Browsers provide
+that API; Node.js and Bun do not. `@v5x/node` provides it, so servers, Electron
+apps, test rigs, and the v5x CLI can use the same protocol library the browser
+workflow uses.
+
+```sh
+bun add @v5x/node @v5x/serial bun-serialport
+```
+
+`bun-serialport` is the default native backend and an optional peer
+dependency. Install it to run on Bun under Linux or macOS; skip it and supply
+your own backend on any other runtime.
+
+## Connect to a brain
+
+`serial` is a drop-in replacement for `navigator.serial`, so anything that
+accepts a Web Serial `Serial` accepts it:
+
+```ts
+import { serial } from "@v5x/node";
+import { V5SerialDevice } from "@v5x/serial";
+
+const device = new V5SerialDevice(serial);
+
+const result = await device.connect();
+if (result.isErr()) throw new Error(result.error.message);
+
+console.log(device.brain.version);
+await device.dispose();
+```
+
+Everything the [serial guides](/serial/guides/connect-and-disconnect) describe
+works unchanged from there.
+
+## Enumerate ports
+
+```ts
+import { createNodeSerial } from "@v5x/node";
+
+const serial = createNodeSerial();
+
+for (const port of await serial.getPorts()) {
+  const info = port.getInfo();
+  console.log(info.path, info.id, info.usbVendorId, info.usbProductId);
+}
+```
+
+`requestPort()` resolves the first matching port instead of prompting, because
+a host process has no port picker to show.
+
+Port info is a superset of the browser's. A host process can see the device
+path and USB serial number that a browser deliberately hides, so ports also
+carry `path`, `serialNumber`, and a stable `id` — the USB serial number when
+the platform reports one, otherwise the path. The CLI's `--port` selector
+matches against exactly these.
+
+Port objects are stable across enumerations. Calling `getPorts()` twice returns
+the same object for a port you already opened, so its open state is preserved.
+A closed port is replaced when its discovered USB identity changes, and dropped
+once it disappears.
+
+## Bring your own backend
+
+Every platform detail lives behind `SerialBackend`. Supporting a new runtime or
+operating system is a backend rather than a change to the transport.
+
+```ts
+import { createNodeSerial, type SerialBackend } from "@v5x/node";
+
+const backend: SerialBackend = {
+  name: "my-backend",
+  // Omit `platforms` to accept every platform.
+  platforms: ["darwin", "linux", "win32"],
+  async list() {
+    return [{ path: "COM3", vendorId: "2888", productId: "0501" }];
+  },
+  async open({ path, baudRate }) {
+    // Return an already-open port that emits `data` and `error` events.
+    return openMyNativePort(path, baudRate);
+  },
+};
+
+const serial = createNodeSerial({ backend });
+```
+
+`vendorId` and `productId` are hexadecimal strings without a `0x` prefix. The
+transport parses them into the numeric `usbVendorId` and `usbProductId` that
+Web Serial filters match against.
+
+A backend that implements `pause()` and `resume()` gets backpressure handling:
+the transport pauses native reads while the readable stream is full and resumes
+when it drains. A backend without them errors the stream rather than buffering
+without bound.
+
+`NodeSerial` refuses to enumerate ports on a platform outside the backend's
+declared `platforms`, so the failure names the backend instead of surfacing as
+an opaque native error.
+
+<Note>
+  The v5x CLI ships for Linux and macOS because its default backend does.
+  Windows support is a backend, not a CLI rewrite.
+</Note>
+
+## The default backend
+
+`createBunSerialportBackend()` drives `bun-serialport`, which ships native code
+for Linux and macOS.
+
+On Linux it enumerates ports from `/sys/class/tty` rather than through the
+library, because the library reports device paths without the USB vendor and
+product ids that Web Serial filters need. The walk is bounded to eight
+concurrent sysfs reads and caches attributes per USB device, so a machine with
+many ttys enumerates quickly. `readLinuxUsbDeviceAttributes` and
+`listLinuxPorts` are exported for backends that want the same walk.
+
+```ts
+import { createBunSerialportBackend, createNodeSerial } from "@v5x/node";
+
+const serial = createNodeSerial({
+  backend: createBunSerialportBackend({ platform: "linux" }),
+});
+```

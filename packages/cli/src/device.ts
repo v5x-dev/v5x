@@ -1,11 +1,11 @@
-import { matchesUsbFilters, V5SerialDevice } from "@v5x/serial";
-import { basename } from "node:path";
 import {
   serial,
-  WebSerialEventTarget,
+  SerialEventTarget,
   type Serial,
   type SerialPort,
-} from "./adapter";
+} from "@v5x/node";
+import { matchesUsbFilters, V5SerialDevice } from "@v5x/serial";
+import { basename } from "node:path";
 import { requireOptionValue } from "./utils/guards";
 import { CliError, CLI_EXIT_CODE } from "./errors";
 
@@ -53,7 +53,7 @@ export function matchesPortSelector(
 
 const FORWARDED_SERIAL_EVENTS = ["connect", "disconnect"] as const;
 
-class SelectedSerialAdapter extends WebSerialEventTarget implements Serial {
+class SelectedSerialAdapter extends SerialEventTarget implements Serial {
   constructor(
     private readonly delegate: Serial,
     private readonly selector: string,

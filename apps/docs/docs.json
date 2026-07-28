@@ -127,6 +127,16 @@
         ]
       },
       {
+        "tab": "Node",
+        "icon": "server",
+        "groups": [
+          {
+            "group": "Host runtimes",
+            "pages": ["node/overview"]
+          }
+        ]
+      },
+      {
         "tab": "Web",
         "icon": "monitor",
         "groups": [

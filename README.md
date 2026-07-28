@@ -16,6 +16,10 @@ The low-level foundation that powers the CLI: the v5 serial protocol implemented
 
 This is a fork of [v5-serial-protocol](https://github.com/LemLib/v5-serial-protocol) with extra features and fixes, major props to [jerrylum](https://github.com/Jerrylum) and the [LemLib](https://github.com/LemLib) team for making this whole project possible.
 
+### [@v5x/node](https://github.com/v5x-dev/v5x/tree/main/packages/node)
+
+A Web Serial compatible serial transport for Node.js and Bun. `@v5x/serial` speaks Web Serial, which browsers provide and host runtimes do not, so this package supplies it: port enumeration, USB identity, backpressure, and a `SerialBackend` seam so a new runtime or operating system is a backend rather than a fork. The CLI runs on it.
+
 ### [@v5x/web](https://github.com/v5x-dev/v5x/tree/main/packages/web)
 
 A browser workflow layer for v5 Web Serial applications. It wraps `@v5x/serial` with a small subscription-based client that tracks connection status, Web Serial support, and normalized errors. Framework bindings for React, Svelte, and Solid ship as subpath exports.

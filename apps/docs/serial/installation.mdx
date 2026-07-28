@@ -15,6 +15,9 @@ import { FileVendor, ProgramIniConfig, V5SerialDevice } from "@v5x/serial";
 
 Your project needs DOM library types. If your TypeScript environment does not define Web Serial, add compatible declarations separately.
 
+Outside the browser, install [`@v5x/node`](/node/overview) for a Web Serial
+compatible transport to pass to `V5SerialDevice`.
+
 <Note>
   The package is transport-oriented and does not render a device chooser or
   application UI.

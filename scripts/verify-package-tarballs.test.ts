@@ -1,15 +1,40 @@
 import { expect, test } from "bun:test";
 
-import { verifyManifest } from "./verify-package-tarballs";
+import { parseArguments, verifyManifest } from "./verify-package-tarballs";
 
-function cliManifest(serialVersion: string): Record<string, unknown> {
+function cliManifest(
+  serialVersion: string,
+  nodeVersion = "0.1.0",
+): Record<string, unknown> {
   return {
     name: "@v5x/cli",
     sideEffects: true,
     os: ["darwin", "linux"],
     engines: { bun: ">=1.3.14" },
     bin: { v5x: "./dist/index.js" },
+    dependencies: {
+      "@v5x/node": nodeVersion,
+      "@v5x/serial": serialVersion,
+    },
+  };
+}
+
+function nodeManifest(serialVersion = "0.5.8"): Record<string, unknown> {
+  return {
+    name: "@v5x/node",
+    type: "module",
+    main: "./dist/index.js",
+    module: "./dist/index.js",
+    types: "./dist/index.d.ts",
+    sideEffects: true,
+    exports: {
+      ".": {
+        types: "./dist/index.d.ts",
+        import: "./dist/index.js",
+      },
+    },
     dependencies: { "@v5x/serial": serialVersion },
+    peerDependenciesMeta: { "bun-serialport": { optional: true } },
   };
 }
 
@@ -38,18 +63,75 @@ test("rejects unresolved workspace dependencies in packed CLI manifests", () => 
 
 test("requires the packed CLI manifest to use the release serial version", () => {
   expect(() =>
-    verifyManifest("@v5x/cli", cliManifest("0.5.5"), "0.5.6"),
+    verifyManifest("@v5x/cli", cliManifest("0.5.5"), { serial: "0.5.6" }),
   ).toThrow("must depend on @v5x/serial");
 
   expect(() =>
-    verifyManifest("@v5x/cli", cliManifest("0.5.6"), "0.5.6"),
+    verifyManifest("@v5x/cli", cliManifest("0.5.6"), { serial: "0.5.6" }),
   ).not.toThrow();
+});
+
+test("requires the packed CLI manifest to use the release node version", () => {
+  expect(() =>
+    verifyManifest("@v5x/cli", cliManifest("0.5.6", "workspace:*")),
+  ).toThrow("must depend on @v5x/node");
+
+  expect(() =>
+    verifyManifest("@v5x/cli", cliManifest("0.5.6", "0.1.0"), {
+      node: "0.1.1",
+    }),
+  ).toThrow("must depend on @v5x/node");
+
+  expect(() =>
+    verifyManifest("@v5x/cli", cliManifest("0.5.6", "0.1.1"), {
+      node: "0.1.1",
+    }),
+  ).not.toThrow();
+});
+
+test("accepts the standalone node transport manifest", () => {
+  expect(() =>
+    verifyManifest("@v5x/node", nodeManifest("0.5.6"), { serial: "0.5.6" }),
+  ).not.toThrow();
+});
+
+test("requires the node transport to keep bun-serialport optional", () => {
+  const manifest = nodeManifest();
+  manifest.peerDependenciesMeta = { "bun-serialport": { optional: false } };
+
+  expect(() => verifyManifest("@v5x/node", manifest)).toThrow(
+    "must keep bun-serialport an optional peer dependency",
+  );
 });
 
 test("accepts the standalone events package manifest", () => {
   expect(() =>
-    verifyManifest("@v5x/events", eventsManifest(), "0.5.6"),
+    verifyManifest("@v5x/events", eventsManifest(), { serial: "0.5.6" }),
   ).not.toThrow();
+});
+
+test("parses the release dependency version flags in any order", () => {
+  expect(
+    parseArguments([
+      "--node-version",
+      "0.1.0",
+      "--serial-version",
+      "0.5.8",
+      "a.tgz",
+    ]),
+  ).toEqual({
+    archives: ["a.tgz"],
+    expected: { node: "0.1.0", serial: "0.5.8" },
+  });
+
+  expect(parseArguments(["a.tgz"])).toEqual({
+    archives: ["a.tgz"],
+    expected: {},
+  });
+
+  expect(() => parseArguments(["--node-version", "--serial-version"])).toThrow(
+    "--node-version requires a concrete version",
+  );
 });
 
 test("rejects invalid events package exports", () => {
@@ -68,7 +150,7 @@ test("the release workflow verifies and publishes the same tarball", async () =>
   const verifier = await Bun.file("scripts/verify-package-tarballs.ts").text();
 
   expect(workflow).toContain(
-    'bun scripts/verify-package-tarballs.ts --serial-version "${{ steps.release.outputs.serial_version }}" "${tarballs[0]}"',
+    'bun scripts/verify-package-tarballs.ts --serial-version "${{ steps.release.outputs.serial_version }}" --node-version "${{ steps.release.outputs.node_version }}" "${tarballs[0]}"',
   );
   expect(workflow).toContain(
     'echo "tarball=${tarballs[0]}" >> "$GITHUB_OUTPUT"',
@@ -156,6 +238,27 @@ test("the release and quality workflows include the events package", async () =>
   expect(quality).toContain("cd ../events");
   expect(quality).toContain("bun add ./v5x-events-*.tgz");
   expect(quality).toContain('import("@v5x/events")');
+});
+
+test("the release and quality workflows include the node transport", async () => {
+  const release = await Bun.file(".github/workflows/release.yml").text();
+  const quality = await Bun.file(".github/workflows/quality.yml").text();
+
+  expect(release).toContain('- "@v5x/node@*"');
+  expect(release).toContain('package_dir="packages/node"');
+  expect(release).toContain('tarball_glob="v5x-node-*.tgz"');
+  expect(release).toContain(
+    'published_node_version="$(npm view "@v5x/node@${node_version}" version)"',
+  );
+  expect(quality).toContain("cd ../node");
+  // The CLI depends on @v5x/node, which is not on npm until its first release,
+  // so the smoke install has to override it to the packed tarball.
+  expect(quality).toContain('packageJson.overrides = { "@v5x/node"');
+  expect(quality).toContain(
+    "bun add ./v5x-serial-*.tgz ./v5x-node-*.tgz ./v5x-cli-*.tgz",
+  );
+  expect(quality).toContain('import("@v5x/node")');
+  expect(quality).toContain('type SerialBackend } from \\"@v5x/node\\"');
 });
 
 test("the release and quality workflows validate documentation", async () => {

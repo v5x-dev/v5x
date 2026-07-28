@@ -34,8 +34,8 @@ suite has to stay runnable for every contributor and CI. Maintainers can run
 changes.
 
 Changes that affect a published package must add an entry to the Unreleased
-section of `CHANGELOG.md` under `@v5x/cli`, `@v5x/serial`, `@v5x/web`, or the
-relevant combination. Package versions are independent; move only the relevant
+section of `CHANGELOG.md` under `@v5x/cli`, `@v5x/node`, `@v5x/serial`,
+`@v5x/web`, or the relevant combination. Package versions are independent; move only the relevant
 entries to a dated version heading when publishing.
 
 Before a release, pack all publishable packages and run the same artifact
@@ -51,6 +51,9 @@ Publishable packages are released independently with package-version tags:
 git tag @v5x/cli@0.0.22
 git push origin @v5x/cli@0.0.22
 
+git tag @v5x/node@0.1.0
+git push origin @v5x/node@0.1.0
+
 git tag @v5x/serial@0.5.5
 git push origin @v5x/serial@0.5.5
 
@@ -63,9 +66,11 @@ The tag version must match the selected package's `package.json` version. The
 workflow installs dependencies with Bun, packs the selected package, runs
 `bun scripts/verify-package-tarballs.ts` against the generated tarball, and
 publishes that same tarball with `npm publish --provenance --access public`.
-CLI and web releases require the checked-out `@v5x/serial` version to already
-be available from npm, and their packed manifests must depend on that exact
-version.
+CLI, node, and web releases require the checked-out `@v5x/serial` version to
+already be available from npm, and their packed manifests must depend on that
+exact version. CLI releases additionally require the checked-out `@v5x/node`
+version to be published, so release `@v5x/node` before the CLI that depends on
+it.
 
 Before pushing a tag, move the released package's notes out of the Unreleased
 section and into a dated heading using this exact format:

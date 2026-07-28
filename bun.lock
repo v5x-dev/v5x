@@ -66,6 +66,7 @@
         "v5x": "./dist/index.js",
       },
       "dependencies": {
+        "@v5x/node": "workspace:*",
         "@v5x/serial": "workspace:*",
         "bun-serialport": "^0.1.1",
         "chalk": "^5.6.2",
@@ -84,6 +85,24 @@
       "devDependencies": {
         "@types/bun": "latest",
       },
+    },
+    "packages/node": {
+      "name": "@v5x/node",
+      "version": "0.1.0",
+      "dependencies": {
+        "@v5x/serial": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/dom-serial": "^1.0.2",
+        "bun-serialport": "^0.1.1",
+      },
+      "peerDependencies": {
+        "bun-serialport": "^0.1.1",
+      },
+      "optionalPeers": [
+        "bun-serialport",
+      ],
     },
     "packages/serial": {
       "name": "@v5x/serial",
@@ -862,6 +881,8 @@
     "@v5x/events": ["@v5x/events@workspace:packages/events"],
 
     "@v5x/examples": ["@v5x/examples@workspace:apps/examples"],
+
+    "@v5x/node": ["@v5x/node@workspace:packages/node"],
 
     "@v5x/serial": ["@v5x/serial@workspace:packages/serial"],
 

@@ -1,0 +1,69 @@
+{
+  "name": "@v5x/node",
+  "version": "0.1.0",
+  "description": "Web Serial compatible serial transport for VEX V5 devices on Node.js and Bun",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun run clean && bun run build:dts && bun run build:esm && bun scripts/verify-built-exports.ts",
+    "build:esm": "bun build ./src/index.ts --target node --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external @v5x/serial --external bun-serialport",
+    "build:dts": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src --type-aware",
+    "test": "bun test",
+    "prepack": "bun run --cwd ../serial build && bun run build",
+    "clean": "rm -rf dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/v5x-dev/v5x.git",
+    "directory": "packages/node"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "v5",
+    "vex",
+    "vex-robotics",
+    "vex-v5",
+    "serial",
+    "web-serial",
+    "node",
+    "bun",
+    "robotics"
+  ],
+  "author": "qainguin <slimaster14@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/v5x-dev/v5x/issues"
+  },
+  "homepage": "https://docs.v5x.dev/node/overview",
+  "dependencies": {
+    "@v5x/serial": "workspace:*"
+  },
+  "peerDependencies": {
+    "bun-serialport": "^0.1.1"
+  },
+  "peerDependenciesMeta": {
+    "bun-serialport": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/dom-serial": "^1.0.2",
+    "bun-serialport": "^0.1.1"
+  }
+}

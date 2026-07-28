@@ -1,12 +1,28 @@
 # Changelog
 
-This repository versions `@v5x/cli`, `@v5x/events`, `@v5x/serial`, and
-`@v5x/web` independently. Each release moves entries from the applicable
+This repository versions `@v5x/cli`, `@v5x/events`, `@v5x/node`, `@v5x/serial`,
+and `@v5x/web` independently. Each release moves entries from the applicable
 Unreleased section to a dated package-version heading.
 
 ## Unreleased
 
+### @v5x/node
+
+- New package. A Web Serial compatible serial transport for Node.js and Bun,
+  extracted from the CLI's private adapter: `NodeSerial`, `NodeSerialPort`, a
+  `serial` instance that stands in for `navigator.serial`, stable port objects
+  across enumerations, readable-stream backpressure, and port info carrying the
+  device path and USB serial number a browser hides.
+- Put every platform detail behind a `SerialBackend` interface, so a new
+  runtime or operating system is a backend rather than a new transport. The
+  default `createBunSerialportBackend()` drives the optional `bun-serialport`
+  peer dependency and enumerates Linux ports from sysfs so USB ids are known.
+
 ### @v5x/cli
+
+- Use `@v5x/node` for serial access instead of a private adapter. The CLI still
+  ships for Linux and macOS because its serial backend does; nothing about
+  command behavior changes.
 
 - Add `v5x terminal`, which streams the running program's standard output and
   forwards host input to it, with `--timestamps`, `--no-input`, `--no-color`,
