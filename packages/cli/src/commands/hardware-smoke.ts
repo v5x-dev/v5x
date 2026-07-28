@@ -1,4 +1,5 @@
 import type { Sade } from "sade";
+import { withCommonOptions } from "../utils/common-options";
 import {
   FileDownloadTarget,
   FileVendor,
@@ -11,7 +12,7 @@ import pkg from "../../package.json" with { type: "json" };
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
 import { CLI_EXIT_CODE, CliError } from "../errors";
 import { requireOptionValue } from "../utils/guards";
-import { printJson, renderTable, unwrapSerial } from "../utils/output";
+import { printOutput, renderTable, unwrapSerial } from "../utils/output";
 import { encodeScreenshotPng } from "./screenshot";
 
 const MUTATION_FILENAME = "v5x_smoke.txt";
@@ -291,13 +292,13 @@ export function formatHardwareSmokeRows(
 }
 
 export default function registerHardwareSmokeCommand(program: Sade) {
-  program
-    .command("hardware-smoke", "run opt-in V5 hardware checks")
-    .option("--port", "serial port path or id, defaults to V5X_PORT")
+  withCommonOptions(
+    program.command("hardware-smoke", "run opt-in V5 hardware checks"),
+    { port: true },
+  )
     .option("--expect", "require a brain or controller connection")
     .option("--output", "screenshot output path")
     .option("--mutate", "run a temporary write/read/delete check")
-    .option("--json", "print machine-readable JSON")
     .action(
       async (
         options: {
@@ -317,11 +318,11 @@ export default function registerHardwareSmokeCommand(program: Sade) {
             mutate: options.mutate === true,
             output,
           });
-          if (options.json === true) printJson(report);
-          else
-            console.log(
-              renderTable(["field", "value"], formatHardwareSmokeRows(report)),
-            );
+          printOutput(
+            options.json,
+            report,
+            renderTable(["field", "value"], formatHardwareSmokeRows(report)),
+          );
         });
       },
     );

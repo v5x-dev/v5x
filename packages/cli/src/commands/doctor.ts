@@ -1,8 +1,9 @@
 import type { Sade } from "sade";
+import { withCommonOptions } from "../utils/common-options";
 import { platform } from "node:os";
 import pkg from "../../package.json" with { type: "json" };
 import { serial, type Serial } from "@v5x/node";
-import { printJson, renderTable } from "../utils/output";
+import { printOutput, renderTable } from "../utils/output";
 
 export type DoctorStatus = "ok" | "warn" | "error";
 
@@ -232,20 +233,18 @@ export function doctorExitCode(report: DoctorReport): 0 | 1 {
 }
 
 export default function registerDoctorCommand(program: Sade) {
-  program
-    .command("doctor", "check local v5x environment")
-    .option("--json", "print machine-readable JSON")
-    .action(async (options: { json?: boolean }) => {
-      const report = await createDoctorReport();
-      process.exitCode = doctorExitCode(report);
-      if (options.json === true) printJson(report);
-      else {
-        console.log(
-          renderTable(
-            ["status", "check", "value", "next action"],
-            formatDoctorRows(report),
-          ),
-        );
-      }
-    });
+  withCommonOptions(
+    program.command("doctor", "check local v5x environment"),
+  ).action(async (options: { json?: boolean }) => {
+    const report = await createDoctorReport();
+    process.exitCode = doctorExitCode(report);
+    printOutput(
+      options.json,
+      report,
+      renderTable(
+        ["status", "check", "value", "next action"],
+        formatDoctorRows(report),
+      ),
+    );
+  });
 }

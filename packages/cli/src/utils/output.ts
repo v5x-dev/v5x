@@ -25,6 +25,15 @@ export function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
 }
 
+export function printOutput(
+  json: boolean | undefined,
+  jsonValue: unknown,
+  text: unknown,
+): void {
+  if (json === true) printJson(jsonValue);
+  else console.log(text);
+}
+
 export function unwrap<T, E>(result: Result<T, E>, message: string): T {
   if (result.isErr()) throw new Error(message);
   return result.value;
