@@ -246,6 +246,11 @@ class V5WebClient implements V5Client {
       this.startRefreshTimer();
       return true;
     } catch (error: unknown) {
+      if (generation !== this.generation) {
+        if (device !== null) await this.tryDisposeDevice(device);
+        return false;
+      }
+
       this.device = null;
       if (device !== null) {
         await this.tryDisposeDevice(device);
