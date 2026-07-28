@@ -1,4 +1,5 @@
 import { VexEventsApiError, VexEventsResponseError } from "./errors.js";
+import { mapWithConcurrency } from "@v5x/internal/concurrency";
 import { programs as programIds, rounds as roundIds } from "./constants.js";
 import type {
   ApiErrorBody,
@@ -198,39 +199,6 @@ export interface SeasonsResource {
     options?: ListSeasonEventsOptions,
     request?: RequestOptions,
   ): Promise<Event[]>;
-}
-
-/**
- * Runs `map` over `items` with at most `limit` in flight, resolving to the
- * results in input order. The first rejection propagates and no further items
- * are started, matching the fail-fast behavior of a sequential walk.
- */
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  limit: number,
-  map: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  let failed = false;
-
-  const worker = async (): Promise<void> => {
-    while (!failed) {
-      const index = next++;
-      if (index >= items.length) return;
-      try {
-        results[index] = await map(items[index]!);
-      } catch (error) {
-        failed = true;
-        throw error;
-      }
-    }
-  };
-
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
-  return results;
 }
 
 function isUsablePage(value: number | undefined): value is number {

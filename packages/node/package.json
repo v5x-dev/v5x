@@ -62,6 +62,7 @@
     }
   },
   "devDependencies": {
+    "@v5x/internal": "workspace:*",
     "@types/bun": "latest",
     "@types/dom-serial": "^1.0.2",
     "bun-serialport": "^0.1.1"

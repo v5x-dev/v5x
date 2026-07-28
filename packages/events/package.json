@@ -48,6 +48,7 @@
   },
   "homepage": "https://docs.v5x.dev/events/overview",
   "devDependencies": {
+    "@v5x/internal": "workspace:*",
     "@types/bun": "latest"
   }
 }

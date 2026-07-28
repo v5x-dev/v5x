@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mapWithConcurrency } from "./concurrency";
+import { mapWithConcurrency } from "./concurrency.js";
 
 test("maps with bounded concurrency while preserving input order", async () => {
   let active = 0;
@@ -34,4 +34,18 @@ test("waits for active work to settle before reporting a failure", async () => {
 
   await expect(operation).rejects.toThrow("write failed");
   expect(active).toBe(0);
+});
+
+test("rejects an invalid concurrency", async () => {
+  await expect(
+    mapWithConcurrency([1], 0, async (value) => value),
+  ).rejects.toThrow("concurrency must be a positive integer");
+});
+
+test("returns immediately for an empty input", async () => {
+  expect(
+    await mapWithConcurrency([], 4, async () => {
+      throw new Error("should not run");
+    }),
+  ).toEqual([]);
 });

@@ -8,7 +8,7 @@ import {
 import { detectProgramType, type ProgramType } from "./detect";
 import { isRecord } from "./guards";
 import { runProcess } from "./process";
-import { mapWithConcurrency } from "./concurrency";
+import { mapWithConcurrency } from "@v5x/internal/concurrency";
 
 export const ARTIFACT_DISCOVERY_CONCURRENCY = 8;
 
