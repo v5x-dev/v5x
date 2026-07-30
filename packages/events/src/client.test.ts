@@ -509,6 +509,37 @@ describe("Robot", () => {
     }
   });
 
+  test.each([
+    ["authorization", "accept"],
+    ["AUTHORIZATION", "ACCEPT"],
+    ["AuThOrIzAtIoN", "aCcEpT"],
+  ])(
+    "overrides conflicting %s and %s custom headers case-insensitively",
+    async (authorization, accept) => {
+      let request: CapturedRequest | undefined;
+      const client = new Robot({
+        token: "test-token",
+        baseUrl: "https://example.test/api/v2",
+        fetch: async (input, init) => {
+          request = { url: toUrl(input), init };
+          return Response.json({ data: [], meta: {} });
+        },
+        headers: {
+          [authorization]: "custom-token",
+          [accept]: "text/plain",
+          "X-Client": "test",
+        },
+      });
+
+      await client.programs.all();
+
+      const headers = new Headers(request?.init?.headers);
+      expect(headers.get("authorization")).toBe("Bearer test-token");
+      expect(headers.get("accept")).toBe("application/json");
+      expect(headers.get("x-client")).toBe("test");
+    },
+  );
+
   test("rejects the entire result when a later page returns an API error", async () => {
     const { client } = createDynamicClient(({ url }) => {
       const page = Number(url.searchParams.get("page"));

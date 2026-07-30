@@ -525,12 +525,12 @@ export class Robot {
     options: RequestOptions | undefined,
     validate: Validator<T>,
   ): Promise<T> {
+    const headers = new Headers(this.headers);
+    headers.set("Accept", "application/json");
+    headers.set("Authorization", `Bearer ${this.token}`);
+
     const response = await this.fetch(url, {
-      headers: {
-        ...this.headers,
-        Accept: "application/json",
-        Authorization: `Bearer ${this.token}`,
-      },
+      headers,
       signal: options?.signal,
     });
 
