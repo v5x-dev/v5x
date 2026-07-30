@@ -9,6 +9,7 @@ import {
   selectSerialPort,
   withV5Device,
 } from "./device";
+import { CliError, CLI_EXIT_CODE, cliExitCode } from "./errors";
 
 class FakePort extends EventTarget implements SerialPort {
   onconnect: (event: Event) => void = () => {};
@@ -164,6 +165,30 @@ test("disposes a device when connecting fails", async () => {
   );
   expect(disposed).toBe(true);
 });
+
+test.each([
+  ["not-connected", CLI_EXIT_CODE.NO_DEVICE],
+  ["protocol", CLI_EXIT_CODE.DEVICE],
+  ["io", CLI_EXIT_CODE.IO],
+] as const)(
+  "maps a %s connection failure to its own exit code",
+  async (kind, exitCode) => {
+    const failure = new VexSerialError(kind, "connect failed");
+    const device = {
+      autoRefresh: true,
+      connect: () => errAsync(failure),
+      dispose: async () => {},
+    } as unknown as V5SerialDevice;
+
+    const error = await connectV5Device(device).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(CliError);
+    expect(cliExitCode(error)).toBe(exitCode);
+    expect((error as CliError).cause).toBe(failure);
+  },
+);
 
 test("disposes a device when connecting throws", async () => {
   let disposed = false;

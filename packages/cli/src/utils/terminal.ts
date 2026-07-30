@@ -4,7 +4,7 @@ import type {
   V5UserProgramTerminal,
   VexSerialError,
 } from "@v5x/serial";
-import { CliError, CLI_EXIT_CODE, exitCodeForSerialError } from "../errors";
+import { CliError, exitCodeForSerialError, serialCliError } from "../errors";
 import { formatSerialFailure } from "./output";
 
 /** Byte sent by a terminal in raw mode for ctrl-c. */
@@ -184,10 +184,9 @@ export async function runTerminalSession(
 
   const opened = device.openTerminal();
   if (opened.isErr()) {
-    throw new CliError(
+    throw serialCliError(
       formatSerialFailure("cannot open a terminal", opened.error),
-      CLI_EXIT_CODE.NO_DEVICE,
-      { cause: opened.error },
+      opened.error,
     );
   }
   const terminal = opened.value;

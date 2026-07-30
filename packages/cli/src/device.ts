@@ -7,7 +7,7 @@ import {
 import { matchesUsbFilters, V5SerialDevice } from "@v5x/serial";
 import { basename } from "node:path";
 import { requireOptionValue } from "./utils/guards";
-import { CliError, CLI_EXIT_CODE } from "./errors";
+import { CliError, CLI_EXIT_CODE, serialCliError } from "./errors";
 
 export const V5X_PORT_ENV = "V5X_PORT";
 
@@ -118,10 +118,11 @@ export async function connectV5Device(
   try {
     const result = await device.connect();
     if (result.isErr()) {
-      throw new CliError(
+      // Not every connect failure means "nothing is plugged in": an I/O or
+      // protocol error has its own exit code that scripts rely on.
+      throw serialCliError(
         `v5 device not connected: ${result.error.message ?? result.error.kind}`,
-        CLI_EXIT_CODE.NO_DEVICE,
-        { cause: result.error },
+        result.error,
       );
     }
     return device;

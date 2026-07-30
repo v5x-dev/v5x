@@ -174,8 +174,19 @@ export class NodeSerialPort extends SerialEventTarget implements SerialPort {
       this._readable = null;
       this._writable = null;
       this.state = "closed";
-      this.dispatchEvent(new Event("disconnect"));
     }
+  }
+
+  /**
+   * Report that the host stopped listing this port's device.
+   *
+   * Only discovery can tell a physical removal apart from ordinary teardown,
+   * so it owns the `disconnect` event. Dispatching it from `close()` instead
+   * would make every normal cleanup look like an unplug while a real unplug
+   * of an idle port went unreported.
+   */
+  notifyDeviceRemoved(): void {
+    this.dispatchEvent(new Event("disconnect"));
   }
 
   private detachNativeListeners(port: NativePort): void {
@@ -216,7 +227,8 @@ export class NodeSerialPort extends SerialEventTarget implements SerialPort {
 
   /**
    * A host process has no per-origin permission to revoke, so forgetting a
-   * port is just closing it.
+   * port is just closing it. Like `close()`, it reports no `disconnect`: the
+   * device is still plugged in.
    */
   async forget(): Promise<void> {
     await this.close();

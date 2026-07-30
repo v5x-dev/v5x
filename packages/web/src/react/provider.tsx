@@ -22,8 +22,30 @@ export interface V5ProviderProps {
 
 interface OwnedClient {
   client: V5Client;
-  refreshIntervalMs: V5ClientOptions["refreshIntervalMs"];
+  key: string;
   serial: V5ClientOptions["serial"];
+}
+
+/**
+ * The value-comparable part of the options a client reads once, at
+ * construction. Console settings belong here too: a client cannot be
+ * reconfigured afterwards, so a provider that reused its client would
+ * silently keep serving the console options from the first render.
+ *
+ * Options are usually written as an inline object literal, so this compares
+ * the effective values rather than object identity. `serial` is compared
+ * separately by identity because it is a live Web Serial object.
+ */
+function ownedClientKey(options: V5ClientOptions | undefined): string {
+  const consoleOptions = options?.console;
+  const terminal = consoleOptions?.terminal;
+  return JSON.stringify([
+    options?.refreshIntervalMs ?? null,
+    consoleOptions?.maxCharacters ?? null,
+    terminal?.idlePollIntervalMs ?? null,
+    terminal?.timeoutMs ?? null,
+    terminal?.maxConsecutiveErrors ?? null,
+  ]);
 }
 
 export function V5Provider({
@@ -40,14 +62,15 @@ export function V5Provider({
   if (client !== undefined) {
     value = client;
   } else {
+    const key = ownedClientKey(options);
     if (
       owned.current === null ||
-      owned.current.refreshIntervalMs !== options?.refreshIntervalMs ||
+      owned.current.key !== key ||
       owned.current.serial !== options?.serial
     ) {
       owned.current = {
         client: createV5Client(options),
-        refreshIntervalMs: options?.refreshIntervalMs,
+        key,
         serial: options?.serial,
       };
     }

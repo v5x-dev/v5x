@@ -2,6 +2,7 @@ import { matchesUsbFilters } from "@v5x/serial";
 import { platform as hostPlatform } from "node:os";
 import type { SerialBackend } from "./backend.js";
 import { createBunSerialportBackend } from "./bun-serialport-backend.js";
+import { SerialConnectionEvent } from "./connection-event.js";
 import { SerialEventTarget } from "./event-target.js";
 import { NodeSerialPort } from "./port.js";
 import type {
@@ -101,9 +102,13 @@ export class NodeSerial extends SerialEventTarget implements Serial {
     if (previousPaths === undefined) return;
 
     for (const path of previousPaths) {
-      if (!nextPaths.has(path)) {
-        this.dispatchEvent(new Event("disconnect"));
-      }
+      if (nextPaths.has(path)) continue;
+      // Web Serial reports a removal on the port itself and then once more on
+      // the Serial object, carrying the port that went away. The port entry is
+      // still in the map here; the cleanup pass below prunes it afterwards.
+      const port = this.ports.get(path);
+      port?.notifyDeviceRemoved();
+      this.dispatchEvent(new SerialConnectionEvent("disconnect", port));
     }
     for (const path of nextPaths) {
       if (!previousPaths.has(path)) {
