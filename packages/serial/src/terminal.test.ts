@@ -474,6 +474,33 @@ describe("terminal sessions", () => {
       ).toThrow("positive safe integer");
     },
   );
+
+  test.each([
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    0x80000000,
+  ])("rejects an invalid request timeout %p", (timeoutMs) => {
+    expect(
+      () =>
+        new V5UserProgramTerminal(new ScriptedConnection().asConnection(), {
+          timeoutMs,
+        }),
+    ).toThrow("finite number between");
+  });
+
+  test.each([0, 1, 0x7fffffff])(
+    "accepts a supported request timeout %p",
+    (timeoutMs) => {
+      expect(
+        () =>
+          new V5UserProgramTerminal(new ScriptedConnection().asConnection(), {
+            timeoutMs,
+          }),
+      ).not.toThrow();
+    },
+  );
 });
 
 describe("opening a terminal", () => {

@@ -74,7 +74,10 @@ class IniSectionBuilder<
     this.formattedKeys.add(transformedKey);
 
     const formattedKey = transformedKey.padEnd(12);
-    const trimmedValue = value.slice(0, maxValueLength);
+    const trimmedValue =
+      maxValueLength === undefined
+        ? value
+        : Array.from(value).slice(0, maxValueLength).join("");
     this.addLine(`${formattedKey} = "${trimmedValue}"`);
   }
 

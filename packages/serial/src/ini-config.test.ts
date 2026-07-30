@@ -50,6 +50,28 @@ test("serializes an empty description and omits an empty alternate icon", () => 
   expect(content).not.toContain("iconalt");
 });
 
+test.each([
+  ["emoji", "a".repeat(31) + "😀" + "tail", "a".repeat(31) + "😀"],
+  [
+    "multibyte BMP character",
+    "a".repeat(31) + "é" + "tail",
+    "a".repeat(31) + "é",
+  ],
+])("truncates %s only at a complete Unicode character", (_, name, expected) => {
+  const config = new ProgramIniConfig();
+  config.program.name = name;
+  config.program.date = "2026-07-08T12:34:56.000Z";
+
+  const content = config.createIni();
+  const encoded = new TextEncoder().encode(content);
+
+  expect(content).toContain(`name         = "${expected}"`);
+  expect(content).not.toContain("\ufffd");
+  expect(new TextDecoder("utf-8", { fatal: true }).decode(encoded)).toBe(
+    content,
+  );
+});
+
 test("omits empty controller sections", () => {
   const config = new ProgramIniConfig();
   config.program.date = "2026-07-08T12:34:56.000Z";

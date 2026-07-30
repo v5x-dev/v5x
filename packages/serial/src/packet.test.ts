@@ -12,6 +12,7 @@ import {
   GetDirectoryEntryReplyD2HPacket,
   GetFileMetadataH2DPacket,
   InitFileTransferH2DPacket,
+  MatchStatusReplyD2HPacket,
   PacketEncoder,
   ReadFileReplyD2HPacket,
   ReadKeyValueH2DPacket,
@@ -69,6 +70,30 @@ test("read replies parse their address and exact data bytes", () => {
   expect(reply.buf).toEqual(new Uint8Array([1, 2, 3]));
   expect(reply.buf.buffer).toBe(reply.data.buffer);
 });
+
+test.each([
+  ["full-width", new TextEncoder().encode("ABCDEFGHIJ"), "ABCDEFGHIJ"],
+  [
+    "null-terminated",
+    Uint8Array.of(65, 66, 67, 0, 88, 88, 88, 88, 88, 88),
+    "ABC",
+  ],
+  ["empty", new Uint8Array(10), ""],
+])(
+  "match status decodes a %s robot name within its field",
+  (_, name, expected) => {
+    const body = new Uint8Array(29);
+    body.set(name, 17);
+    body[27] = 0x11;
+    body[28] = 0x22;
+
+    const reply = new MatchStatusReplyD2HPacket(hostPacket(88, 194, body));
+
+    expect(reply.robotName).toBe(expected);
+    expect(reply.controllerFlags).toBe(0x11);
+    expect(reply.rxSignalQuality).toBe(0x22);
+  },
+);
 
 describe("fixed-width text fields", () => {
   const initFileTransfer = (name: string) =>

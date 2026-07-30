@@ -7,6 +7,7 @@ import {
   type VexSerialError,
 } from "./error.js";
 import { err, ok, type Result, type ResultAsync } from "neverthrow";
+import { requestTimeoutError } from "./request-timeout.js";
 
 /** Delay between polls once the brain reports an empty channel. */
 export const DEFAULT_TERMINAL_IDLE_POLL_MS = 50;
@@ -25,7 +26,10 @@ export interface V5TerminalOptions {
    * of output drain at link speed rather than at this interval.
    */
   idlePollIntervalMs?: number;
-  /** Reply timeout for each FIFO request. */
+  /**
+   * Reply timeout for each FIFO request. Zero is an immediate deadline; the
+   * value must fit within the runtime's supported timer range.
+   */
   timeoutMs?: number;
   /** Consecutive failed reads tolerated before the session closes itself. */
   maxConsecutiveErrors?: number;
@@ -84,6 +88,10 @@ export class V5UserProgramTerminal extends VexEventTarget<V5TerminalEvents> {
       throw new VexInvalidArgumentError(
         "maxConsecutiveErrors must be a positive safe integer",
       );
+    }
+    if (options.timeoutMs !== undefined) {
+      const timeoutError = requestTimeoutError(options.timeoutMs);
+      if (timeoutError !== undefined) throw timeoutError;
     }
 
     this.connection = connection;

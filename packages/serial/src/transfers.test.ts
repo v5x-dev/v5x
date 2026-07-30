@@ -9,6 +9,7 @@ import {
   ExitFileTransferReplyD2HPacket,
   FileClearUpReplyD2HPacket,
   GetDirectoryEntryReplyD2HPacket,
+  GetDirectoryFileCountH2DPacket,
   GetDirectoryFileCountReplyD2HPacket,
   GetProgramSlotInfoReplyD2HPacket,
   ReadKeyValueReplyD2HPacket,
@@ -111,6 +112,7 @@ test("listFiles enumerates directory entries returned by the device", async () =
   ];
   device.connection = {
     isConnected: true,
+    withFileTransfer: async <T>(operation: () => Promise<T>) => operation(),
     request: () => okAsync(replies.shift()),
     close: async () => {},
   } as unknown as V5SerialConnection;
@@ -156,6 +158,7 @@ test("listProgram reports program slots returned by the device", async () => {
   ];
   device.connection = {
     isConnected: true,
+    withFileTransfer: async <T>(operation: () => Promise<T>) => operation(),
     request: () => okAsync(replies.shift()),
     close: async () => {},
   } as unknown as V5SerialConnection;
@@ -164,6 +167,50 @@ test("listProgram reports program slots returned by the device", async () => {
   expect(programs).toHaveLength(1);
   expect(programs[0]?.name).toBe("robot");
   expect(programs[0]?.slot).toBe(3);
+});
+
+test("concurrent directory listings keep vendor selection transactional", async () => {
+  const device = new V5SerialDevice(serial);
+  devices.push(device);
+  const connection = new V5SerialConnection(serial);
+  Object.defineProperty(connection, "isConnected", { value: true });
+  let countRequests = 0;
+  let selectedVendor = FileVendor.USER;
+  connection.request = ((packet: object) => {
+    if (packet instanceof GetDirectoryFileCountH2DPacket) {
+      selectedVendor = countRequests++ === 0 ? FileVendor.USER : FileVendor.SYS;
+      return okAsync(
+        protocolReply(GetDirectoryFileCountReplyD2HPacket, { count: 1 }),
+      );
+    }
+    return okAsync(
+      protocolReply(GetDirectoryEntryReplyD2HPacket, {
+        file: {
+          index: 0,
+          size: 1,
+          loadAddress: 0,
+          crc32: 0,
+          type: "bin",
+          timestamp: 0,
+          version: new VexFirmwareVersion(1, 0, 0, 0),
+          filename: selectedVendor === FileVendor.USER ? "user.bin" : "sys.bin",
+        },
+      }),
+    );
+  }) as V5SerialConnection["request"];
+  device.connection = connection;
+
+  const [user, system] = await Promise.all([
+    device.brain.listFiles(FileVendor.USER),
+    device.brain.listFiles(FileVendor.SYS),
+  ]);
+
+  expect(user._unsafeUnwrap().map((file) => file.filename)).toEqual([
+    "user.bin",
+  ]);
+  expect(system._unsafeUnwrap().map((file) => file.filename)).toEqual([
+    "sys.bin",
+  ]);
 });
 
 test("readFile routes through the connection with parsed metadata", async () => {

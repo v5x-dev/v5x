@@ -296,7 +296,11 @@ export class V5SerialConnection extends VexSerialConnection {
     let result: Result<Uint8Array, VexSerialError> = ok(new Uint8Array());
     try {
       const p1 = p1Result.value;
-      const fileSize = size ?? p1.fileSize;
+      const fileSize =
+        downloadTarget === FileDownloadTarget.FILE_TARGET_CBUF &&
+        size !== undefined
+          ? size
+          : p1.fileSize;
       if (!Number.isSafeInteger(fileSize) || fileSize < 0) {
         throw new VexTransferError(
           `file download size ${fileSize} is not a non-negative safe integer`,

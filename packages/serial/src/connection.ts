@@ -6,7 +6,7 @@ import {
   VexSerialError,
 } from "./error.js";
 import { VexEventTarget } from "./event.js";
-import { err, ok, Result, ResultAsync } from "neverthrow";
+import { err, errAsync, ok, Result, ResultAsync } from "neverthrow";
 import {
   DeviceBoundPacket,
   type HostBoundPacket,
@@ -20,6 +20,7 @@ import { FileTransferQueue } from "./file-transfer-queue.js";
 import { PendingRequestDispatcher } from "./pending-request-dispatcher.js";
 import { ReceiveBuffer } from "./receive-buffer.js";
 import { runPacketReader } from "./packet-reader.js";
+import { requestTimeoutError } from "./request-timeout.js";
 import {
   SerialTransport,
   type SerialTransportOpenResult,
@@ -232,6 +233,9 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
   /**
    * Write a request and resolve with its reply.
    *
+   * A timeout of zero is an immediate deadline. Timeout values must be finite,
+   * non-negative, and no greater than the runtime's maximum timer delay.
+   *
    * Requests carrying the same command ID are serialized against each other by
    * default, because reply matching is positional. Pass `pipelined` to opt out
    * when the caller already owns that command for the duration and wants
@@ -242,6 +246,9 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     timeout: number = 1000,
     pipelined: boolean = false,
   ): Promise<HostBoundPacket | ArrayBuffer | AckType> {
+    const timeoutError = requestTimeoutError(timeout);
+    if (timeoutError !== undefined) throw timeoutError;
+
     if (rawData instanceof DeviceBoundPacket && !pipelined) {
       return this.pendingRequests.serialize(
         rawData.commandId,
@@ -294,6 +301,11 @@ export class VexSerialConnection extends VexEventTarget<VexSerialConnectionEvent
     ReplyType: HostBoundPacketType<T>,
     timeout: number = 1000,
   ): ResultAsync<T, VexSerialError> {
+    const timeoutError = requestTimeoutError(timeout);
+    if (timeoutError !== undefined) {
+      return errAsync<T, VexSerialError>(timeoutError);
+    }
+
     return new ResultAsync(
       this.interpretReply(
         packet,

@@ -87,7 +87,7 @@ export class MatchStatusReplyD2HPacket extends HostBoundPacket {
     this.rxSignalQuality = view.getUint8(n + 29);
 
     const raw = new TextDecoder("UTF-8").decode(
-      this.data.slice(n + 18, n + this.payloadSize + 28),
+      this.data.slice(n + 18, n + 28),
     );
     const end = raw.indexOf("\0");
     this.robotName = end > -1 ? raw.slice(0, end) : raw;

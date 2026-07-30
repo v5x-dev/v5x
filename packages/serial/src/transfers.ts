@@ -14,6 +14,7 @@ import {
   VexNotConnectedError,
   VexProtocolError,
   VexSerialError,
+  toVexSerialError,
 } from "./error.js";
 import { err, ok, Result, ResultAsync } from "neverthrow";
 import {
@@ -77,39 +78,45 @@ export function listFiles(
       if (conn == null || !conn.isConnected) {
         return err(new VexNotConnectedError());
       }
-      const countResult = await conn.request(
-        new GetDirectoryFileCountH2DPacket(vendor),
-        GetDirectoryFileCountReplyD2HPacket,
-      );
-      if (countResult.isErr()) return err(countResult.error);
+      try {
+        return await conn.withFileTransfer(async () => {
+          const countResult = await conn.request(
+            new GetDirectoryFileCountH2DPacket(vendor),
+            GetDirectoryFileCountReplyD2HPacket,
+          );
+          if (countResult.isErr()) return err(countResult.error);
 
-      const files: IFileHandle[] = [];
-      for (let i = 0; i < countResult.value.count; i++) {
-        const entryResult = await conn.request(
-          new GetDirectoryEntryH2DPacket(i),
-          GetDirectoryEntryReplyD2HPacket,
-        );
-        if (entryResult.isErr()) return err(entryResult.error);
+          const files: IFileHandle[] = [];
+          for (let i = 0; i < countResult.value.count; i++) {
+            const entryResult = await conn.request(
+              new GetDirectoryEntryH2DPacket(i),
+              GetDirectoryEntryReplyD2HPacket,
+            );
+            if (entryResult.isErr()) return err(entryResult.error);
 
-        // .file is undefined if the file is not found
-        // .file is a file entry but not a file handle
-        if (entryResult.value.file != null) {
-          files.push({
-            filename: entryResult.value.file.filename,
-            vendor,
-            loadAddress: entryResult.value.file.loadAddress,
+            // .file is undefined if the file is not found
+            // .file is a file entry but not a file handle
+            if (entryResult.value.file != null) {
+              files.push({
+                filename: entryResult.value.file.filename,
+                vendor,
+                loadAddress: entryResult.value.file.loadAddress,
 
-            size: entryResult.value.file.size,
-            crc32: entryResult.value.file.crc32,
+                size: entryResult.value.file.size,
+                crc32: entryResult.value.file.crc32,
 
-            type: entryResult.value.file.type,
-            timestamp: entryResult.value.file.timestamp,
-            version: entryResult.value.file.version,
-          });
-        }
+                type: entryResult.value.file.type,
+                timestamp: entryResult.value.file.timestamp,
+                version: entryResult.value.file.version,
+              });
+            }
+          }
+
+          return ok(files);
+        });
+      } catch (error) {
+        return err(toVexSerialError(error, "io"));
       }
-
-      return ok(files);
     })(),
   );
 }

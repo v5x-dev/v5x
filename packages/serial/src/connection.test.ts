@@ -34,7 +34,7 @@ import { ProgramIniConfig } from "./ini-config";
 import { deferred, protocolReply } from "./protocol.test-support";
 import { runPacketReader } from "./packet-reader";
 import { ReaderClosedError } from "./reader-closed-error";
-import { VexSerialError } from "./error";
+import { VexInvalidArgumentError, VexSerialError } from "./error";
 
 function connectionWithWriter() {
   const connection = new V5SerialConnection({} as Serial);
@@ -78,6 +78,53 @@ function cdc2Reply(
 }
 
 describe("request callbacks", () => {
+  test.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -1,
+    0x80000000,
+  ])("rejects invalid request timeout %p before writing", async (timeout) => {
+    const connection = connectionWithWriter();
+    let writes = 0;
+    connection.writer = {
+      write: async () => {
+        writes++;
+      },
+      close: async () => {},
+      releaseLock: () => {},
+    } as unknown as WritableStreamDefaultWriter<unknown>;
+
+    await expect(
+      connection.writeDataAsync(new Uint8Array([1]), timeout),
+    ).rejects.toBeInstanceOf(VexInvalidArgumentError);
+    const result = await connection.request(
+      new ReadKeyValueH2DPacket("key"),
+      ReadKeyValueReplyD2HPacket,
+      timeout,
+    );
+
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(VexInvalidArgumentError);
+    expect(writes).toBe(0);
+  });
+
+  test("zero is a valid immediate request timeout", async () => {
+    const connection = connectionWithWriter();
+    let writes = 0;
+    connection.writer = {
+      write: async () => {
+        writes++;
+      },
+      close: async () => {},
+      releaseLock: () => {},
+    } as unknown as WritableStreamDefaultWriter<unknown>;
+
+    expect(await connection.writeDataAsync(new Uint8Array([1]), 0)).toBe(
+      AckType.TIMEOUT,
+    );
+    expect(writes).toBe(1);
+  });
+
   test("serializes same-command requests so replies cannot be swapped", async () => {
     class ReadableConnection extends V5SerialConnection {
       start(): Promise<void> {
@@ -582,6 +629,53 @@ test("downloads trim word padding from the final chunk", async () => {
     filename: "test.ini",
     vendor: FileVendor.USER,
   });
+
+  expect(result._unsafeUnwrap()).toEqual(new Uint8Array([1, 2, 3]));
+});
+
+test.each([
+  { metadataSize: 3, deviceSize: 5 },
+  { metadataSize: 7, deviceSize: 5 },
+])(
+  "ordinary downloads use device size $deviceSize over stale metadata $metadataSize",
+  async ({ metadataSize, deviceSize }) => {
+    const connection = new V5SerialConnection({} as Serial);
+    const replies = [
+      initReply(8, deviceSize),
+      readReply(USER_FLASH_USR_CODE_START, [1, 2, 3, 4, 5, 0, 0, 0]),
+      protocolReply(ExitFileTransferReplyD2HPacket),
+    ];
+    connection.writeDataAsync = async () =>
+      replies.shift() ?? AckType.CDC2_NACK;
+
+    const result = await connection.downloadFileToHost({
+      filename: "test.bin",
+      vendor: FileVendor.USER,
+      size: metadataSize,
+    });
+
+    expect(result._unsafeUnwrap()).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+  },
+);
+
+test("special fixed-size downloads retain their explicit size", async () => {
+  const connection = new V5SerialConnection({} as Serial);
+  const replies = [
+    initReply(4, 0),
+    readReply(0, [1, 2, 3, 0]),
+    protocolReply(ExitFileTransferReplyD2HPacket),
+  ];
+  connection.writeDataAsync = async () => replies.shift() ?? AckType.CDC2_NACK;
+
+  const result = await connection.downloadFileToHost(
+    {
+      filename: "screen",
+      vendor: FileVendor.SYS,
+      loadAddress: 0,
+      size: 3,
+    },
+    FileDownloadTarget.FILE_TARGET_CBUF,
+  );
 
   expect(result._unsafeUnwrap()).toEqual(new Uint8Array([1, 2, 3]));
 });
