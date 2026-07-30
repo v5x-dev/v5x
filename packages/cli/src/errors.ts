@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import type { VexSerialErrorKind } from "@v5x/serial";
+import { VexSerialError, type VexSerialErrorKind } from "@v5x/serial";
 
 export const CLI_EXIT_CODE = {
   FAILURE: 1,
@@ -66,6 +66,43 @@ export function formatCliError(error: unknown, verbose: boolean): string {
   return `${chalk.red("error:")} ${detail}`;
 }
 
+/**
+ * Wrap a serial failure in a {@link CliError} that keeps the typed cause and
+ * the exit code mapped from its {@link VexSerialError.kind}.
+ *
+ * Boundaries that only need to add human-readable context must go through
+ * this instead of `new Error(...)`, otherwise the category is flattened into
+ * the generic failure code.
+ */
+export function serialCliError(
+  message: string,
+  error: VexSerialError,
+): CliError {
+  return new CliError(message, exitCodeForSerialError(error.kind), {
+    cause: error,
+  });
+}
+
+/**
+ * Resolve the process exit code for a thrown value.
+ *
+ * A `CliError` states its own code. Otherwise the cause chain is searched for
+ * a `VexSerialError` so wrapping a typed serial failure for context still
+ * yields its category-specific code rather than the generic failure code.
+ */
 export function cliExitCode(error: unknown): number {
-  return error instanceof CliError ? error.exitCode : CLI_EXIT_CODE.FAILURE;
+  if (error instanceof CliError) return error.exitCode;
+  const serialError = findSerialError(error);
+  return serialError === undefined
+    ? CLI_EXIT_CODE.FAILURE
+    : exitCodeForSerialError(serialError.kind);
+}
+
+function findSerialError(
+  error: unknown,
+  depth = 8,
+): VexSerialError | undefined {
+  if (error instanceof VexSerialError) return error;
+  if (depth === 0 || !(error instanceof Error)) return undefined;
+  return findSerialError(error.cause, depth - 1);
 }

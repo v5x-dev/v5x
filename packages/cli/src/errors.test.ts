@@ -9,6 +9,7 @@ import {
   formatCliJsonError,
   isJsonOutput,
   isVerbose,
+  serialCliError,
 } from "./errors";
 
 describe("CLI errors", () => {
@@ -22,6 +23,29 @@ describe("CLI errors", () => {
   test("preserves an explicit CLI exit code", () => {
     expect(cliExitCode(new CliError("bad usage", CLI_EXIT_CODE.USAGE))).toBe(2);
     expect(cliExitCode(new Error("unknown"))).toBe(1);
+  });
+
+  test("maps a serial failure through serialCliError", () => {
+    const failure = new VexSerialError("io", "port closed");
+    const error = serialCliError("upload failed", failure);
+
+    expect(error.exitCode).toBe(CLI_EXIT_CODE.IO);
+    expect(error.cause).toBe(failure);
+    expect(error.message).toBe("upload failed");
+  });
+
+  test("recovers a serial category from a wrapped cause", () => {
+    const failure = new VexSerialError("protocol", "bad response");
+
+    expect(cliExitCode(failure)).toBe(CLI_EXIT_CODE.DEVICE);
+    expect(cliExitCode(new Error("context", { cause: failure }))).toBe(
+      CLI_EXIT_CODE.DEVICE,
+    );
+    expect(
+      cliExitCode(
+        new Error("outer", { cause: new Error("inner", { cause: failure }) }),
+      ),
+    ).toBe(CLI_EXIT_CODE.DEVICE);
   });
 
   test("enables verbose errors from a flag or environment", () => {

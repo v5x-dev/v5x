@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createFakeBackend, type FakeBackend } from "./backend.test-support.js";
 import { NodeSerial } from "./serial.js";
-import type { SerialPort } from "./types.js";
+import type { NodeSerialPort } from "./port.js";
 
 async function openedPort(
   path: string,
-): Promise<{ backend: FakeBackend; port: SerialPort }> {
+): Promise<{ backend: FakeBackend; port: NodeSerialPort }> {
   const backend = createFakeBackend(async () => [{ path }]);
   const serial = new NodeSerial({ backend });
-  return { backend, port: (await serial.getPorts())[0]! };
+  return { backend, port: (await serial.getPorts())[0] as NodeSerialPort };
 }
 
 describe("NodeSerialPort", () => {
@@ -133,18 +133,32 @@ describe("NodeSerialPort", () => {
       listenerCalls++;
     });
 
-    await port.open({ baudRate: 115200 });
-    await port.close();
+    port.notifyDeviceRemoved();
 
     expect(replacedHandlerCalls).toBe(0);
     expect(currentHandlerCalls).toBe(1);
     expect(listenerCalls).toBe(1);
 
     port.ondisconnect = null;
-    await port.open({ baudRate: 115200 });
-    await port.close();
+    port.notifyDeviceRemoved();
     expect(currentHandlerCalls).toBe(1);
     expect(listenerCalls).toBe(2);
+  });
+
+  test("closing a still-connected port reports no disconnect", async () => {
+    const { port } = await openedPort("/dev/cu.close-quiet");
+    let disconnects = 0;
+    port.addEventListener("disconnect", () => {
+      disconnects++;
+    });
+
+    await port.open({ baudRate: 115200 });
+    await port.close();
+    await port.open({ baudRate: 115200 });
+    await port.forget();
+
+    expect(disconnects).toBe(0);
+    expect(port.readable).toBeNull();
   });
 
   test("isolates throwing property handlers from listeners and cleanup", async () => {
@@ -158,6 +172,7 @@ describe("NodeSerialPort", () => {
     });
 
     await port.open({ baudRate: 115200 });
+    expect(() => port.notifyDeviceRemoved()).not.toThrow();
     await expect(port.close()).resolves.toBeUndefined();
 
     expect(listenerCalls).toBe(1);

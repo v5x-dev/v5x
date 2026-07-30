@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createFakeBackend } from "./backend.test-support.js";
 import { NodeSerial, createNodeSerial } from "./serial.js";
+import { SerialConnectionEvent } from "./connection-event.js";
+import type { SerialPort } from "./types.js";
 
 describe("NodeSerial", () => {
   test("reuses port objects so open state is shared", async () => {
@@ -188,6 +190,53 @@ describe("NodeSerial", () => {
     expect(
       (await serial.getPorts()).map((port) => port.getInfo().path),
     ).toEqual(["/dev/ttyACM1"]);
+  });
+
+  test("reports a physical removal once on the port and once on the serial", async () => {
+    let discovered = [{ path: "/dev/ttyACM0" }];
+    const serial = new NodeSerial({
+      backend: createFakeBackend(async () => discovered),
+      hotplugPollInterval: 1,
+    });
+    const removed = (await serial.getPorts())[0]!;
+    let portDisconnects = 0;
+    removed.addEventListener("disconnect", () => {
+      portDisconnects++;
+    });
+    const serialDisconnects: (SerialPort | undefined)[] = [];
+    serial.addEventListener("disconnect", (event) => {
+      serialDisconnects.push((event as SerialConnectionEvent).port);
+    });
+
+    discovered = [];
+    await waitFor(() => serialDisconnects.length === 1);
+    // Several more polls see the same absence and must not re-report it.
+    await Bun.sleep(25);
+
+    expect(portDisconnects).toBe(1);
+    expect(serialDisconnects).toEqual([removed]);
+  });
+
+  test("an explicit close of a still-present port reports no removal", async () => {
+    const serial = new NodeSerial({
+      backend: createFakeBackend(async () => [{ path: "/dev/ttyACM0" }]),
+      hotplugPollInterval: 1,
+    });
+    const port = (await serial.getPorts())[0]!;
+    let disconnects = 0;
+    port.addEventListener("disconnect", () => {
+      disconnects++;
+    });
+    serial.addEventListener("disconnect", () => {
+      disconnects++;
+    });
+
+    await port.open({ baudRate: 115200 });
+    await port.close();
+    await port.forget();
+    await Bun.sleep(25);
+
+    expect(disconnects).toBe(0);
   });
 
   test("continues hotplug checks after a discovery failure", async () => {

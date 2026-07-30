@@ -1,5 +1,7 @@
+import type { Result } from "neverthrow";
+import type { VexSerialError } from "@v5x/serial";
 import { type PortSelectionOptions, withSelectedV5Device } from "../device";
-import { CliError, CLI_EXIT_CODE } from "../errors";
+import { CliError, CLI_EXIT_CODE, serialCliError } from "../errors";
 import { requireOptionValue } from "./guards";
 import { formatSerialFailure, printJson } from "./output";
 import { runTerminalSession } from "./terminal";
@@ -171,6 +173,33 @@ export async function withUploadProgress<T>(
   return outcome.value;
 }
 
+/**
+ * Turn an upload result into a `CliError` that keeps the serial category.
+ *
+ * Wrapping the failure in a plain `Error` here would flatten a protocol or
+ * I/O fault into the generic exit code, so scripts could no longer tell a
+ * bad transfer apart from any other CLI failure.
+ */
+export function assertUploadAccepted(
+  uploaded: Result<boolean, VexSerialError>,
+): void {
+  if (uploaded.isErr()) {
+    throw serialCliError(
+      formatSerialFailure(
+        "the brain rejected the program upload",
+        uploaded.error,
+      ),
+      uploaded.error,
+    );
+  }
+  if (!uploaded.value) {
+    throw new CliError(
+      "the brain rejected the program upload",
+      CLI_EXIT_CODE.DEVICE,
+    );
+  }
+}
+
 export async function uploadProgram(
   options: UploadOptions,
 ): Promise<WorkflowUploadJson> {
@@ -199,16 +228,7 @@ export async function uploadProgram(
         bytes.cold,
         progress,
       );
-      if (uploaded.isErr()) {
-        throw new Error(
-          formatSerialFailure(
-            "the brain rejected the program upload",
-            uploaded.error,
-          ),
-        );
-      }
-      if (!uploaded.value)
-        throw new Error("the brain rejected the program upload");
+      assertUploadAccepted(uploaded);
       if (options.json !== true) {
         console.log(
           `${options.run ? "uploaded and started" : "uploaded"} ${config.program.name} in slot ${options.slot}`,

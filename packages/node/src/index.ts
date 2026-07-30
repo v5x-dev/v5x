@@ -5,6 +5,7 @@ export type {
   SerialPortInfo,
 } from "./types.js";
 export { SerialEventTarget } from "./event-target.js";
+export { SerialConnectionEvent } from "./connection-event.js";
 export { NodeSerialPort } from "./port.js";
 export {
   createNodeSerial,

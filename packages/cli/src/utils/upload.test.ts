@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { err, ok } from "neverthrow";
+import { VexSerialError } from "@v5x/serial";
+import { CliError, CLI_EXIT_CODE, cliExitCode } from "../errors";
 import {
+  assertUploadAccepted,
   reportProgress,
   resolveBuildOption,
   resolveSlotOption,
@@ -241,5 +245,40 @@ describe("withUploadProgress", () => {
     } finally {
       process.stderr.write = original;
     }
+  });
+});
+
+describe("assertUploadAccepted", () => {
+  test.each([
+    ["not-connected", CLI_EXIT_CODE.NO_DEVICE],
+    ["protocol", CLI_EXIT_CODE.DEVICE],
+    ["io", CLI_EXIT_CODE.IO],
+  ] as const)(
+    "maps a %s upload failure to its own exit code",
+    (kind, exitCode) => {
+      const failure = new VexSerialError(kind, "upload stalled");
+
+      try {
+        assertUploadAccepted(err(failure));
+        throw new Error("expected assertUploadAccepted to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(CliError);
+        expect(cliExitCode(error)).toBe(exitCode);
+        expect((error as CliError).cause).toBe(failure);
+      }
+    },
+  );
+
+  test("reports a refused upload as a device failure", () => {
+    try {
+      assertUploadAccepted(ok(false));
+      throw new Error("expected assertUploadAccepted to throw");
+    } catch (error) {
+      expect(cliExitCode(error)).toBe(CLI_EXIT_CODE.DEVICE);
+    }
+  });
+
+  test("accepts a successful upload", () => {
+    expect(() => assertUploadAccepted(ok(true))).not.toThrow();
   });
 });
