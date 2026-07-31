@@ -95,15 +95,30 @@ jobs:
       # exactly the shape a Windows user's install has.
       - run: bun install --frozen-lockfile
       - name: Typecheck
+        timeout-minutes: 10
         run: bun run typecheck
-      - name: Test the serial packages
+      # One step per package, each bounded: a test that hangs the runner
+      # otherwise burns the job's whole time budget and withholds the log that
+      # would say which test stopped.
+      - name: Test @v5x/serial
         if: ${{ !cancelled() }}
-        run: bun test packages/serial packages/node packages/cli
+        timeout-minutes: 10
+        run: bun test packages/serial
+      - name: Test @v5x/node
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: bun test packages/node
+      - name: Test @v5x/cli
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: bun test packages/cli
       - name: Build the CLI
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         run: bun run --cwd packages/cli prepack
       - name: Smoke test the CLI
         if: ${{ !cancelled() }}
+        timeout-minutes: 5
         run: |
           bun packages/cli/dist/index.js --help
           bun packages/cli/dist/index.js doctor

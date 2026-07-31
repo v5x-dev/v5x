@@ -283,8 +283,12 @@ export class WindowsSerialPort implements NativePort {
 
   resume(): void {
     if (this.readTimer !== undefined || this.closed) return;
+    // The read loop is deliberately not unref'd. An open port is work in
+    // progress, so it should hold the process the way a real reader on a file
+    // descriptor does; `close()` clears the timer and lets the process exit.
+    // Discovery's hotplug poll is the one that unrefs, because a background
+    // scan should never be the reason a process stays alive.
     this.readTimer = setInterval(() => this.poll(), this.readInterval);
-    this.readTimer.unref?.();
   }
 
   private poll(): void {
