@@ -34,7 +34,10 @@ function nodeManifest(serialVersion = "0.5.8"): Record<string, unknown> {
       },
     },
     dependencies: { "@v5x/serial": serialVersion },
-    peerDependenciesMeta: { "bun-serialport": { optional: true } },
+    peerDependenciesMeta: {
+      "bun-serialport": { optional: true },
+      serialport: { optional: true },
+    },
   };
 }
 
@@ -104,12 +107,24 @@ test("accepts the standalone node transport manifest", () => {
   ).not.toThrow();
 });
 
-test("requires the node transport to keep bun-serialport optional", () => {
+test("requires the node transport to keep native peers optional", () => {
   const manifest = nodeManifest();
   manifest.peerDependenciesMeta = { "bun-serialport": { optional: false } };
 
   expect(() => verifyManifest("@v5x/node", manifest)).toThrow(
-    "must keep bun-serialport an optional peer dependency",
+    "must keep bun-serialport and serialport optional peer dependencies",
+  );
+});
+
+test("requires the Node SerialPort peer to stay optional", () => {
+  const manifest = nodeManifest();
+  manifest.peerDependenciesMeta = {
+    "bun-serialport": { optional: true },
+    serialport: { optional: false },
+  };
+
+  expect(() => verifyManifest("@v5x/node", manifest)).toThrow(
+    "must keep bun-serialport and serialport optional peer dependencies",
   );
 });
 

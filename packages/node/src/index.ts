@@ -25,6 +25,11 @@ export {
   createBunSerialportBackend,
   type BunSerialportBackendOptions,
 } from "./bun-serialport-backend.js";
+export {
+  NODE_SERIALPORT_PLATFORMS,
+  createNodeSerialportBackend,
+  type NodeSerialportBackendOptions,
+} from "./node-serialport-backend.js";
 export { createDefaultSerialBackend } from "./default-backend.js";
 export {
   createWindowsSerialBackend,
