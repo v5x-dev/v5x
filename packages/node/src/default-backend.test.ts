@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createDefaultSerialBackend } from "./default-backend.js";
 import { NodeSerial } from "./serial.js";
+import { createWindowsSerialBackend } from "./windows-backend.js";
 
 describe("createDefaultSerialBackend", () => {
   test("drives the Win32 communications API on Windows", () => {
@@ -17,15 +18,48 @@ describe("createDefaultSerialBackend", () => {
   });
 });
 
-describe("NodeSerial", () => {
-  test("enumerates on Windows without a backend of its own", async () => {
+describe("NodeSerial on Windows", () => {
+  // The registry is stubbed rather than read: a hotplug poll that shelled out
+  // to `reg` would keep spawning processes for the rest of the test run.
+  const discovery = {
+    readSerialComm: async () => "    \\Device\\USBSER000    REG_SZ    COM3",
+    readUsbPortNames: async () =>
+      [
+        "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Enum\\USB\\VID_2888&PID_0501\\5B00F5A4\\Device Parameters",
+        "    PortName    REG_SZ    COM3",
+      ].join("\r\n"),
+  };
+
+  test("enumerates COM ports the Web Serial filters can match", async () => {
     const serial = new NodeSerial({
       platform: "win32",
-      backend: createDefaultSerialBackend("win32"),
+      backend: createWindowsSerialBackend({ discovery }),
+      hotplugPollInterval: 60_000,
     });
 
-    // The Windows backend declares win32, so enumeration reaches the registry
-    // rather than being refused for an unsupported platform.
-    await expect(serial.getPorts()).resolves.toBeArray();
+    const ports = await serial.getPorts();
+
+    expect(ports).toHaveLength(1);
+    expect(ports[0]?.getInfo()).toEqual({
+      path: "COM3",
+      id: "5B00F5A4",
+      serialNumber: "5B00F5A4",
+      usbVendorId: 0x2888,
+      usbProductId: 0x0501,
+    });
+  });
+
+  test("resolves a V5 brain through requestPort filters", async () => {
+    const serial = new NodeSerial({
+      platform: "win32",
+      backend: createWindowsSerialBackend({ discovery }),
+      hotplugPollInterval: 60_000,
+    });
+
+    const port = await serial.requestPort({
+      filters: [{ usbVendorId: 0x2888, usbProductId: 0x0501 }],
+    });
+
+    expect(port.getInfo().path).toBe("COM3");
   });
 });

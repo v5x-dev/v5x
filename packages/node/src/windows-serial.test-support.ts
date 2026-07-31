@@ -1,4 +1,8 @@
-import type { Kernel32, Kernel32Symbols } from "./windows-serial.js";
+import type {
+  Kernel32,
+  Kernel32Symbols,
+  PointerView,
+} from "./windows-serial.js";
 
 const HANDLE = 0x1234n;
 const INVALID_HANDLE_VALUE = 0xffff_ffff_ffff_ffffn;
@@ -20,8 +24,8 @@ export class FakeKernel32 implements Kernel32 {
   /** Bytes `WriteFile` takes per call; 0 means all of them. */
   writeChunkSize = 0;
   private failing: string | undefined;
-  private readonly pointers = new Map<number, NodeJS.TypedArray>();
-  private readonly identifiers = new Map<NodeJS.TypedArray, number>();
+  private readonly pointers = new Map<number, PointerView>();
+  private readonly identifiers = new Map<PointerView, number>();
   private nextPointer = 1;
 
   constructor(options: { fail?: string; lastError?: number } = {}) {
@@ -30,7 +34,7 @@ export class FakeKernel32 implements Kernel32 {
     this.symbols = this.createSymbols();
   }
 
-  ptr(view: NodeJS.TypedArray): number {
+  ptr(view: PointerView): number {
     let identifier = this.identifiers.get(view);
     if (identifier === undefined) {
       identifier = this.nextPointer++;

@@ -106,10 +106,17 @@ export interface Kernel32Symbols {
   ): number;
 }
 
+/**
+ * The buffer kinds the backend passes by pointer. Spelling them out keeps the
+ * published declarations free of the `NodeJS` namespace, which a consumer
+ * compiling without `@types/node` does not have.
+ */
+export type PointerView = Uint8Array | Uint16Array;
+
 /** `kernel32.dll` plus the pointer helper its buffers are passed through. */
 export interface Kernel32 {
   readonly symbols: Kernel32Symbols;
-  ptr(view: NodeJS.TypedArray): number;
+  ptr(view: PointerView): number;
 }
 
 let kernel32: Promise<Kernel32> | undefined;
