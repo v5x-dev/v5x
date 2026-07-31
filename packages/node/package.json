@@ -1,6 +1,6 @@
 {
   "name": "@v5x/node",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Web Serial compatible serial transport for VEX V5 devices on Node.js and Bun",
   "type": "module",
   "main": "./dist/index.js",

@@ -48,17 +48,20 @@ maps, and package contents.
 Publishable packages are released independently with package-version tags:
 
 ```sh
-git tag @v5x/cli@0.0.22
-git push origin @v5x/cli@0.0.22
+git tag @v5x/cli@0.0.26
+git push origin @v5x/cli@0.0.26
 
-git tag @v5x/node@0.1.0
-git push origin @v5x/node@0.1.0
+git tag @v5x/events@0.2.1
+git push origin @v5x/events@0.2.1
 
-git tag @v5x/serial@0.5.5
-git push origin @v5x/serial@0.5.5
+git tag @v5x/node@0.1.1
+git push origin @v5x/node@0.1.1
 
-git tag @v5x/web@0.1.1
-git push origin @v5x/web@0.1.1
+git tag @v5x/serial@0.5.9
+git push origin @v5x/serial@0.5.9
+
+git tag @v5x/web@0.1.5
+git push origin @v5x/web@0.1.5
 ```
 
 Pushing one of those tags starts the release workflow for that package only.
@@ -76,7 +79,7 @@ Before pushing a tag, move the released package's notes out of the Unreleased
 section and into a dated heading using this exact format:
 
 ```md
-### @v5x/serial 0.5.5 - 2026-07-06
+### @v5x/serial 0.5.9 - 2026-07-31
 ```
 
 The release workflow fails if `CHANGELOG.md` does not contain a heading for the
@@ -91,6 +94,6 @@ to that step.
 
 To retry a release after npm has accepted the package, manually run the Release
 workflow and provide the existing package tag (for example,
-`@v5x/cli@0.0.25`). The workflow checks out and validates that tag, skips npm
+`@v5x/cli@0.0.26`). The workflow checks out and validates that tag, skips npm
 when the exact version is already published, and resumes the CLI GitHub release
 when applicable.

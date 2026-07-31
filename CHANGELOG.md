@@ -6,7 +6,11 @@ Unreleased section to a dated package-version heading.
 
 ## Unreleased
 
-### @v5x/node
+No unreleased changes.
+
+## Releases
+
+### @v5x/node 0.1.1 - 2026-07-31
 
 - New package. A Web Serial compatible serial transport for Node.js and Bun,
   extracted from the CLI's private adapter: `NodeSerial`, `NodeSerialPort`, a
@@ -27,7 +31,7 @@ Unreleased section to a dated package-version heading.
   `createWindowsPortLister`, `openWindowsSerialPort`, `toWindowsDevicePath`,
   and `WindowsSerialPort` are exported for backends that want the pieces.
 
-### @v5x/cli
+### @v5x/cli 0.0.26 - 2026-07-31
 
 - Use `@v5x/node` for serial access instead of a private adapter. Nothing about
   command behavior changes.
@@ -46,9 +50,9 @@ Unreleased section to a dated package-version heading.
   controller validation, with non-secret context reports, screenshot artifacts,
   stable failure exits, and a separately gated temporary file round trip.
 
-### @v5x/events
+### @v5x/events 0.2.1 - 2026-07-31
 
-### @v5x/serial
+### @v5x/serial 0.5.9 - 2026-07-31
 
 - Add user-program terminal support: `UserFifoH2DPacket` and
   `UserFifoReplyD2HPacket` (command 86, extended 39), `readUserFifo` and
@@ -60,13 +64,13 @@ Unreleased section to a dated package-version heading.
   ports while cleaning up candidates, and reject non-finite reconnect timeouts
   without lifecycle changes.
 
-### @v5x/web
+### @v5x/web 0.1.5 - 2026-07-31
 
 - Add `client.console`, a separately subscribable store holding the running
   program's output with a bounded buffer, plus `useV5Console` for React,
   `createV5Console` for Solid, and console members on the Svelte state.
 
-## Releases
+## Previous releases
 
 ### @v5x/events 0.2.0 - 2026-07-21
 
