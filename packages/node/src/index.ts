@@ -25,6 +25,27 @@ export {
   createBunSerialportBackend,
   type BunSerialportBackendOptions,
 } from "./bun-serialport-backend.js";
+export { createDefaultSerialBackend } from "./default-backend.js";
+export {
+  createWindowsSerialBackend,
+  WINDOWS_SERIAL_PLATFORMS,
+  type WindowsSerialBackendOptions,
+} from "./windows-backend.js";
+export {
+  createWindowsPortLister,
+  parseComPortNames,
+  parseUsbPortAttributes,
+  windowsDiscoveryOperations,
+  type WindowsDiscoveryOperations,
+} from "./windows-discovery.js";
+export {
+  openWindowsSerialPort,
+  toWindowsDevicePath,
+  WindowsSerialPort,
+  type Kernel32,
+  type Kernel32Symbols,
+  type WindowsSerialPortOptions,
+} from "./windows-serial.js";
 export {
   LINUX_DISCOVERY_CONCURRENCY,
   linuxDiscoveryOperations,

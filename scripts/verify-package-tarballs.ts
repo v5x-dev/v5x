@@ -183,8 +183,8 @@ export function verifyManifest(
       parsed.name !== "@v5x/cli" ||
       parsed.sideEffects !== true ||
       !Array.isArray(parsed.os) ||
-      parsed.os.length !== 2 ||
-      !["darwin", "linux"].every((os) => parsed.os.includes(os)) ||
+      parsed.os.length !== 3 ||
+      !["darwin", "linux", "win32"].every((os) => parsed.os.includes(os)) ||
       !isRecord(engines) ||
       typeof engines.bun !== "string" ||
       !isRecord(bin) ||
@@ -385,10 +385,14 @@ function getRequiredFiles(packageName: PackageName): string[] {
       "dist/bun-serialport-backend.d.ts",
       "dist/index.js",
       "dist/index.d.ts",
+      "dist/default-backend.d.ts",
       "dist/linux-discovery.d.ts",
       "dist/port.d.ts",
       "dist/serial.d.ts",
       "dist/types.d.ts",
+      "dist/windows-backend.d.ts",
+      "dist/windows-discovery.d.ts",
+      "dist/windows-serial.d.ts",
     ];
   }
 

@@ -479,6 +479,39 @@ test("reports doctor checks without requiring hardware", async () => {
   ]);
 });
 
+test("reports every platform the CLI has a serial backend for", async () => {
+  const which = () => null;
+  const serial = {
+    onconnect: () => {},
+    ondisconnect: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => true,
+    getPorts: async () => [],
+    requestPort: async () => {
+      throw new Error("not used");
+    },
+  };
+
+  for (const os of ["linux", "darwin", "win32"] as const) {
+    const report = await createDoctorReport({ os, which, serial });
+    expect(formatDoctorRows(report)).toContainEqual([
+      "ok",
+      "Platform",
+      os,
+      "No action needed.",
+    ]);
+  }
+
+  const unsupported = await createDoctorReport({ os: "aix", which, serial });
+  expect(formatDoctorRows(unsupported)).toContainEqual([
+    "error",
+    "Platform",
+    "aix",
+    "Use Linux, macOS, or Windows for CLI serial access.",
+  ]);
+});
+
 test("doctor exits nonzero only for error reports", () => {
   expect(doctorExitCode({ status: "ok", checks: [] })).toBe(0);
   expect(doctorExitCode({ status: "warn", checks: [] })).toBe(0);

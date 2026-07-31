@@ -4,10 +4,8 @@ description: "Requirements for reliable USB communication with a V5 brain."
 ---
 
 The CLI discovers a V5 brain through the operating system's serial devices and
-currently supports Linux and macOS. Windows is not published yet because the
-CLI needs a compatible serial backend there. The serial library uses the
-browser's Web Serial API instead, so it works wherever that API is
-implemented.
+supports Linux, macOS, and Windows. The serial library uses the browser's Web
+Serial API instead, so it works wherever that API is implemented.
 
 ## Before connecting
 
@@ -15,6 +13,8 @@ implemented.
 - Use a data-capable USB cable.
 - Close VEXcode and other tools that may already own the port.
 - On Linux, make sure your user can access the relevant `/dev/tty*` device.
+- On Windows, let the brain finish enumerating so its COM port appears in
+  Device Manager before running a hardware command.
 - In a browser, use a secure context and grant device permission when prompted.
 
 Only one process should control the serial port at a time. A permission or “port already open” error usually means another process owns it.

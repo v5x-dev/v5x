@@ -17,12 +17,25 @@ Unreleased section to a dated package-version heading.
   runtime or operating system is a backend rather than a new transport. The
   default `createBunSerialportBackend()` drives the optional `bun-serialport`
   peer dependency and enumerates Linux ports from sysfs so USB ids are known.
+- Add Windows support. `createWindowsSerialBackend()` drives COM ports through
+  the Win32 communications API with Bun's FFI, so Windows needs no native
+  module, and enumerates ports from the registry because Windows reports USB
+  ids through the device enumeration tree rather than through the port itself.
+  `createDefaultSerialBackend()` picks it on `win32` and `bun-serialport`
+  elsewhere, so `serial` and `createNodeSerial()` work on all three platforms
+  without configuration. `parseComPortNames`, `parseUsbPortAttributes`,
+  `createWindowsPortLister`, `openWindowsSerialPort`, `toWindowsDevicePath`,
+  and `WindowsSerialPort` are exported for backends that want the pieces.
 
 ### @v5x/cli
 
-- Use `@v5x/node` for serial access instead of a private adapter. The CLI still
-  ships for Linux and macOS because its serial backend does; nothing about
+- Use `@v5x/node` for serial access instead of a private adapter. Nothing about
   command behavior changes.
+- Ship for Windows alongside Linux and macOS, now that the serial backend
+  covers it: `os` includes `win32`, a `v5x-windows-x64.exe` release asset is
+  published, `install.ps1` installs it, and `v5x doctor` reports `win32` as a
+  supported platform. `bun-serialport` becomes an optional dependency because
+  it has no Windows build and the Windows backend does not use it.
 
 - Add `v5x terminal`, which streams the running program's standard output and
   forwards host input to it, with `--timestamps`, `--no-input`, `--no-color`,

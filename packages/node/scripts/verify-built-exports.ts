@@ -7,9 +7,16 @@ import * as built from "../dist/index.js";
 
 const expectedFunctions = [
   "createNodeSerial",
+  "createDefaultSerialBackend",
   "createBunSerialportBackend",
   "listLinuxPorts",
   "readLinuxUsbDeviceAttributes",
+  "createWindowsSerialBackend",
+  "createWindowsPortLister",
+  "openWindowsSerialPort",
+  "parseComPortNames",
+  "parseUsbPortAttributes",
+  "toWindowsDevicePath",
 ] as const;
 
 for (const name of expectedFunctions) {
@@ -18,7 +25,12 @@ for (const name of expectedFunctions) {
   }
 }
 
-for (const name of ["NodeSerial", "NodeSerialPort", "SerialEventTarget"]) {
+for (const name of [
+  "NodeSerial",
+  "NodeSerialPort",
+  "SerialEventTarget",
+  "WindowsSerialPort",
+]) {
   if (typeof (built as Record<string, unknown>)[name] !== "function") {
     throw new Error(`@v5x/node dist/index.js is missing the ${name} class`);
   }

@@ -81,3 +81,29 @@ jobs:
           "$GITHUB_WORKSPACE/node_modules/.bin/tsc" -p tsconfig.json
           bun build consumer.ts --target browser --outdir browser-smoke
           ./node_modules/.bin/v5x --help
+
+  windows:
+    # The Windows serial backend has no counterpart on the Linux runner: its
+    # FFI layer and its registry enumeration only exist here.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      # bun-serialport is POSIX-only and installs nowhere on Windows, which is
+      # exactly the shape a Windows user's install has.
+      - run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Test the serial packages
+        if: ${{ !cancelled() }}
+        run: bun test packages/serial packages/node packages/cli
+      - name: Build the CLI
+        if: ${{ !cancelled() }}
+        run: bun run --cwd packages/cli prepack
+      - name: Smoke test the CLI
+        if: ${{ !cancelled() }}
+        run: |
+          bun packages/cli/dist/index.js --help
+          bun packages/cli/dist/index.js doctor
