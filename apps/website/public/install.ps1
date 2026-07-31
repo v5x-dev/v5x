@@ -81,7 +81,25 @@ try {
 Write-Host "Installed v5x to $installDir\v5x.exe"
 
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-$onPath = ($userPath -split ';' | Where-Object { $_ -eq $installDir }).Count -gt 0
+$onPath = @(
+    $userPath -split ';' |
+        Where-Object { $_.Trim().TrimEnd('\') -ieq $installDir.TrimEnd('\') }
+).Count -gt 0
 if (-not $onPath) {
-    Write-Host "Add $installDir to your PATH to run v5x."
+    $updatedPath = if ([string]::IsNullOrWhiteSpace($userPath)) {
+        $installDir
+    } else {
+        "$userPath;$installDir"
+    }
+    [Environment]::SetEnvironmentVariable('Path', $updatedPath, 'User')
+    Write-Host "Added $installDir to your user PATH."
 }
+
+# `irm ... | iex` runs in the current PowerShell process, so make the command
+# available immediately even when the user PATH was already changed by an
+# earlier terminal.
+$currentOnPath = @(
+    $env:Path -split ';' |
+        Where-Object { $_.Trim().TrimEnd('\') -ieq $installDir.TrimEnd('\') }
+).Count -gt 0
+if (-not $currentOnPath) { $env:Path = "$installDir;$env:Path" }

@@ -74,6 +74,17 @@ describe("parseUsbPortAttributes", () => {
       productId: "6001",
     });
   });
+
+  test("does not choose between stale entries that reuse a COM name", () => {
+    const output = [
+      "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Enum\\USB\\VID_2888&PID_0501\\old\\Device Parameters",
+      "    PortName    REG_SZ    COM3",
+      "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Enum\\USB\\VID_0403&PID_6001\\current\\Device Parameters",
+      "    PortName    REG_SZ    COM3",
+    ].join("\r\n");
+
+    expect(parseUsbPortAttributes(output).has("COM3")).toBe(false);
+  });
 });
 
 describe("createWindowsPortLister", () => {
@@ -156,13 +167,29 @@ describe("createWindowsPortLister", () => {
   });
 
   test("still lists a port whose USB identity cannot be read", async () => {
-    const list = createWindowsPortLister({
+    let usbReads = 0;
+    const operations = createOperations({
       readSerialComm: async () => SERIALCOMM,
       readUsbPortNames: async () => {
+        usbReads++;
         throw new Error("access denied");
       },
     });
+    const list = createWindowsPortLister(operations);
 
     expect(await list()).toEqual([{ path: "COM1" }, { path: "COM12" }]);
+    expect(await list()).toEqual([{ path: "COM1" }, { path: "COM12" }]);
+    expect(usbReads).toBe(2);
+  });
+
+  test("does not retry a successful lookup for a non-USB port", async () => {
+    const operations = createOperations({
+      readSerialComm: async () => "    \\Device\\Serial0    REG_SZ    COM1",
+    });
+    const list = createWindowsPortLister(operations);
+
+    expect(await list()).toEqual([{ path: "COM1" }]);
+    expect(await list()).toEqual([{ path: "COM1" }]);
+    expect(operations.usbReads).toBe(1);
   });
 });

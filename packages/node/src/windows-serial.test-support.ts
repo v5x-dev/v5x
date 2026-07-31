@@ -95,6 +95,7 @@ export class FakeKernel32 implements Kernel32 {
       },
       SetupComm: () => this.record("SetupComm"),
       PurgeComm: () => this.record("PurgeComm"),
+      FlushFileBuffers: () => this.record("FlushFileBuffers"),
       ReadFile: (_handle, buffer, length, transferred) => {
         if (!this.record("ReadFile")) return false;
         const chunk = this.incoming.shift() ?? new Uint8Array(0);

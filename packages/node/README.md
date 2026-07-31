@@ -7,12 +7,17 @@ Node.js and Bun do not. This package provides it.
 ## Install
 
 ```sh
-bun add @v5x/node @v5x/serial bun-serialport
+bun add @v5x/node @v5x/serial
 ```
 
 `bun-serialport` is the default native backend on Linux and macOS, and an
-optional peer dependency. Install it when you run on Bun under those
-platforms; skip it on Windows, where the built-in backend talks to the Win32
+optional peer dependency. Install it when you run on Bun under those platforms:
+
+```sh
+bun add bun-serialport
+```
+
+Skip it on Windows, where the built-in backend talks to the Win32
 communications API directly, or supply your own backend on any other runtime.
 
 ## Usage

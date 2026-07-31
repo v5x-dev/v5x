@@ -97,13 +97,10 @@ jobs:
       - name: Typecheck
         timeout-minutes: 10
         run: bun run typecheck
-      # One step per package, each bounded: a test that hangs the runner
-      # otherwise burns the job's whole time budget and withholds the log that
-      # would say which test stopped.
-      - name: Test @v5x/serial
-        if: ${{ !cancelled() }}
-        timeout-minutes: 10
-        run: bun test packages/serial
+      # The transport-independent serial package is fully covered by the
+      # Ubuntu verify job. Keep this job focused on the Windows backend and
+      # the packages that bundle it; a platform-neutral test suite can hang
+      # Bun's Windows test worker after reporting all of its results.
       - name: Test @v5x/node
         if: ${{ !cancelled() }}
         timeout-minutes: 10

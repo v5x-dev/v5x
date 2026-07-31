@@ -138,6 +138,16 @@ describe("WindowsSerialPort", () => {
     expect(errors[0]?.message).toBe("read: fake failure 22");
   });
 
+  test("closes the handle after a read fails without an error listener", async () => {
+    const kernel32 = new FakeKernel32({ fail: "ReadFile" });
+    const port = await openFakePort(kernel32);
+
+    await Bun.sleep(10);
+
+    expect(kernel32.openHandles).toBe(0);
+    await port.close();
+  });
+
   test("writes every byte when the driver accepts them in pieces", async () => {
     const kernel32 = new FakeKernel32();
     kernel32.writeChunkSize = 2;
@@ -193,5 +203,19 @@ describe("WindowsSerialPort", () => {
     expect(kernel32.calls.filter((call) => call === "CloseHandle")).toEqual([
       "CloseHandle",
     ]);
+  });
+
+  test("flushes writes before clearing receive data on close", async () => {
+    const kernel32 = new FakeKernel32();
+    const port = await openFakePort(kernel32);
+
+    await port.close();
+
+    const flush = kernel32.calls.indexOf("FlushFileBuffers");
+    const purge = kernel32.calls.lastIndexOf("PurgeComm");
+    const close = kernel32.calls.indexOf("CloseHandle");
+    expect(flush).toBeGreaterThan(-1);
+    expect(flush).toBeLessThan(purge);
+    expect(purge).toBeLessThan(close);
   });
 });

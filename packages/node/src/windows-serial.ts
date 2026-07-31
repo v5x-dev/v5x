@@ -80,6 +80,7 @@ export interface Kernel32Symbols {
   SetCommTimeouts(handle: bigint, timeouts: number): boolean;
   SetupComm(handle: bigint, inQueue: number, outQueue: number): boolean;
   PurgeComm(handle: bigint, flags: number): boolean;
+  FlushFileBuffers(handle: bigint): boolean;
   ReadFile(
     handle: bigint,
     buffer: number,
@@ -136,6 +137,7 @@ async function loadKernel32(): Promise<Kernel32> {
     SetCommTimeouts: { args: [u64, pointer], returns: bool },
     SetupComm: { args: [u64, u32, u32], returns: bool },
     PurgeComm: { args: [u64, u32], returns: bool },
+    FlushFileBuffers: { args: [u64], returns: bool },
     ReadFile: { args: [u64, pointer, u32, pointer, u64], returns: bool },
     WriteFile: { args: [u64, pointer, u32, pointer, u64], returns: bool },
     GetLastError: { args: [], returns: u32 },
@@ -301,8 +303,15 @@ export class WindowsSerialPort implements NativePort {
       // The port is gone or unusable; stop polling before reporting so the
       // failure is not repeated once a millisecond.
       this.pause();
-      for (const listener of [...this.errorListeners]) {
-        listener(error instanceof Error ? error : new Error(String(error)));
+      try {
+        for (const listener of [...this.errorListeners]) {
+          listener(error instanceof Error ? error : new Error(String(error)));
+        }
+      } finally {
+        // Match the POSIX backend: an I/O failure closes the native resource
+        // even when a caller is using this class directly without an error
+        // listener that would otherwise trigger close().
+        void this.close().catch(() => {});
       }
       return;
     }
@@ -352,10 +361,19 @@ export class WindowsSerialPort implements NativePort {
     this.closed = true;
     this.pause();
 
-    this.api.symbols.PurgeComm(this.handle, PURGE_ALL);
+    // WriteFile only guarantees that bytes reached the driver's output
+    // buffer. Drain it before closing; PURGE_TXCLEAR would otherwise discard
+    // the tail of a command or upload that was just accepted.
+    const flushed = this.api.symbols.FlushFileBuffers(this.handle);
+    const flushError = flushed ? undefined : win32Error(this.api, "flush");
+
+    // There is no pending asynchronous operation on this synchronous handle,
+    // and clearing TX here would lose data. Discard unread input only.
+    this.api.symbols.PurgeComm(this.handle, PURGE_RXABORT | PURGE_RXCLEAR);
     const ok = this.api.symbols.CloseHandle(this.handle);
     this.handle = INVALID_HANDLE_VALUE;
     if (!ok) throw win32Error(this.api, "close");
+    if (flushError !== undefined) throw flushError;
   }
 }
 

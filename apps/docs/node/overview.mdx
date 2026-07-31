@@ -9,13 +9,18 @@ apps, test rigs, and the v5x CLI can use the same protocol library the browser
 workflow uses.
 
 ```sh
-bun add @v5x/node @v5x/serial bun-serialport
+bun add @v5x/node @v5x/serial
 ```
 
 `bun-serialport` is the default native backend on Linux and macOS, and an
-optional peer dependency. Install it to run on Bun under those platforms; skip
-it on Windows, where the built-in backend talks to the Win32 communications
-API directly, or supply your own backend on any other runtime.
+optional peer dependency. On Bun under Linux or macOS, install it separately:
+
+```sh
+bun add bun-serialport
+```
+
+Skip it on Windows, where the built-in backend talks to the Win32
+communications API directly, or supply your own backend on any other runtime.
 
 ## Connect to a brain
 

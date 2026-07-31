@@ -73,6 +73,7 @@ export function parseUsbPortAttributes(
   output: string,
 ): Map<string, UsbAttributes> {
   const attributes = new Map<string, UsbAttributes>();
+  const ambiguous = new Set<string>();
   let instance: RegExpExecArray | null = null;
 
   for (const line of output.split(/\r?\n/)) {
@@ -106,7 +107,18 @@ export function parseUsbPortAttributes(
     if (instanceId !== undefined && !instanceId.includes("&")) {
       identity.serialNumber = instanceId;
     }
-    attributes.set(port.toUpperCase(), identity);
+    // The USB enum retains unplugged device keys. If a COM number has been
+    // reused, the registry can contain both the old and current PortName;
+    // refusing an ambiguous identity is safer than matching a filter to the
+    // wrong physical device.
+    const portName = port.toUpperCase();
+    if (ambiguous.has(portName)) continue;
+    if (attributes.has(portName)) {
+      attributes.delete(portName);
+      ambiguous.add(portName);
+      continue;
+    }
+    attributes.set(portName, identity);
   }
 
   return attributes;
@@ -135,13 +147,19 @@ export function createWindowsPortLister(
     }
 
     if (names.some((name) => !resolved.has(name))) {
-      const discovered = parseUsbPortAttributes(
-        await operations.readUsbPortNames().catch(() => ""),
-      );
-      for (const name of names) {
-        // A port with no USB entry is a built-in or virtual COM port. Record
-        // the empty identity so it is not looked up again on every poll.
-        resolved.set(name, discovered.get(name) ?? {});
+      try {
+        const discovered = parseUsbPortAttributes(
+          await operations.readUsbPortNames(),
+        );
+        for (const name of names) {
+          // A port with no USB entry is a built-in or virtual COM port. Record
+          // the empty identity so it is not looked up again on every poll.
+          resolved.set(name, discovered.get(name) ?? {});
+        }
+      } catch {
+        // Keep unresolved names out of the cache. A transient registry error
+        // must not permanently hide the USB ids needed by requestPort()
+        // filters; the next hotplug poll will retry this walk.
       }
     }
 
