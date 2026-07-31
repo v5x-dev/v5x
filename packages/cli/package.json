@@ -10,7 +10,8 @@
   },
   "os": [
     "darwin",
-    "linux"
+    "linux",
+    "win32"
   ],
   "bin": {
     "v5x": "./dist/index.js"
@@ -37,12 +38,14 @@
   "dependencies": {
     "@v5x/node": "workspace:*",
     "@v5x/serial": "workspace:*",
-    "bun-serialport": "^0.1.1",
     "chalk": "^5.6.2",
     "cmd-table": "^1.6.0",
     "fflate": "^0.8.3",
     "neverthrow": "^8.2.0",
     "sade": "^1.8.1"
+  },
+  "optionalDependencies": {
+    "bun-serialport": "^0.1.1"
   },
   "repository": {
     "type": "git",

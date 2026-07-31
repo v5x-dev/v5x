@@ -259,6 +259,13 @@ jobs:
               --outfile="artifacts/v5x-${target}"
           done
 
+          # Bun appends .exe to a Windows target; name it explicitly so the
+          # checksum file and the installer agree on the asset name.
+          bun build packages/cli/src/index.ts \
+            --compile \
+            --target=bun-windows-x64 \
+            --outfile="artifacts/v5x-windows-x64.exe"
+
           cd artifacts
           sha256sum v5x-* > SHA256SUMS
       - name: Create GitHub release

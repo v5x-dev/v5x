@@ -1,5 +1,5 @@
 import { readdir, readFile, realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { posix } from "node:path";
 import type { NativePortDescriptor } from "./backend.js";
 import { mapWithConcurrency } from "@v5x/internal/concurrency";
 
@@ -36,13 +36,13 @@ export async function readLinuxUsbDeviceAttributes(
   readText: ReadTextFile = readTextFile,
 ): Promise<UsbAttributes> {
   let current = device;
-  for (let i = 0; i < 5; i++, current = join(current, "..")) {
+  for (let i = 0; i < 5; i++, current = posix.join(current, "..")) {
     try {
       const [vendorId, productId] = await Promise.all([
-        readText(join(current, "idVendor")),
-        readText(join(current, "idProduct")),
+        readText(posix.join(current, "idVendor")),
+        readText(posix.join(current, "idProduct")),
       ]);
-      const serialNumber = await readText(join(current, "serial"))
+      const serialNumber = await readText(posix.join(current, "serial"))
         .then((value) => value.trim())
         .catch(() => undefined);
       return {

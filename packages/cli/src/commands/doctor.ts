@@ -32,7 +32,11 @@ interface ParsedVersion {
   valid: boolean;
 }
 
-const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>(["darwin", "linux"]);
+const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>([
+  "darwin",
+  "linux",
+  "win32",
+]);
 const TOOLCHAINS = [
   {
     name: "git",
@@ -198,7 +202,7 @@ export async function createDoctorReport(
     value: os,
     action: SUPPORTED_PLATFORMS.has(os)
       ? "No action needed."
-      : "Use Linux or macOS for CLI serial access.",
+      : "Use Linux, macOS, or Windows for CLI serial access.",
   });
 
   for (const toolchain of TOOLCHAINS) {

@@ -7,12 +7,18 @@ Node.js and Bun do not. This package provides it.
 ## Install
 
 ```sh
-bun add @v5x/node @v5x/serial bun-serialport
+bun add @v5x/node @v5x/serial
 ```
 
-`bun-serialport` is the default native backend and an optional peer
-dependency. Install it when you run on Bun under Linux or macOS; skip it and
-supply your own backend on any other runtime.
+`bun-serialport` is the default native backend on Linux and macOS, and an
+optional peer dependency. Install it when you run on Bun under those platforms:
+
+```sh
+bun add bun-serialport
+```
+
+Skip it on Windows, where the built-in backend talks to the Win32
+communications API directly, or supply your own backend on any other runtime.
 
 ## Usage
 
@@ -64,8 +70,8 @@ the backend for port changes and emits Web Serial-compatible `connect` and
 ## Backends
 
 Every platform detail lives behind `SerialBackend`. Supporting a new runtime or
-operating system — Windows, Node.js with `serialport`, a hardware test rig — is
-a backend, not a fork of the transport.
+operating system — Node.js with `serialport`, a hardware test rig — is a
+backend, not a fork of the transport.
 
 ```ts
 import { createNodeSerial, type SerialBackend } from "@v5x/node";
@@ -98,13 +104,25 @@ without them errors the stream instead of buffering without bound.
 declared `platforms`, so the failure names the backend rather than surfacing as
 an opaque native error.
 
-### The default backend
+### The default backends
+
+`createDefaultSerialBackend()` picks the backend that can drive the host, and
+`createNodeSerial()` uses it when you pass no `backend` of your own. Neither
+backend loads its native layer until a port is enumerated or opened, so
+importing this package is safe on any platform.
 
 `createBunSerialportBackend()` drives `bun-serialport`, which ships native code
 for Linux and macOS. On Linux it enumerates ports from sysfs rather than
 through the library, because the library reports paths without the USB ids that
 Web Serial filters need. `readLinuxUsbDeviceAttributes` and `listLinuxPorts`
 are exported for backends that want the same sysfs walk.
+
+`createWindowsSerialBackend()` talks to the Win32 communications API through
+Bun's FFI, so Windows needs no native module. It enumerates COM ports from the
+registry, because Windows reports USB ids through the device enumeration tree
+rather than through the port itself. `parseComPortNames`,
+`parseUsbPortAttributes`, and `createWindowsPortLister` are exported for
+backends that want the same enumeration.
 
 ## Build
 

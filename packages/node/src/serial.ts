@@ -1,7 +1,7 @@
 import { matchesUsbFilters } from "@v5x/serial";
 import { platform as hostPlatform } from "node:os";
 import type { SerialBackend } from "./backend.js";
-import { createBunSerialportBackend } from "./bun-serialport-backend.js";
+import { createDefaultSerialBackend } from "./default-backend.js";
 import { SerialConnectionEvent } from "./connection-event.js";
 import { SerialEventTarget } from "./event-target.js";
 import { NodeSerialPort } from "./port.js";
@@ -13,9 +13,12 @@ import type {
 } from "./types.js";
 
 export interface NodeSerialOptions {
-  /** Defaults to the `bun-serialport` backend. */
+  /** Defaults to the backend that drives the platform below. */
   backend?: SerialBackend;
-  /** Defaults to the host platform; only used to validate backend support. */
+  /**
+   * Defaults to the host platform. It selects the default backend and
+   * validates that the backend in use supports the platform.
+   */
   platform?: string;
   /** Milliseconds between hotplug checks. Defaults to 250. */
   hotplugPollInterval?: number;
@@ -37,8 +40,8 @@ export class NodeSerial extends SerialEventTarget implements Serial {
 
   constructor(options: NodeSerialOptions = {}) {
     super();
-    this.backend = options.backend ?? createBunSerialportBackend();
     this.platform = options.platform ?? hostPlatform();
+    this.backend = options.backend ?? createDefaultSerialBackend(this.platform);
     this.hotplugPollInterval = options.hotplugPollInterval ?? 250;
     if (
       !Number.isFinite(this.hotplugPollInterval) ||
@@ -169,5 +172,5 @@ function serialPortInfoMatches(
   );
 }
 
-/** The shared default instance, backed by `bun-serialport`. */
+/** The shared default instance, backed by whichever backend fits the host. */
 export const serial = new NodeSerial();

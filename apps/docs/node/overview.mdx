@@ -9,12 +9,18 @@ apps, test rigs, and the v5x CLI can use the same protocol library the browser
 workflow uses.
 
 ```sh
-bun add @v5x/node @v5x/serial bun-serialport
+bun add @v5x/node @v5x/serial
 ```
 
-`bun-serialport` is the default native backend and an optional peer
-dependency. Install it to run on Bun under Linux or macOS; skip it and supply
-your own backend on any other runtime.
+`bun-serialport` is the default native backend on Linux and macOS, and an
+optional peer dependency. On Bun under Linux or macOS, install it separately:
+
+```sh
+bun add bun-serialport
+```
+
+Skip it on Windows, where the built-in backend talks to the Win32
+communications API directly, or supply your own backend on any other runtime.
 
 ## Connect to a brain
 
@@ -101,12 +107,14 @@ without bound.
 declared `platforms`, so the failure names the backend instead of surfacing as
 an opaque native error.
 
-<Note>
-  The v5x CLI ships for Linux and macOS because its default backend does.
-  Windows support is a backend, not a CLI rewrite.
-</Note>
+## The default backends
 
-## The default backend
+`createDefaultSerialBackend()` picks the backend that can drive the host, and
+`createNodeSerial()` uses it when you pass no `backend` of your own. Neither
+backend loads its native layer until a port is enumerated or opened, so
+importing `@v5x/node` is safe on any platform.
+
+### Linux and macOS
 
 `createBunSerialportBackend()` drives `bun-serialport`, which ships native code
 for Linux and macOS.
@@ -125,3 +133,33 @@ const serial = createNodeSerial({
   backend: createBunSerialportBackend({ platform: "linux" }),
 });
 ```
+
+### Windows
+
+`createWindowsSerialBackend()` talks to the Win32 communications API through
+Bun's FFI, so Windows needs no native module and no compilation step. It opens
+a COM port with `CreateFileW` through the `\\.\` device namespace — the only
+way `COM10` and above resolve — configures it for raw 8-N-1 traffic with DTR
+and RTS asserted, and polls `ReadFile` for buffered bytes. The poll is
+suspended while the readable stream is full, which is how the transport
+applies backpressure.
+
+Enumeration reads the registry rather than the serial API, because Windows
+reports a port's USB vendor and product ids through the device enumeration tree
+instead of through the port itself. `HKLM\HARDWARE\DEVICEMAP\SERIALCOMM` lists
+the ports that are attached right now, and the `PortName` values under
+`HKLM\SYSTEM\CurrentControlSet\Enum\USB` supply their identity. That second
+walk is cached and repeated only when a COM port the backend has not resolved
+appears, so hotplug polling stays cheap.
+
+```ts
+import { createNodeSerial, createWindowsSerialBackend } from "@v5x/node";
+
+const serial = createNodeSerial({
+  platform: "win32",
+  backend: createWindowsSerialBackend(),
+});
+```
+
+`parseComPortNames`, `parseUsbPortAttributes`, and `createWindowsPortLister`
+are exported for backends that want the same enumeration without the FFI.

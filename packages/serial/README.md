@@ -49,7 +49,8 @@ can open.
 The package ships ESM, CommonJS, and TypeScript declarations. Packet and version
 utilities work in Bun or Node.js, but direct browser device connections require
 the Web Serial API. The `@v5x/cli` package is separate and currently supports
-Linux and macOS. Windows requires a different CLI serial backend.
+Linux, macOS, and Windows. Its Windows build uses the backend supplied by
+`@v5x/node`.
 
 ## Common Exports
 

@@ -9,7 +9,7 @@ function cliManifest(
   return {
     name: "@v5x/cli",
     sideEffects: true,
-    os: ["darwin", "linux"],
+    os: ["darwin", "linux", "win32"],
     engines: { bun: ">=1.3.14" },
     bin: { v5x: "./dist/index.js" },
     dependencies: {
@@ -87,6 +87,15 @@ test("requires the packed CLI manifest to use the release node version", () => {
       node: "0.1.1",
     }),
   ).not.toThrow();
+});
+
+test("requires the packed CLI manifest to claim every supported platform", () => {
+  const manifest = cliManifest("0.5.6");
+  manifest.os = ["darwin", "linux"];
+
+  expect(() =>
+    verifyManifest("@v5x/cli", manifest, { serial: "0.5.6" }),
+  ).toThrow("CLI platform, runtime, or executable metadata are invalid");
 });
 
 test("accepts the standalone node transport manifest", () => {

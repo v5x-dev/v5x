@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "bun run clean && bun run build:dts && bun run build:esm && bun scripts/verify-built-exports.ts",
-    "build:esm": "bun build ./src/index.ts --target node --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external @v5x/serial --external bun-serialport",
+    "build:esm": "bun build ./src/index.ts --target node --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external @v5x/serial --external bun-serialport --external bun:ffi",
     "build:dts": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
