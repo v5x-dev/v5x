@@ -216,9 +216,15 @@ export function verifyManifest(
 
     const peers = parsed.peerDependenciesMeta;
     const bunSerialport = isRecord(peers) ? peers["bun-serialport"] : undefined;
-    if (!isRecord(bunSerialport) || bunSerialport.optional !== true) {
+    const serialport = isRecord(peers) ? peers["serialport"] : undefined;
+    if (
+      !isRecord(bunSerialport) ||
+      bunSerialport.optional !== true ||
+      !isRecord(serialport) ||
+      serialport.optional !== true
+    ) {
       throw new Error(
-        "@v5x/node must keep bun-serialport an optional peer dependency",
+        "@v5x/node must keep bun-serialport and serialport optional peer dependencies",
       );
     }
   } else if (packageName === "@v5x/web") {
@@ -383,6 +389,7 @@ function getRequiredFiles(packageName: PackageName): string[] {
     return [
       "dist/backend.d.ts",
       "dist/bun-serialport-backend.d.ts",
+      "dist/node-serialport-backend.d.ts",
       "dist/index.js",
       "dist/index.d.ts",
       "dist/default-backend.d.ts",

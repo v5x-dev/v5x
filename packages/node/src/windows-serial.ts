@@ -5,10 +5,10 @@ import type {
 } from "./backend.js";
 
 /**
- * Windows has no serial device files, so there is nothing for a POSIX serial
- * library to open. This talks to the Win32 communications API through
- * `bun:ffi` instead, which keeps the transport free of a native addon and a
- * compilation step on the one platform that would need both.
+ * This is Bun's Windows implementation. Windows has no serial device files,
+ * so there is nothing for a POSIX serial library to open; Bun talks to the
+ * Win32 communications API through `bun:ffi` instead. Node.js uses the
+ * `serialport` backend selected by `createDefaultSerialBackend()`.
  */
 
 /** `GENERIC_READ | GENERIC_WRITE`, written out because `|` yields a signed int. */

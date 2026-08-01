@@ -10,7 +10,7 @@ import {
 } from "./windows-discovery.js";
 import { openWindowsSerialPort, type Kernel32 } from "./windows-serial.js";
 
-/** The Win32 communications API exists on Windows only. */
+/** The Win32 communications API backend is used by Bun on Windows. */
 export const WINDOWS_SERIAL_PLATFORMS = ["win32"] as const;
 
 export interface WindowsSerialBackendOptions {
@@ -23,9 +23,10 @@ export interface WindowsSerialBackendOptions {
 }
 
 /**
- * The default backend on Windows. It enumerates COM ports from the registry,
- * because Windows exposes the USB ids that Web Serial filters match against
- * through the device enumeration tree rather than through the port itself.
+ * Bun's Windows backend. It enumerates COM ports from the registry, because
+ * Windows exposes the USB ids that Web Serial filters match against through
+ * the device enumeration tree rather than through the port itself. Node.js
+ * uses `createNodeSerialportBackend()` instead.
  */
 export function createWindowsSerialBackend(
   options: WindowsSerialBackendOptions = {},

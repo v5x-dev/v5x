@@ -6,19 +6,23 @@ Node.js and Bun do not. This package provides it.
 
 ## Install
 
-```sh
-bun add @v5x/node @v5x/serial
-```
-
-`bun-serialport` is the default native backend on Linux and macOS, and an
-optional peer dependency. Install it when you run on Bun under those platforms:
+For Node.js, install the Node SerialPort backend:
 
 ```sh
-bun add bun-serialport
+npm install @v5x/node @v5x/serial serialport
 ```
 
-Skip it on Windows, where the built-in backend talks to the Win32
-communications API directly, or supply your own backend on any other runtime.
+For Bun, install its native backend:
+
+```sh
+bun add @v5x/node @v5x/serial bun-serialport
+```
+
+Both native packages are optional peers. The default backend selects
+`serialport` for Node.js on Linux, macOS, and Windows. Bun keeps using
+`bun-serialport` on Linux and macOS and its built-in Win32 FFI backend on
+Windows. You can supply your own backend when a different runtime or native
+transport is required.
 
 ## Usage
 
@@ -108,8 +112,8 @@ an opaque native error.
 
 `createDefaultSerialBackend()` picks the backend that can drive the host, and
 `createNodeSerial()` uses it when you pass no `backend` of your own. Neither
-backend loads its native layer until a port is enumerated or opened, so
-importing this package is safe on any platform.
+native package loads until a port is enumerated or opened, so importing this
+package is safe on any platform.
 
 `createBunSerialportBackend()` drives `bun-serialport`, which ships native code
 for Linux and macOS. On Linux it enumerates ports from sysfs rather than
@@ -117,10 +121,15 @@ through the library, because the library reports paths without the USB ids that
 Web Serial filters need. `readLinuxUsbDeviceAttributes` and `listLinuxPorts`
 are exported for backends that want the same sysfs walk.
 
-`createWindowsSerialBackend()` talks to the Win32 communications API through
-Bun's FFI, so Windows needs no native module. It enumerates COM ports from the
+`createNodeSerialportBackend()` drives the `serialport` package on Node.js. On
+Windows it opens COM ports through the package and enumerates them from the
 registry, because Windows reports USB ids through the device enumeration tree
-rather than through the port itself. `parseComPortNames`,
+rather than through the serial API.
+
+`createWindowsSerialBackend()` is Bun's Windows-specific backend. It talks to
+the Win32 communications API through Bun's FFI, so Bun on Windows needs no
+additional native package. It enumerates COM ports from the registry for the
+same USB identity reason. `parseComPortNames`,
 `parseUsbPortAttributes`, and `createWindowsPortLister` are exported for
 backends that want the same enumeration.
 

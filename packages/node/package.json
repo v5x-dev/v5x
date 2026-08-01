@@ -15,11 +15,12 @@
   },
   "scripts": {
     "build": "bun run clean && bun run build:dts && bun run build:esm && bun scripts/verify-built-exports.ts",
-    "build:esm": "bun build ./src/index.ts --target node --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external @v5x/serial --external bun-serialport --external bun:ffi",
+    "build:esm": "bun build ./src/index.ts --target node --format esm --sourcemap=linked --outdir ./dist --entry-naming=index.js --external @v5x/serial --external bun-serialport --external serialport --external bun:ffi",
     "build:dts": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
-    "test": "bun test",
+    "test": "bun test && bun run test:runtime",
+    "test:runtime": "bun run build && bun scripts/bun-runtime-smoke.ts && node scripts/node-runtime-smoke.mjs",
     "prepack": "bun run --cwd ../internal build && bun run --cwd ../serial build && bun run build",
     "clean": "rm -rf dist"
   },
@@ -54,10 +55,14 @@
     "@v5x/serial": "workspace:*"
   },
   "peerDependencies": {
-    "bun-serialport": "^0.1.1"
+    "bun-serialport": "^0.1.1",
+    "serialport": "^13.0.0"
   },
   "peerDependenciesMeta": {
     "bun-serialport": {
+      "optional": true
+    },
+    "serialport": {
       "optional": true
     }
   },
@@ -65,6 +70,7 @@
     "@v5x/internal": "*",
     "@types/bun": "latest",
     "@types/dom-serial": "^1.0.2",
-    "bun-serialport": "^0.1.1"
+    "bun-serialport": "^0.1.1",
+    "serialport": "^13.0.0"
   }
 }

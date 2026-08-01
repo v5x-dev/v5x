@@ -9,6 +9,7 @@ const expectedFunctions = [
   "createNodeSerial",
   "createDefaultSerialBackend",
   "createBunSerialportBackend",
+  "createNodeSerialportBackend",
   "listLinuxPorts",
   "readLinuxUsbDeviceAttributes",
   "createWindowsSerialBackend",

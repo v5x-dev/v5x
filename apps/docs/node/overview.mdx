@@ -8,19 +8,23 @@ that API; Node.js and Bun do not. `@v5x/node` provides it, so servers, Electron
 apps, test rigs, and the v5x CLI can use the same protocol library the browser
 workflow uses.
 
-```sh
-bun add @v5x/node @v5x/serial
-```
-
-`bun-serialport` is the default native backend on Linux and macOS, and an
-optional peer dependency. On Bun under Linux or macOS, install it separately:
+For Node.js, install the Node SerialPort backend:
 
 ```sh
-bun add bun-serialport
+npm install @v5x/node @v5x/serial serialport
 ```
 
-Skip it on Windows, where the built-in backend talks to the Win32
-communications API directly, or supply your own backend on any other runtime.
+For Bun, install its native backend:
+
+```sh
+bun add @v5x/node @v5x/serial bun-serialport
+```
+
+Both native packages are optional peers. The default backend selects
+`serialport` for Node.js on Linux, macOS, and Windows. Bun keeps using
+`bun-serialport` on Linux and macOS and its built-in Win32 FFI backend on
+Windows. You can supply your own backend when a different runtime or native
+transport is required.
 
 ## Connect to a brain
 
@@ -111,8 +115,24 @@ an opaque native error.
 
 `createDefaultSerialBackend()` picks the backend that can drive the host, and
 `createNodeSerial()` uses it when you pass no `backend` of your own. Neither
-backend loads its native layer until a port is enumerated or opened, so
-importing `@v5x/node` is safe on any platform.
+native package loads until a port is enumerated or opened, so importing
+`@v5x/node` is safe on any platform.
+
+### Node.js
+
+`createNodeSerialportBackend()` drives the `serialport` package on Linux,
+macOS, and Windows. On Windows it opens COM ports through that package and
+uses the registry for enumeration, because Windows reports USB vendor and
+product ids through the device enumeration tree rather than through the
+serial API.
+
+```ts
+import { createNodeSerialportBackend, createNodeSerial } from "@v5x/node";
+
+const serial = createNodeSerial({
+  backend: createNodeSerialportBackend(),
+});
+```
 
 ### Linux and macOS
 
@@ -136,13 +156,16 @@ const serial = createNodeSerial({
 
 ### Windows
 
-`createWindowsSerialBackend()` talks to the Win32 communications API through
-Bun's FFI, so Windows needs no native module and no compilation step. It opens
-a COM port with `CreateFileW` through the `\\.\` device namespace — the only
-way `COM10` and above resolve — configures it for raw 8-N-1 traffic with DTR
-and RTS asserted, and polls `ReadFile` for buffered bytes. The poll is
-suspended while the readable stream is full, which is how the transport
-applies backpressure.
+On Bun, `createWindowsSerialBackend()` talks to the Win32 communications API
+through Bun's FFI, so Windows needs no additional native package. It opens a
+COM port with `CreateFileW` through the `\\.\` device namespace — the only way
+`COM10` and above resolve — configures it for raw 8-N-1 traffic with DTR and
+RTS asserted, and polls `ReadFile` for buffered bytes. The poll is suspended
+while the readable stream is full, which is how the transport applies
+backpressure.
+
+On Node.js, the default `createNodeSerialportBackend()` uses `serialport` for
+the same COM-port I/O, so the Windows backend does not import `bun:ffi`.
 
 Enumeration reads the registry rather than the serial API, because Windows
 reports a port's USB vendor and product ids through the device enumeration tree
