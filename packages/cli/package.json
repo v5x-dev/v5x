@@ -22,7 +22,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun run clean && bun build ./src/index.ts --target bun --sourcemap=linked --outdir ./dist --entry-naming=index.js",
+    "build": "bun run clean && bun build ./src/index.ts --target bun --sourcemap=linked --outdir ./dist --entry-naming=index.js --external serialport",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
