@@ -1,5 +1,5 @@
 import { VexEventsApiError, VexEventsResponseError } from "./errors.js";
-import { mapWithConcurrency } from "@v5x/internal/concurrency";
+import { mapRangeWithConcurrency } from "@v5x/internal/concurrency";
 import { programs as programIds, rounds as roundIds } from "./constants.js";
 import type {
   ApiErrorBody,
@@ -434,11 +434,9 @@ export class Robot {
         const budget =
           maxPages === undefined ? Infinity : maxPages - visitedPages.size;
         const limit = Math.min(lastPage, nextPage + budget - 1);
-        const pages: number[] = [];
-        for (let next = nextPage; next <= limit; next++) pages.push(next);
-
-        const pageData = await mapWithConcurrency(
-          pages,
+        const pageData = await mapRangeWithConcurrency(
+          nextPage,
+          limit + 1,
           PAGE_CONCURRENCY,
           (next) =>
             this.requestPage(path, query, options, validateItem, next).then(

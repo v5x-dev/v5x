@@ -20,6 +20,10 @@ export interface WindowsSerialBackendOptions {
   kernel32?: Kernel32;
   /** Milliseconds between reads on an open port. Defaults to 1. */
   readInterval?: number;
+  /** Maximum adaptive read interval after an idle period. Defaults to 50. */
+  maxReadInterval?: number;
+  /** Empty reads before adaptive backoff starts. Defaults to 4. */
+  emptyReadsBeforeBackoff?: number;
 }
 
 /**
@@ -31,7 +35,13 @@ export interface WindowsSerialBackendOptions {
 export function createWindowsSerialBackend(
   options: WindowsSerialBackendOptions = {},
 ): SerialBackend {
-  const { discovery, kernel32, readInterval } = options;
+  const {
+    discovery,
+    kernel32,
+    readInterval,
+    maxReadInterval,
+    emptyReadsBeforeBackoff,
+  } = options;
   const list = createWindowsPortLister(discovery);
 
   return {
@@ -48,6 +58,8 @@ export function createWindowsSerialBackend(
         baudRate,
         kernel32,
         readInterval,
+        maxReadInterval,
+        emptyReadsBeforeBackoff,
       });
     },
   };

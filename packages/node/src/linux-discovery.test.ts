@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   LINUX_DISCOVERY_CONCURRENCY,
+  createLinuxPortLister,
   listLinuxPorts,
   readLinuxUsbDeviceAttributes,
 } from "./linux-discovery.js";
@@ -152,5 +153,49 @@ describe("Linux discovery", () => {
     });
 
     expect(ports).toEqual([]);
+  });
+
+  test("caches attributes and descriptors between polls", async () => {
+    let attributeReads = 0;
+    const list = createLinuxPortLister({
+      readdir: async () => ["ttyACM0", "ttyACM1"],
+      realpath: async () => "/sys/devices/usb-1",
+      readUsbAttributes: async () => {
+        attributeReads++;
+        return { vendorId: "2888", productId: "0501" };
+      },
+    });
+
+    const first = await list();
+    const second = await list();
+
+    expect(attributeReads).toBe(1);
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toBe(first[1]);
+  });
+
+  test("invalidates cached identity when a tty is reattached", async () => {
+    let attached = "/sys/devices/usb-old";
+    let attributeReads = 0;
+    const list = createLinuxPortLister({
+      readdir: async () => (attached === "" ? [] : ["ttyACM0"]),
+      realpath: async () => attached,
+      readUsbAttributes: async (device) => {
+        attributeReads++;
+        return device.endsWith("old")
+          ? { vendorId: "2888", productId: "0501" }
+          : { vendorId: "1234", productId: "5678" };
+      },
+    });
+
+    const first = await list();
+    attached = "";
+    await list();
+    attached = "/sys/devices/usb-new";
+    const second = await list();
+
+    expect(attributeReads).toBe(2);
+    expect(second[0]).not.toBe(first[0]);
+    expect(second[0]).toMatchObject({ vendorId: "1234", productId: "5678" });
   });
 });

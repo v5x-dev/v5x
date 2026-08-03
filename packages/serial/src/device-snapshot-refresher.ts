@@ -144,7 +144,10 @@ export class DeviceSnapshotRefresher {
         isConnected: radioConnected,
         isAvailable: hasFlag(23),
       },
-      devices: deviceStatus.devices.map((device) => ({ ...device })),
+      // Packet decoding owns this array for the duration of the refresh. The
+      // apply step only retains it when at least one smart-device slot changed,
+      // avoiding a clone on an unchanged telemetry poll.
+      devices: deviceStatus.devices,
     };
   }
 
@@ -177,37 +180,84 @@ export class DeviceSnapshotRefresher {
     if (brain.systemVersion.compare(snapshot.brain.systemVersion) !== 0)
       brain.systemVersion = snapshot.brain.systemVersion;
     brain.uniqueId = snapshot.brain.uniqueId;
-    Object.assign(this.state.controllers[0]!, snapshot.controllers[0]);
-    Object.assign(this.state.controllers[1]!, snapshot.controllers[1]);
-    Object.assign(this.state.radio, snapshot.radio);
+    const controller0 = this.state.controllers[0]!;
+    const controller1 = this.state.controllers[1]!;
+    if (!sameController(controller0, snapshot.controllers[0]))
+      Object.assign(controller0, snapshot.controllers[0]);
+    if (!sameController(controller1, snapshot.controllers[1]))
+      Object.assign(controller1, snapshot.controllers[1]);
+    if (!sameRadio(this.state.radio, snapshot.radio))
+      Object.assign(this.state.radio, snapshot.radio);
 
-    const next: Array<ISmartDeviceInfo | undefined> = [];
-    for (const device of snapshot.devices) next[device.port] = device;
-    if (!sameSmartDeviceSlots(this.state.devices, next))
+    if (!sameSmartDeviceSlots(this.state.devices, snapshot.devices)) {
+      const next: Array<ISmartDeviceInfo | undefined> = [];
+      for (const device of snapshot.devices) next[device.port] = device;
       this.state.devices = next;
+    }
     return true;
   }
 }
 
 function sameSmartDeviceSlots(
   left: Array<ISmartDeviceInfo | undefined>,
-  right: Array<ISmartDeviceInfo | undefined>,
+  right: readonly ISmartDeviceInfo[],
+): boolean {
+  let maxPort = -1;
+  for (const device of right) maxPort = Math.max(maxPort, device.port);
+  if (left.length !== maxPort + 1) return false;
+
+  let matched = 0;
+  let present = 0;
+  for (const device of right) {
+    const current = left[device.port];
+    if (current === undefined || !sameSmartDevice(current, device)) {
+      return false;
+    }
+    matched++;
+  }
+  for (const device of left) {
+    if (device !== undefined) present++;
+  }
+  return matched === present;
+}
+
+function sameSmartDevice(
+  left: ISmartDeviceInfo,
+  right: ISmartDeviceInfo,
 ): boolean {
   return (
-    left.length === right.length &&
-    left.every((device, index) => {
-      const next = right[index];
-      return (
-        device === next ||
-        (device !== undefined &&
-          next !== undefined &&
-          device.port === next.port &&
-          device.type === next.type &&
-          device.status === next.status &&
-          device.betaversion === next.betaversion &&
-          device.version === next.version &&
-          device.bootversion === next.bootversion)
-      );
-    })
+    left.port === right.port &&
+    left.type === right.type &&
+    left.status === right.status &&
+    left.betaversion === right.betaversion &&
+    left.version === right.version &&
+    left.bootversion === right.bootversion
+  );
+}
+
+function sameController(
+  left: V5SerialDeviceState["controllers"][number],
+  right: V5SerialDeviceState["controllers"][number],
+): boolean {
+  return (
+    left.battery === right.battery &&
+    left.isAvailable === right.isAvailable &&
+    left.isCharging === right.isCharging
+  );
+}
+
+function sameRadio(
+  left: V5SerialDeviceState["radio"],
+  right: V5SerialDeviceState["radio"],
+): boolean {
+  return (
+    left.channel === right.channel &&
+    left.latency === right.latency &&
+    left.signalQuality === right.signalQuality &&
+    left.signalStrength === right.signalStrength &&
+    left.isRadioData === right.isRadioData &&
+    left.isVexNet === right.isVexNet &&
+    left.isConnected === right.isConnected &&
+    left.isAvailable === right.isAvailable
   );
 }

@@ -336,8 +336,7 @@ function isPageMeta(value: unknown): value is PageMeta {
 export function paginated<T>(
   validateItem: Validator<T>,
 ): Validator<PaginatedResponse<T>> {
+  const validateItems = isArrayOf(validateItem);
   return (value): value is PaginatedResponse<T> =>
-    isObject(value) &&
-    isArrayOf(validateItem)(value.data) &&
-    isPageMeta(value.meta);
+    isObject(value) && validateItems(value.data) && isPageMeta(value.meta);
 }

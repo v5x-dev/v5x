@@ -61,9 +61,16 @@ export function createTerminalRenderer(
   return {
     render(text: string): string {
       pending += text;
-      const lines = pending.split("\n");
-      pending = lines.pop() ?? "";
-      return lines.map(prefixed).join("");
+      let output = "";
+      let start = 0;
+      while (true) {
+        const newline = pending.indexOf("\n", start);
+        if (newline === -1) break;
+        output += prefixed(pending.slice(start, newline));
+        start = newline + 1;
+      }
+      pending = pending.slice(start);
+      return output;
     },
     flush(): string {
       if (pending === "") return "";

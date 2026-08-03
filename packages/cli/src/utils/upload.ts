@@ -130,28 +130,82 @@ export async function uploadProgramFromCommand(
   });
 }
 
-export function reportProgress() {
+export interface ProgressOptions {
+  /** Minimum time between redraws for a single transfer stage. */
+  cadenceMs?: number;
+  now?: () => number;
+  /** Injectable output used by benchmarks and tests. */
+  output?: { isTTY?: boolean; write(chunk: string): unknown };
+}
+
+export function reportProgress(options: ProgressOptions = {}) {
+  const cadenceMs = options.cadenceMs ?? 50;
+  const now = options.now ?? (() => performance.now());
+  const output = options.output ?? process.stderr;
+  if (!Number.isFinite(cadenceMs) || cadenceMs < 0) {
+    throw new RangeError("progress cadenceMs must be finite and non-negative");
+  }
   let previousState = "";
   // Track the longest state label seen so far so short state names (e.g.
   // "bin") are padded wide enough to fully overwrite a longer previous one
   // (e.g. "channel") when redrawing the same TTY line.
   let maxStateWidth = 0;
+  let lastDrawAt = Number.NEGATIVE_INFINITY;
+  let pending: string | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const draw = (): void => {
+    if (pending === undefined) return;
+    const message = pending;
+    pending = undefined;
+    lastDrawAt = now();
+    output.write(
+      // "\x1b[K" clears from the cursor to the end of the line, so residue
+      // from a longer previous message on the same line never lingers.
+      output.isTTY ? `\r\x1b[K${message}` : `${message}\n`,
+    );
+  };
+
+  const scheduleDraw = (): void => {
+    if (timer !== undefined || pending === undefined || cadenceMs === 0) return;
+    const delay = Math.max(0, cadenceMs - (now() - lastDrawAt));
+    timer = setTimeout(() => {
+      timer = undefined;
+      draw();
+    }, delay);
+    timer.unref?.();
+  };
+
   const report = (state: string, current: number, total: number) => {
-    if (state !== previousState) {
-      if (previousState !== "") process.stderr.write("\n");
+    const stateChanged = state !== previousState;
+    if (stateChanged) {
+      if (previousState !== "") {
+        draw();
+        output.write("\n");
+      }
       previousState = state;
     }
     maxStateWidth = Math.max(maxStateWidth, state.length);
     const percent = total === 0 ? 0 : Math.floor((current / total) * 100);
-    const message = `${state.toLowerCase().padEnd(maxStateWidth)} ${percent}%`;
-    process.stderr.write(
-      // "\x1b[K" clears from the cursor to the end of the line, so residue
-      // from a longer previous message on the same line never lingers.
-      process.stderr.isTTY ? `\r\x1b[K${message}` : `${message}\n`,
-    );
+    pending = `${state.toLowerCase().padEnd(maxStateWidth)} ${percent}%`;
+    if (
+      stateChanged ||
+      percent >= 100 ||
+      cadenceMs === 0 ||
+      now() - lastDrawAt >= cadenceMs
+    ) {
+      draw();
+    } else {
+      scheduleDraw();
+    }
   };
   report.finish = () => {
-    if (previousState !== "") process.stderr.write("\n");
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    draw();
+    if (previousState !== "") output.write("\n");
   };
   return report;
 }

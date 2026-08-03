@@ -53,6 +53,7 @@ export {
 } from "./windows-serial.js";
 export {
   LINUX_DISCOVERY_CONCURRENCY,
+  createLinuxPortLister,
   linuxDiscoveryOperations,
   listLinuxPorts,
   readLinuxUsbDeviceAttributes,

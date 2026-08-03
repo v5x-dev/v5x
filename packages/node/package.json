@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
     "test": "bun test && bun run test:runtime",
+    "benchmark:discovery": "bun ./benchmarks/discovery.ts",
     "test:runtime": "bun run build && bun scripts/bun-runtime-smoke.ts && node scripts/node-runtime-smoke.mjs",
     "prepack": "bun run --cwd ../internal build && bun run --cwd ../serial build && bun run build",
     "clean": "rm -rf dist"

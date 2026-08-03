@@ -720,7 +720,10 @@ export class V5SerialConnection extends VexSerialConnection {
 function trimTrailingNuls(bytes: Uint8Array): Uint8Array {
   let end = bytes.byteLength;
   while (end > 0 && bytes[end - 1] === 0) end--;
-  return bytes.slice(0, end);
+  // Packet decoders already expose the exact payload when the brain did not
+  // add word padding. Keep that view instead of allocating a copy for the
+  // overwhelmingly common non-padded case.
+  return end === bytes.byteLength ? bytes : bytes.slice(0, end);
 }
 
 function getTransferChunkSize(windowSize: number): number {
