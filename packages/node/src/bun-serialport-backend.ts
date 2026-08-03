@@ -6,8 +6,8 @@ import type {
   SerialBackend,
 } from "./backend.js";
 import {
+  createLinuxPortLister,
   linuxDiscoveryOperations,
-  listLinuxPorts,
   type LinuxDiscoveryOperations,
 } from "./linux-discovery.js";
 
@@ -42,13 +42,15 @@ export function createBunSerialportBackend(
 ): SerialBackend {
   const platform = options.platform ?? hostPlatform();
   const linuxDiscovery = options.linuxDiscovery ?? linuxDiscoveryOperations;
+  const linuxList =
+    platform === "linux" ? createLinuxPortLister(linuxDiscovery) : undefined;
 
   return {
     name: "bun-serialport",
     platforms: BUN_SERIALPORT_PLATFORMS,
 
     async list(): Promise<NativePortDescriptor[]> {
-      if (platform === "linux") return listLinuxPorts(linuxDiscovery);
+      if (linuxList !== undefined) return linuxList();
       return (await loadBunSerialport()).list();
     },
 

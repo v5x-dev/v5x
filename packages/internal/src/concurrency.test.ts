@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mapWithConcurrency } from "./concurrency.js";
+import { mapRangeWithConcurrency, mapWithConcurrency } from "./concurrency.js";
 
 test("maps with bounded concurrency while preserving input order", async () => {
   let active = 0;
@@ -48,4 +48,13 @@ test("returns immediately for an empty input", async () => {
       throw new Error("should not run");
     }),
   ).toEqual([]);
+});
+
+test("maps a large integer range without a page-number input array", async () => {
+  const values = await mapRangeWithConcurrency(10, 20, 3, async (value) => {
+    await Bun.sleep(value % 2);
+    return value * 2;
+  });
+
+  expect(values).toEqual([20, 22, 24, 26, 28, 30, 32, 34, 36, 38]);
 });

@@ -124,6 +124,7 @@ describe("console store", () => {
     expect(await console.start()).toBe(true);
     terminal.print("hello ");
     terminal.print("world\n");
+    await Bun.sleep(20);
 
     expect(console.getSnapshot()).toMatchObject({
       status: "streaming",
@@ -133,7 +134,7 @@ describe("console store", () => {
     });
   });
 
-  test("notifies subscribers for each chunk", async () => {
+  test("coalesces rapid chunk notifications", async () => {
     const terminal = new FakeTerminal();
     const console = createV5Console(() => deviceWith(terminal));
     let notifications = 0;
@@ -143,8 +144,9 @@ describe("console store", () => {
     const afterStart = notifications;
     terminal.print("a");
     terminal.print("b");
+    await Bun.sleep(20);
 
-    expect(notifications - afterStart).toBe(2);
+    expect(notifications - afterStart).toBe(1);
   });
 
   test("an empty chunk does not publish a new snapshot", async () => {
@@ -166,6 +168,7 @@ describe("console store", () => {
     await console.start();
 
     terminal.print("one\ntwo\nthree\nfour\n");
+    await Bun.sleep(20);
 
     const snapshot = console.getSnapshot();
     expect(snapshot.text).toBe("three\nfour\n");
@@ -256,6 +259,7 @@ describe("console store", () => {
 
     console.clear();
     terminal.print("new\n");
+    await Bun.sleep(20);
 
     expect(console.getSnapshot()).toMatchObject({
       text: "new\n",

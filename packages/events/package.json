@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --type-aware",
     "test": "bun test",
+    "benchmark:pagination": "bun ./benchmarks/pagination.ts",
     "prepack": "bun run --cwd ../internal build && bun run build",
     "clean": "rm -rf dist"
   },

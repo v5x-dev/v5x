@@ -22,6 +22,8 @@ export interface NodeSerialOptions {
   platform?: string;
   /** Milliseconds between hotplug checks. Defaults to 250. */
   hotplugPollInterval?: number;
+  /** Maximum interval used after unchanged scans. Defaults to 4 times the base. */
+  maxHotplugPollInterval?: number;
 }
 
 /**
@@ -34,21 +36,35 @@ export class NodeSerial extends SerialEventTarget implements Serial {
   private readonly backend: SerialBackend;
   private readonly platform: string;
   private readonly hotplugPollInterval: number;
+  private readonly maxHotplugPollInterval: number;
+  private currentHotplugPollInterval: number;
   private activePaths: Set<string> | undefined;
   private enumeration: Promise<SerialPort[]> | undefined;
   private hotplugTimer: ReturnType<typeof setTimeout> | undefined;
+  private lastEnumerationChanged = true;
 
   constructor(options: NodeSerialOptions = {}) {
     super();
     this.platform = options.platform ?? hostPlatform();
     this.backend = options.backend ?? createDefaultSerialBackend(this.platform);
     this.hotplugPollInterval = options.hotplugPollInterval ?? 250;
+    this.maxHotplugPollInterval =
+      options.maxHotplugPollInterval ?? this.hotplugPollInterval * 4;
     if (
       !Number.isFinite(this.hotplugPollInterval) ||
       this.hotplugPollInterval <= 0
     ) {
       throw new Error("hotplugPollInterval must be greater than zero");
     }
+    if (
+      !Number.isFinite(this.maxHotplugPollInterval) ||
+      this.maxHotplugPollInterval < this.hotplugPollInterval
+    ) {
+      throw new Error(
+        "maxHotplugPollInterval must be at least hotplugPollInterval",
+      );
+    }
+    this.currentHotplugPollInterval = this.hotplugPollInterval;
   }
 
   async getPorts(): Promise<SerialPort[]> {
@@ -60,7 +76,15 @@ export class NodeSerial extends SerialEventTarget implements Serial {
       return await enumeration;
     } finally {
       if (this.enumeration === enumeration) this.enumeration = undefined;
-      if (this.activePaths !== undefined) this.scheduleHotplugCheck();
+      if (this.activePaths !== undefined) {
+        this.currentHotplugPollInterval = this.lastEnumerationChanged
+          ? this.hotplugPollInterval
+          : Math.min(
+              this.maxHotplugPollInterval,
+              this.currentHotplugPollInterval * 2,
+            );
+        this.scheduleHotplugCheck(this.currentHotplugPollInterval);
+      }
     }
   }
 
@@ -74,7 +98,7 @@ export class NodeSerial extends SerialEventTarget implements Serial {
 
     const discovered = await this.backend.list();
     const activePaths = new Set(discovered.map((port) => port.path));
-    this.dispatchHotplugEvents(activePaths);
+    this.lastEnumerationChanged = this.dispatchHotplugEvents(activePaths);
     for (const [path, port] of this.ports) {
       if (!activePaths.has(path) && port.isClosed) this.ports.delete(path);
     }
@@ -99,13 +123,16 @@ export class NodeSerial extends SerialEventTarget implements Serial {
     });
   }
 
-  private dispatchHotplugEvents(nextPaths: Set<string>): void {
+  private dispatchHotplugEvents(nextPaths: Set<string>): boolean {
     const previousPaths = this.activePaths;
     this.activePaths = nextPaths;
-    if (previousPaths === undefined) return;
+    if (previousPaths === undefined) return true;
+
+    let changed = false;
 
     for (const path of previousPaths) {
       if (nextPaths.has(path)) continue;
+      changed = true;
       // Web Serial reports a removal on the port itself and then once more on
       // the Serial object, carrying the port that went away. The port entry is
       // still in the map here; the cleanup pass below prunes it afterwards.
@@ -115,12 +142,14 @@ export class NodeSerial extends SerialEventTarget implements Serial {
     }
     for (const path of nextPaths) {
       if (!previousPaths.has(path)) {
+        changed = true;
         this.dispatchEvent(new Event("connect"));
       }
     }
+    return changed;
   }
 
-  private scheduleHotplugCheck(): void {
+  private scheduleHotplugCheck(delay = this.currentHotplugPollInterval): void {
     if (this.hotplugTimer !== undefined) return;
 
     this.hotplugTimer = setTimeout(() => {
@@ -128,7 +157,7 @@ export class NodeSerial extends SerialEventTarget implements Serial {
       void this.getPorts().catch(() => {
         // A transient discovery failure must not stop future hotplug checks.
       });
-    }, this.hotplugPollInterval);
+    }, delay);
     this.hotplugTimer.unref?.();
   }
 
@@ -139,6 +168,13 @@ export class NodeSerial extends SerialEventTarget implements Serial {
   async requestPort(options?: {
     filters?: SerialPortFilter[];
   }): Promise<SerialPort> {
+    // An explicit request is a user-visible connection attempt. Do not make
+    // it wait behind an idle backoff accumulated by the background watcher.
+    this.currentHotplugPollInterval = this.hotplugPollInterval;
+    if (this.hotplugTimer !== undefined) {
+      clearTimeout(this.hotplugTimer);
+      this.hotplugTimer = undefined;
+    }
     const ports = await this.getPorts();
     const filters = options?.filters;
     if (!filters?.length) {

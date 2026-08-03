@@ -136,6 +136,7 @@ export function createWindowsPortLister(
   operations: WindowsDiscoveryOperations = windowsDiscoveryOperations,
 ): () => Promise<NativePortDescriptor[]> {
   const resolved = new Map<string, UsbAttributes>();
+  const descriptors = new Map<string, NativePortDescriptor>();
 
   return async function listWindowsPorts(): Promise<NativePortDescriptor[]> {
     const names = parseComPortNames(
@@ -143,7 +144,10 @@ export function createWindowsPortLister(
     );
 
     for (const name of [...resolved.keys()]) {
-      if (!names.includes(name)) resolved.delete(name);
+      if (!names.includes(name)) {
+        resolved.delete(name);
+        descriptors.delete(name);
+      }
     }
 
     if (names.some((name) => !resolved.has(name))) {
@@ -163,6 +167,26 @@ export function createWindowsPortLister(
       }
     }
 
-    return names.map((name) => ({ path: name, ...resolved.get(name) }));
+    return names.map((name) => {
+      const identity = resolved.get(name) ?? {};
+      const previous = descriptors.get(name);
+      if (previous !== undefined && sameUsbAttributes(previous, identity)) {
+        return previous;
+      }
+      const descriptor = { path: name, ...identity };
+      descriptors.set(name, descriptor);
+      return descriptor;
+    });
   };
+}
+
+function sameUsbAttributes(
+  descriptor: NativePortDescriptor,
+  attributes: UsbAttributes,
+): boolean {
+  return (
+    descriptor.vendorId === attributes.vendorId &&
+    descriptor.productId === attributes.productId &&
+    descriptor.serialNumber === attributes.serialNumber
+  );
 }

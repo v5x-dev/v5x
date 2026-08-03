@@ -125,6 +125,36 @@ describe("WindowsSerialPort", () => {
     ).toBeGreaterThan(0);
   });
 
+  test("backs off repeated empty reads and returns to the base interval on data", async () => {
+    const kernel32 = new FakeKernel32();
+    const port = await openWindowsSerialPort({
+      path: "COM3",
+      baudRate: 115200,
+      kernel32,
+      readInterval: 1,
+      maxReadInterval: 8,
+      emptyReadsBeforeBackoff: 1,
+    });
+
+    await Bun.sleep(25);
+    const quietReads = kernel32.calls.filter(
+      (call) => call === "ReadFile",
+    ).length;
+    expect(quietReads).toBeLessThan(15);
+
+    const data = nextData(port);
+    kernel32.incoming.push(new Uint8Array([7]));
+    await expect(data).resolves.toEqual(new Uint8Array([7]));
+    const afterData = kernel32.calls.filter(
+      (call) => call === "ReadFile",
+    ).length;
+    await Bun.sleep(4);
+    expect(
+      kernel32.calls.filter((call) => call === "ReadFile").length,
+    ).toBeGreaterThan(afterData);
+    await port.close();
+  });
+
   test("stops polling once a read fails and reports the failure once", async () => {
     const kernel32 = new FakeKernel32({ fail: "ReadFile", lastError: 22 });
     const port = await openFakePort(kernel32);

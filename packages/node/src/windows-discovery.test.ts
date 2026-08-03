@@ -113,6 +113,16 @@ describe("createWindowsPortLister", () => {
     expect(operations.usbReads).toBe(1);
   });
 
+  test("reuses unchanged port descriptors between polls", async () => {
+    const list = createWindowsPortLister(createOperations());
+
+    const first = await list();
+    const second = await list();
+
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toBe(first[1]);
+  });
+
   test("rewalks the USB tree when a port that was not seen appears", async () => {
     let present = "COM1";
     const operations = createOperations({

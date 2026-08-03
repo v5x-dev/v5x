@@ -58,6 +58,8 @@ const DEFAULT_READ_BUFFER_SIZE = 65536;
  * without spinning the loop.
  */
 const DEFAULT_READ_INTERVAL_MS = 1;
+const DEFAULT_MAX_READ_INTERVAL_MS = 50;
+const DEFAULT_EMPTY_READS_BEFORE_BACKOFF = 4;
 
 /**
  * The Win32 calls the backend makes, named so a test can stand in for
@@ -210,6 +212,10 @@ function encodeWidePath(path: string): Uint16Array {
 export interface WindowsSerialPortOptions extends NativeOpenOptions {
   /** Milliseconds between reads. Defaults to 1. */
   readInterval?: number;
+  /** Maximum interval used after repeated empty reads. Defaults to 50. */
+  maxReadInterval?: number;
+  /** Empty reads before the interval is increased. Defaults to 4. */
+  emptyReadsBeforeBackoff?: number;
   /** Bytes read per poll. Defaults to 65536. */
   readBufferSize?: number;
   /** Stands in for `kernel32.dll`. Defaults to the real library. */
@@ -233,7 +239,11 @@ export class WindowsSerialPort implements NativePort {
   private readonly transferred = new Uint8Array(4);
   private readonly transferredView: DataView;
   private readonly readInterval: number;
-  private readTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly maxReadInterval: number;
+  private readonly emptyReadsBeforeBackoff: number;
+  private readTimer: ReturnType<typeof setTimeout> | undefined;
+  private currentReadInterval: number;
+  private emptyReads = 0;
   private closed = false;
 
   constructor(
@@ -246,6 +256,28 @@ export class WindowsSerialPort implements NativePort {
     );
     this.transferredView = new DataView(this.transferred.buffer);
     this.readInterval = options.readInterval ?? DEFAULT_READ_INTERVAL_MS;
+    this.maxReadInterval =
+      options.maxReadInterval ?? DEFAULT_MAX_READ_INTERVAL_MS;
+    this.emptyReadsBeforeBackoff =
+      options.emptyReadsBeforeBackoff ?? DEFAULT_EMPTY_READS_BEFORE_BACKOFF;
+    if (!Number.isFinite(this.readInterval) || this.readInterval <= 0) {
+      throw new Error("readInterval must be greater than zero");
+    }
+    if (
+      !Number.isFinite(this.maxReadInterval) ||
+      this.maxReadInterval < this.readInterval
+    ) {
+      throw new Error("maxReadInterval must be at least readInterval");
+    }
+    if (
+      !Number.isSafeInteger(this.emptyReadsBeforeBackoff) ||
+      this.emptyReadsBeforeBackoff < 1
+    ) {
+      throw new Error(
+        "emptyReadsBeforeBackoff must be a positive safe integer",
+      );
+    }
+    this.currentReadInterval = this.readInterval;
     this.resume();
   }
 
@@ -290,7 +322,15 @@ export class WindowsSerialPort implements NativePort {
     // descriptor does; `close()` clears the timer and lets the process exit.
     // Discovery's hotplug poll is the one that unrefs, because a background
     // scan should never be the reason a process stays alive.
-    this.readTimer = setInterval(() => this.poll(), this.readInterval);
+    this.scheduleRead();
+  }
+
+  private scheduleRead(): void {
+    if (this.closed || this.readTimer !== undefined) return;
+    this.readTimer = setTimeout(() => {
+      this.readTimer = undefined;
+      this.poll();
+    }, this.currentReadInterval);
   }
 
   private poll(): void {
@@ -316,10 +356,23 @@ export class WindowsSerialPort implements NativePort {
       return;
     }
 
-    if (read === 0) return;
+    if (read === 0) {
+      this.emptyReads++;
+      if (this.emptyReads >= this.emptyReadsBeforeBackoff) {
+        this.currentReadInterval = Math.min(
+          this.maxReadInterval,
+          Math.max(this.readInterval, this.currentReadInterval * 2),
+        );
+      }
+      this.scheduleRead();
+      return;
+    }
+    this.emptyReads = 0;
+    this.currentReadInterval = this.readInterval;
     // Hand out a copy: the read buffer is reused by the next poll.
     const chunk = this.readBuffer.slice(0, read);
     for (const listener of [...this.dataListeners]) listener(chunk);
+    this.scheduleRead();
   }
 
   private readOnce(): number {

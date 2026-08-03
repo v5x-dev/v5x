@@ -111,7 +111,11 @@ export function createDeviceSnapshot(
       signalQuality: state.radio.signalQuality,
       signalStrength: state.radio.signalStrength,
     },
-    devices: state.devices.filter((device) => device !== undefined),
+    devices:
+      previous !== null &&
+      sameSmartDeviceStateList(previous.devices, state.devices)
+        ? previous.devices
+        : state.devices.filter((device) => device !== undefined),
   };
   if (previous === null) return snapshot;
 
@@ -203,6 +207,20 @@ function sameSmartDeviceList(
     left.length === right.length &&
     left.every((device, index) => sameSmartDevice(device, right[index]!))
   );
+}
+
+function sameSmartDeviceStateList(
+  previous: ISmartDeviceInfo[],
+  current: Array<ISmartDeviceInfo | undefined>,
+): boolean {
+  let count = 0;
+  for (const device of current) {
+    if (device === undefined) continue;
+    const old = previous.find((candidate) => candidate.port === device.port);
+    if (old === undefined || !sameSmartDevice(old, device)) return false;
+    count++;
+  }
+  return count === previous.length;
 }
 
 function sameSmartDevice(

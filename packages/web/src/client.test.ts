@@ -1289,6 +1289,7 @@ describe("client console", () => {
     await client.connect();
     expect(await client.console.start()).toBe(true);
     fake.print("hello\n");
+    await Bun.sleep(20);
 
     expect(client.console.getSnapshot().text).toBe("hello\n");
   });

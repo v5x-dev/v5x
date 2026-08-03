@@ -64,6 +64,12 @@ export interface V5ConsoleOptions {
   maxCharacters?: number;
   /** Forwarded to the underlying serial terminal session. */
   terminal?: V5TerminalOptions;
+  /**
+   * Minimum time between subscriber notifications while output is arriving.
+   * The snapshot itself is updated at the end of the interval, so a renderer
+   * sees the complete text and chunk count rather than an intermediate state.
+   */
+  snapshotPublicationIntervalMs?: number;
 }
 
 /**
@@ -83,17 +89,20 @@ class V5WebConsole implements V5Console {
   private readonly listeners = createListenerSet();
   private readonly maxCharacters: number;
   private readonly terminalOptions: V5TerminalOptions | undefined;
+  private readonly snapshotPublicationIntervalMs: number;
   private readonly getDevice: () => V5ConsoleDeviceSource | null;
 
   private terminal: V5UserProgramTerminal | null = null;
   private detach: (() => void) | null = null;
   private status: V5ConsoleStatus = "idle";
-  private text = "";
+  private readonly textChunks: string[] = [];
+  private bufferedCharacters = 0;
   private chunks = 0;
   private truncated = false;
   private error: V5WebError | null = null;
   private snapshot: V5ConsoleSnapshot;
   private startPromise: Promise<boolean> | null = null;
+  private publicationTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     getDevice: () => V5ConsoleDeviceSource | null,
@@ -104,9 +113,20 @@ class V5WebConsole implements V5Console {
     if (!Number.isSafeInteger(maxCharacters) || maxCharacters <= 0) {
       throw new RangeError("maxCharacters must be a positive safe integer");
     }
+    const snapshotPublicationIntervalMs =
+      options.snapshotPublicationIntervalMs ?? 16;
+    if (
+      !Number.isFinite(snapshotPublicationIntervalMs) ||
+      snapshotPublicationIntervalMs < 0
+    ) {
+      throw new RangeError(
+        "snapshotPublicationIntervalMs must be a finite, non-negative number",
+      );
+    }
     this.getDevice = getDevice;
     this.maxCharacters = maxCharacters;
     this.terminalOptions = options.terminal;
+    this.snapshotPublicationIntervalMs = snapshotPublicationIntervalMs;
     this.snapshot = this.createSnapshot();
   }
 
@@ -170,7 +190,7 @@ class V5WebConsole implements V5Console {
         "Reading V5 program output failed.",
       );
       this.error = terminalError;
-      this.publish();
+      this.publishNow();
     };
     const onClosed = (): void => {
       if (this.terminal !== terminal) return;
@@ -178,7 +198,7 @@ class V5WebConsole implements V5Console {
       this.detach = null;
       this.terminal = null;
       this.status = terminalError === null ? "idle" : "error";
-      this.publish();
+      this.publishNow();
       void terminal.close();
     };
     terminal.on("text", onText);
@@ -193,7 +213,7 @@ class V5WebConsole implements V5Console {
     };
     this.status = "streaming";
     this.error = null;
-    this.publish();
+    this.publishNow();
     return true;
   }
 
@@ -204,16 +224,17 @@ class V5WebConsole implements V5Console {
     this.terminal = null;
     if (this.status === "streaming") {
       this.status = "idle";
-      this.publish();
+      this.publishNow();
     }
     await terminal?.close();
   }
 
   clear(): void {
-    if (this.text === "" && !this.truncated) return;
-    this.text = "";
+    if (this.bufferedCharacters === 0 && !this.truncated) return;
+    this.textChunks.length = 0;
+    this.bufferedCharacters = 0;
     this.truncated = false;
-    this.publish();
+    this.publishNow();
   }
 
   async send(text: string): Promise<boolean> {
@@ -226,7 +247,7 @@ class V5WebConsole implements V5Console {
         written.error,
         "Sending input to the V5 program failed.",
       );
-      this.publish();
+      this.publishNow();
       return false;
     }
     return true;
@@ -234,32 +255,88 @@ class V5WebConsole implements V5Console {
 
   private append(chunk: string): void {
     if (chunk === "") return;
-    const combined = this.text + chunk;
-    const trimmed = trimConsoleBuffer(combined, this.maxCharacters);
-    this.truncated ||= trimmed.length !== combined.length;
-    this.text = trimmed;
+    this.textChunks.push(chunk);
+    this.bufferedCharacters += chunk.length;
+    this.trimChunks();
     this.chunks++;
-    this.publish();
+    this.publishSoon();
   }
 
   private fail(code: V5WebErrorCode, cause: unknown, fallback: string): void {
     this.status = "error";
     this.error = normalizeV5WebError(code, cause, fallback);
-    this.publish();
+    this.publishNow();
   }
 
   private createSnapshot(): V5ConsoleSnapshot {
     return {
       status: this.status,
       streaming: this.status === "streaming",
-      text: this.text,
+      text: this.textChunks.join(""),
       chunks: this.chunks,
       truncated: this.truncated,
       error: this.error,
     };
   }
 
-  private publish(): void {
+  private trimChunks(): void {
+    if (this.bufferedCharacters <= this.maxCharacters) return;
+
+    this.dropCharacters(this.bufferedCharacters - this.maxCharacters);
+    let newlineOffset = 0;
+    let foundNewline = false;
+    for (const chunk of this.textChunks) {
+      const index = chunk.indexOf("\n");
+      if (index !== -1) {
+        newlineOffset += index;
+        foundNewline = true;
+        break;
+      }
+      newlineOffset += chunk.length;
+    }
+    // Match trimConsoleBuffer: a newline that is already the final retained
+    // character is kept, while a partial first line is dropped as well.
+    if (foundNewline && newlineOffset !== this.bufferedCharacters - 1) {
+      this.dropCharacters(newlineOffset + 1);
+    }
+    this.truncated = true;
+  }
+
+  private dropCharacters(count: number): void {
+    let remaining = count;
+    while (remaining > 0) {
+      const first = this.textChunks[0];
+      if (first === undefined) break;
+      if (first.length <= remaining) {
+        this.textChunks.shift();
+        this.bufferedCharacters -= first.length;
+        remaining -= first.length;
+      } else {
+        this.textChunks[0] = first.slice(remaining);
+        this.bufferedCharacters -= remaining;
+        remaining = 0;
+      }
+    }
+  }
+
+  private publishSoon(): void {
+    if (this.snapshotPublicationIntervalMs === 0) {
+      this.publishNow();
+      return;
+    }
+    if (this.publicationTimer !== undefined) return;
+    this.publicationTimer = setTimeout(() => {
+      this.publicationTimer = undefined;
+      this.publishNow();
+    }, this.snapshotPublicationIntervalMs);
+    this.publicationTimer.unref?.();
+  }
+
+  private publishNow(): void {
+    if (this.publicationTimer !== undefined) {
+      clearTimeout(this.publicationTimer);
+      this.publicationTimer = undefined;
+    }
     this.snapshot = this.createSnapshot();
     this.listeners.emit();
   }

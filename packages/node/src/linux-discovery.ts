@@ -60,37 +60,94 @@ export async function readLinuxUsbDeviceAttributes(
 export async function listLinuxPorts(
   operations: LinuxDiscoveryOperations = linuxDiscoveryOperations,
 ): Promise<NativePortDescriptor[]> {
-  const ttys = await operations
-    .readdir("/sys/class/tty")
-    .then((names) => names.toSorted())
-    .catch(() => []);
-  const usbAttributes = new Map<string, Promise<UsbAttributes>>();
+  return createLinuxPortLister(operations)();
+}
 
-  const ports = await mapWithConcurrency(
-    ttys,
-    LINUX_DISCOVERY_CONCURRENCY,
-    async (name): Promise<NativePortDescriptor | undefined> => {
-      try {
-        const device = await operations.realpath(
-          `/sys/class/tty/${name}/device`,
-        );
-        const info: NativePortDescriptor = { path: `/dev/${name}` };
+/**
+ * Create a lister that keeps sysfs identity reads across discovery polls.
+ * Resolving a tty path is cheap enough to repeat: it also tells us when a
+ * name has been reattached to a different device. The expensive walk from
+ * that resolved path to USB attributes is cached until the path disappears.
+ */
+export function createLinuxPortLister(
+  operations: LinuxDiscoveryOperations = linuxDiscoveryOperations,
+): () => Promise<NativePortDescriptor[]> {
+  const attributesByDevice = new Map<string, UsbAttributes>();
+  const portsByName = new Map<
+    string,
+    {
+      device: string;
+      attributes: UsbAttributes;
+      descriptor: NativePortDescriptor;
+    }
+  >();
 
-        // A USB serial port's immediate sysfs device commonly belongs to the
-        // tty subsystem. Its USB identity is exposed by an ancestor, which is
-        // why checking only `device/subsystem` misses ttyACM and ttyUSB ports.
-        let attributes = usbAttributes.get(device);
-        if (attributes === undefined) {
-          attributes = operations.readUsbAttributes(device).catch(() => ({}));
-          usbAttributes.set(device, attributes);
+  return async function listCachedLinuxPorts(): Promise<
+    NativePortDescriptor[]
+  > {
+    const ttys = await operations
+      .readdir("/sys/class/tty")
+      .then((names) => names.toSorted())
+      .catch(() => []);
+    const usbAttributes = new Map<string, Promise<UsbAttributes>>();
+
+    const ports = await mapWithConcurrency(
+      ttys,
+      LINUX_DISCOVERY_CONCURRENCY,
+      async (name): Promise<NativePortDescriptor | undefined> => {
+        try {
+          const device = await operations.realpath(
+            `/sys/class/tty/${name}/device`,
+          );
+
+          // A USB serial port's immediate sysfs device commonly belongs to the
+          // tty subsystem. Its USB identity is exposed by an ancestor, which is
+          // why checking only `device/subsystem` misses ttyACM and ttyUSB ports.
+          let attributes = attributesByDevice.get(device);
+          if (attributes === undefined) {
+            let pending = usbAttributes.get(device);
+            if (pending === undefined) {
+              pending = operations.readUsbAttributes(device).catch(() => ({}));
+              usbAttributes.set(device, pending);
+            }
+            attributes = await pending;
+            attributesByDevice.set(device, attributes);
+          }
+          const previous = portsByName.get(name);
+          if (
+            previous !== undefined &&
+            previous.device === device &&
+            sameUsbAttributes(previous.attributes, attributes)
+          ) {
+            return previous.descriptor;
+          }
+          const descriptor = { path: `/dev/${name}`, ...attributes };
+          portsByName.set(name, { device, attributes, descriptor });
+          return descriptor;
+        } catch {
+          // Not a real device or no permission.
+          return undefined;
         }
-        Object.assign(info, await attributes);
-        return info;
-      } catch {
-        // Not a real device or no permission.
-        return undefined;
-      }
-    },
+      },
+    );
+    const present = new Set(ttys);
+    for (const name of portsByName.keys()) {
+      if (!present.has(name)) portsByName.delete(name);
+    }
+    const activeDevices = new Set(
+      [...portsByName.values()].map(({ device }) => device),
+    );
+    for (const device of attributesByDevice.keys()) {
+      if (!activeDevices.has(device)) attributesByDevice.delete(device);
+    }
+    return ports.filter((port) => port !== undefined);
+  };
+}
+
+function sameUsbAttributes(left: UsbAttributes, right: UsbAttributes): boolean {
+  return (
+    left.vendorId === right.vendorId &&
+    left.productId === right.productId &&
+    left.serialNumber === right.serialNumber
   );
-  return ports.filter((port) => port !== undefined);
 }
